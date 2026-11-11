@@ -1,0 +1,410 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="2950px" height="1830px" viewBox="0 0 2950 1830" xmlns:c2pa="http://c2pa.org/manifest"><metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYToyODA4ZmIyZi1lZDRhLTRjN2MtODcxYy0zYWExOTQ3NGQwYmYAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaIdtOej2HMlMrD5GW7V0hKsAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDplMGY2YWRjNy05NWVlLTRkNzktOGY3MC1hYzQ0OGI1NGU1YzhscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNoBe7CRirxgshza6SSS8/2aQAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggMEJEgDQpA0PJGKJJfaYGbviVXpbJGYz5T9muwj+pP8ikZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaGaP17MM7B12QBL1vRBXHo8AAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRNAAAAAAAAAAAAAAAAAGRoYXNoWCCEdpjHlUZlmhh6MeTpCs9cTems265U8z7IBbMcTt4rjWRuYW1lbmp1bWJmIG1hbmlmZXN0amV4Y2x1c2lvbnOBomVzdGFydBisZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOjI4MDhmYjJmLWVkNGEtNGM3Yy04NzFjLTNhYTE5NDc0ZDBiZi9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOjc5YTdjYjMyLThhOTgtNDBjNy1iMmE4LTg0YTI0ZWNhY2Q4ZXJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCAwQkSANCkDQ8kYokl9pgZu+JVelskZjPlP2a7CP6k/yKJjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggtXHjAsqUErhP8IpXC+g3lTZDI6ChctWzHu+rtShNFkuiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggIl9qaNRY359w0/astkWWIdxeFyRDoYd8GYsFtuGV27d0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQLmv/6LnG9sNdGxd0uBBsREQjuuY0nsmK6Obik9EsAPRrBqx+m0kY0XvKS4p9DqXI3acqqLwmcyu8bxemlqR5fU=</c2pa:manifest></metadata>
+<title>MarkieSharkie - Domain Model</title><g transform="translate(0.5,0.5)" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#000">
+<text x="60" y="40" font-weight="bold" font-size="18">MarkieSharkie - Domain Model</text>
+<text x="60" y="58" font-size="11">Business concepts with their key attributes and the relationships between them. No operations or data types are shown.</text>
+<polyline points="1040,740 1040,950" fill="none" stroke="#000" />
+<polyline points="1470,950 1470,770" fill="none" stroke="#000" />
+<polyline points="2330,190 2330,370" fill="none" stroke="#000" />
+<polyline points="180,370 180,170" fill="none" stroke="#000" />
+<polyline points="2330,470 2330,670" fill="none" stroke="#000" />
+<polyline points="1470,440 1470,670" fill="none" stroke="#000" />
+<polyline points="2760,1410 2760,1630" fill="none" stroke="#000" />
+<polyline points="610,1460 610,1630" fill="none" stroke="#000" />
+<polyline points="180,1630 180,1380" fill="none" stroke="#000" />
+<polyline points="2330,1140 2330,1310" fill="none" stroke="#000" />
+<polyline points="180,1020 180,1310" fill="none" stroke="#000" />
+<polyline points="1470,1140 1470,1310" fill="none" stroke="#000" />
+<polyline points="2210,1020 2060,1020 2060,1040 2020,1040" fill="none" stroke="#000" />
+<polyline points="1590,1020 1740,1020 1740,1040 1780,1040" fill="none" stroke="#000" />
+<polyline points="2640,710 2450,710" fill="none" stroke="#000" />
+<polyline points="2450,430 2600,430 2600,420 2640,420" fill="none" stroke="#000" />
+<polyline points="1350,1000 1200,1000 1200,1020 1160,1020" fill="none" stroke="#000" />
+<polyline points="2450,1010 2600,1010 2600,1030 2640,1030" fill="none" stroke="#000" />
+<polyline points="730,1670 920,1670" fill="none" stroke="#000" />
+<polyline points="490,1670 300,1670" fill="none" stroke="#000" />
+<polyline points="1780,1680 1630,1680 1630,1690 1590,1690" fill="none" stroke="#000" />
+<polyline points="1040,200 1040,670" fill="none" stroke="#000" />
+<polyline points="2210,1120 2170,1120 2170,1650 2210,1650" fill="none" stroke="#000" />
+<polyline points="1140,740 1140,910 1370,910 1370,950" fill="none" stroke="#000" />
+<polyline points="2430,950 2430,800 2660,800 2660,740" fill="none" stroke="#000" />
+<polyline points="1160,180 1370,180 1370,370" fill="none" stroke="#000" />
+<polyline points="920,180 710,180 710,370" fill="none" stroke="#000" />
+<polyline points="2430,190 2430,330 2660,330 2660,370" fill="none" stroke="#000" />
+<polyline points="2450,390 2600,390 2600,170 2640,170" fill="none" stroke="#000" />
+<polyline points="1350,1120 1140,1120 1140,1310" fill="none" stroke="#000" />
+<polyline points="2450,1120 2660,1120 2660,1310" fill="none" stroke="#000" />
+<polyline points="1570,950 1570,910 2230,910 2230,950" fill="none" stroke="#000" />
+<polyline points="1350,1050 1180,1050 1180,1070 770,1070 770,1050 730,1050" fill="none" stroke="#000" />
+<polyline points="920,710 300,710" fill="none" stroke="#000" />
+<polyline points="2000,450 2000,900 2270,900 2270,950" fill="none" stroke="#000" />
+<polyline points="1590,1120 1800,1120 1800,1630" fill="none" stroke="#000" />
+<polyline points="2210,1080 2060,1080 2060,1650 2020,1650" fill="none" stroke="#000" />
+<polyline points="1530,950 1530,820 2230,820 2230,780" fill="none" stroke="#000" />
+<polyline points="1160,140 1800,140 1800,370" fill="none" stroke="#000" />
+<polyline points="940,670 940,500 280,500 280,440" fill="none" stroke="#000" />
+<polyline points="1590,1080 1760,1080 1760,1110 2160,1110 2160,1330 2210,1330" fill="none" stroke="#000" />
+<polyline points="1370,1140 1370,1270 710,1270 710,1310" fill="none" stroke="#000" />
+<polyline points="1140,90 1140,60 2170,60 2170,140 2210,140" fill="none" stroke="#000" />
+<polyline points="2210,970 2040,970 2040,930 1200,930 1200,970 1160,970" fill="none" stroke="#000" />
+<polyline points="1590,970 1620,970 1620,460 730,460" fill="none" stroke="#000" />
+<polyline points="1570,1140 1570,1170 2050,1170 2050,450 2210,450" fill="none" stroke="#000" />
+<polyline points="1590,420 1760,420 1760,890 2310,890 2310,950" fill="none" stroke="#000" />
+<text x="1045.0" y="754.0" text-anchor="start" font-size="11">1</text>
+<text x="1045.0" y="944.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1475.0" y="944.0" text-anchor="start" font-size="11">1</text>
+<text x="1475.0" y="784.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2335.0" y="204.0" text-anchor="start" font-size="11">1</text>
+<text x="2335.0" y="364.0" text-anchor="start" font-size="11">0..*</text>
+<text x="185.0" y="364.0" text-anchor="start" font-size="11">1</text>
+<text x="185.0" y="184.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2335.0" y="484.0" text-anchor="start" font-size="11">0..1</text>
+<text x="2335.0" y="664.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1475.0" y="454.0" text-anchor="start" font-size="11">0..1</text>
+<text x="1475.0" y="664.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2765.0" y="1424.0" text-anchor="start" font-size="11">1</text>
+<text x="2765.0" y="1624.0" text-anchor="start" font-size="11">1</text>
+<text x="615.0" y="1474.0" text-anchor="start" font-size="11">1</text>
+<text x="615.0" y="1624.0" text-anchor="start" font-size="11">0..*</text>
+<text x="185.0" y="1624.0" text-anchor="start" font-size="11">1</text>
+<text x="185.0" y="1394.0" text-anchor="start" font-size="11">0..1</text>
+<text x="2335.0" y="1154.0" text-anchor="start" font-size="11">1</text>
+<text x="2335.0" y="1304.0" text-anchor="start" font-size="11">0..*</text>
+<text x="185.0" y="1034.0" text-anchor="start" font-size="11">1</text>
+<text x="185.0" y="1304.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1475.0" y="1154.0" text-anchor="start" font-size="11">1</text>
+<text x="1475.0" y="1304.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2197.8" y="1015.0" text-anchor="start" font-size="11">1</text>
+<text x="2026.0" y="1035.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1596.0" y="1015.0" text-anchor="start" font-size="11">0..1</text>
+<text x="1767.8" y="1035.0" text-anchor="start" font-size="11">1</text>
+<text x="2627.8" y="705.0" text-anchor="start" font-size="11">1</text>
+<text x="2456.0" y="705.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2456.0" y="425.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2609.2" y="415.0" text-anchor="start" font-size="11">0..1</text>
+<text x="1337.8" y="995.0" text-anchor="start" font-size="11">1</text>
+<text x="1166.0" y="1015.0" text-anchor="start" font-size="11">0..1</text>
+<text x="2456.0" y="1005.0" text-anchor="start" font-size="11">1</text>
+<text x="2609.2" y="1025.0" text-anchor="start" font-size="11">0..*</text>
+<text x="736.0" y="1665.0" text-anchor="start" font-size="11">1</text>
+<text x="889.2" y="1665.0" text-anchor="start" font-size="11">0..1</text>
+<text x="477.8" y="1665.0" text-anchor="start" font-size="11">1</text>
+<text x="306.0" y="1665.0" text-anchor="start" font-size="11">0..1</text>
+<text x="1767.8" y="1675.0" text-anchor="start" font-size="11">1</text>
+<text x="1596.0" y="1685.0" text-anchor="start" font-size="11">1..*</text>
+<polygon points="1040,200 1032,214 1048,214" fill="#fff" stroke="#000"/>
+<text x="2197.8" y="1115.0" text-anchor="start" font-size="11">1</text>
+<text x="2179.2" y="1645.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1145.0" y="754.0" text-anchor="start" font-size="11">0..1</text>
+<text x="1375.0" y="944.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2435.0" y="944.0" text-anchor="start" font-size="11">1</text>
+<text x="2665.0" y="754.0" text-anchor="start" font-size="11">1</text>
+<polygon points="1160,180 1174,188 1174,172" fill="#fff" stroke="#000"/>
+<text x="907.8" y="175.0" text-anchor="start" font-size="11">1</text>
+<text x="715.0" y="364.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2435.0" y="204.0" text-anchor="start" font-size="11">1</text>
+<text x="2665.0" y="364.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2456.0" y="385.0" text-anchor="start" font-size="11">1</text>
+<text x="2609.2" y="165.0" text-anchor="start" font-size="11">0..1</text>
+<text x="1337.8" y="1115.0" text-anchor="start" font-size="11">1</text>
+<text x="1145.0" y="1304.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2456.0" y="1115.0" text-anchor="start" font-size="11">1</text>
+<text x="2665.0" y="1304.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1575.0" y="944.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2235.0" y="944.0" text-anchor="start" font-size="11">1</text>
+<text x="1337.8" y="1045.0" text-anchor="start" font-size="11">1</text>
+<text x="736.0" y="1045.0" text-anchor="start" font-size="11">0..*</text>
+<text x="907.8" y="705.0" text-anchor="start" font-size="11">1</text>
+<text x="306.0" y="705.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2005.0" y="464.0" text-anchor="start" font-size="11">1</text>
+<text x="2275.0" y="944.0" text-anchor="start" font-size="11">1..*</text>
+<text x="1596.0" y="1115.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1805.0" y="1624.0" text-anchor="start" font-size="11">0..1</text>
+<text x="2197.8" y="1075.0" text-anchor="start" font-size="11">1</text>
+<text x="2026.0" y="1645.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1535.0" y="944.0" text-anchor="start" font-size="11">1</text>
+<text x="2235.0" y="794.0" text-anchor="start" font-size="11">0..*</text>
+<polygon points="1160,140 1174,148 1174,132" fill="#fff" stroke="#000"/>
+<text x="945.0" y="664.0" text-anchor="start" font-size="11">1</text>
+<text x="285.0" y="454.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1596.0" y="1075.0" text-anchor="start" font-size="11">0..*</text>
+<text x="2179.2" y="1325.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1375.0" y="1154.0" text-anchor="start" font-size="11">1</text>
+<text x="715.0" y="1304.0" text-anchor="start" font-size="11">0..1</text>
+<polygon points="1140,90 1148,76 1132,76" fill="#fff" stroke="#000"/>
+<text x="2197.8" y="965.0" text-anchor="start" font-size="11">1</text>
+<text x="1166.0" y="965.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1596.0" y="965.0" text-anchor="start" font-size="11">1</text>
+<text x="736.0" y="455.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1575.0" y="1154.0" text-anchor="start" font-size="11">1</text>
+<text x="2179.2" y="445.0" text-anchor="start" font-size="11">0..*</text>
+<text x="1596.0" y="415.0" text-anchor="start" font-size="11">0..1</text>
+<text x="2315.0" y="944.0" text-anchor="start" font-size="11">0..*</text>
+<rect x="1151.2" y="442.0" width="51.6" height="16.0" fill="#fff"/><text x="1154.2" y="453.0" text-anchor="start" font-size="11">triggers</text>
+<rect x="2054.0" y="802.0" width="51.6" height="16.0" fill="#fff"/><text x="2057.0" y="813.0" text-anchor="start" font-size="11">requests</text>
+<rect x="2314.0" y="912.0" width="51.6" height="16.0" fill="#fff"/><text x="2317.0" y="923.0" text-anchor="start" font-size="11">approves</text>
+<rect x="2101.2" y="952.0" width="51.6" height="16.0" fill="#fff"/><text x="2104.2" y="963.0" text-anchor="start" font-size="11">rated by</text>
+<rect x="284.0" y="462.0" width="40.2" height="16.0" fill="#fff"/><text x="287.0" y="473.0" text-anchor="start" font-size="11">starts</text>
+<rect x="1851.3" y="802.0" width="57.3" height="16.0" fill="#fff"/><text x="1854.3" y="813.0" text-anchor="start" font-size="11">generates</text>
+<rect x="1651.2" y="1062.0" width="51.6" height="16.0" fill="#fff"/><text x="1654.2" y="1073.0" text-anchor="start" font-size="11">includes</text>
+<rect x="1011.4" y="1252.0" width="57.3" height="16.0" fill="#fff"/><text x="1014.4" y="1263.0" text-anchor="start" font-size="11">generates</text>
+<rect x="2004.0" y="662.0" width="28.8" height="16.0" fill="#fff"/><text x="2007.0" y="673.0" text-anchor="start" font-size="11">owns</text>
+<rect x="2111.9" y="1062.0" width="40.2" height="16.0" fill="#fff"/><text x="2114.9" y="1073.0" text-anchor="start" font-size="11">offers</text>
+<rect x="1871.2" y="892.0" width="51.6" height="16.0" fill="#fff"/><text x="1874.2" y="903.0" text-anchor="start" font-size="11">reserves</text>
+<rect x="1671.0" y="1102.0" width="45.9" height="16.0" fill="#fff"/><text x="1674.0" y="1113.0" text-anchor="start" font-size="11">selects</text>
+<rect x="1221.1" y="1032.0" width="85.8" height="16.0" fill="#fff"/><text x="1224.1" y="1043.0" text-anchor="start" font-size="11">negotiated via</text>
+<rect x="591.0" y="692.0" width="45.9" height="16.0" fill="#fff"/><text x="594.0" y="703.0" text-anchor="start" font-size="11">records</text>
+<rect x="2114.4" y="1372.0" width="51.6" height="16.0" fill="#fff"/><text x="2117.4" y="1383.0" text-anchor="start" font-size="11">provides</text>
+<rect x="1241.8" y="892.0" width="34.5" height="16.0" fill="#fff"/><text x="1244.8" y="903.0" text-anchor="start" font-size="11">makes</text>
+<rect x="2664.0" y="762.0" width="57.3" height="16.0" fill="#fff"/><text x="2667.0" y="773.0" text-anchor="start" font-size="11">has stage</text>
+<rect x="2434.0" y="252.0" width="40.2" height="16.0" fill="#fff"/><text x="2437.0" y="263.0" text-anchor="start" font-size="11">offers</text>
+<rect x="2604.0" y="272.0" width="74.4" height="16.0" fill="#fff"/><text x="2607.0" y="283.0" text-anchor="start" font-size="11">confirmed as</text>
+<rect x="791.2" y="162.0" width="51.6" height="16.0" fill="#fff"/><text x="794.2" y="173.0" text-anchor="start" font-size="11">receives</text>
+<rect x="1211.5" y="1102.0" width="63.0" height="16.0" fill="#fff"/><text x="1214.5" y="1113.0" text-anchor="start" font-size="11">settled by</text>
+<rect x="2531.2" y="1102.0" width="51.6" height="16.0" fill="#fff"/><text x="2534.2" y="1113.0" text-anchor="start" font-size="11">displays</text>
+<rect x="184.0" y="1152.0" width="45.9" height="16.0" fill="#fff"/><text x="187.0" y="1163.0" text-anchor="start" font-size="11">records</text>
+<rect x="184.0" y="1492.0" width="80.1" height="16.0" fill="#fff"/><text x="187.0" y="1503.0" text-anchor="start" font-size="11">is scanned as</text>
+<rect x="1474.0" y="542.0" width="51.6" height="16.0" fill="#fff"/><text x="1477.0" y="553.0" text-anchor="start" font-size="11">resolves</text>
+<rect x="2764.0" y="1512.0" width="63.0" height="16.0" fill="#fff"/><text x="2767.0" y="1523.0" text-anchor="start" font-size="11">checked by</text>
+<rect x="1044.0" y="832.0" width="40.2" height="16.0" fill="#fff"/><text x="1047.0" y="843.0" text-anchor="start" font-size="11">writes</text>
+<rect x="2091.2" y="1002.0" width="91.5" height="16.0" fill="#fff"/><text x="2094.2" y="1013.0" text-anchor="start" font-size="11">has calendar of</text>
+<rect x="1641.2" y="1002.0" width="51.6" height="16.0" fill="#fff"/><text x="1644.2" y="1013.0" text-anchor="start" font-size="11">occupies</text>
+<rect x="1241.7" y="982.0" width="68.7" height="16.0" fill="#fff"/><text x="1244.7" y="993.0" text-anchor="start" font-size="11">reviewed in</text>
+<rect x="2491.5" y="992.0" width="63.0" height="16.0" fill="#fff"/><text x="2494.5" y="1003.0" text-anchor="start" font-size="11">aggregates</text>
+<rect x="184.0" y="262.0" width="51.6" height="16.0" fill="#fff"/><text x="187.0" y="273.0" text-anchor="start" font-size="11">contains</text>
+<rect x="2334.0" y="562.0" width="51.6" height="16.0" fill="#fff"/><text x="2337.0" y="573.0" text-anchor="start" font-size="11">based on</text>
+<rect x="2501.9" y="412.0" width="40.2" height="16.0" fill="#fff"/><text x="2504.9" y="423.0" text-anchor="start" font-size="11">quotes</text>
+<rect x="1681.2" y="1662.0" width="51.6" height="16.0" fill="#fff"/><text x="1684.2" y="1673.0" text-anchor="start" font-size="11">contains</text>
+<rect x="2511.3" y="692.0" width="57.3" height="16.0" fill="#fff"/><text x="2514.3" y="703.0" text-anchor="start" font-size="11">basis for</text>
+<rect x="782.0" y="1652.0" width="80.1" height="16.0" fill="#fff"/><text x="785.0" y="1663.0" text-anchor="start" font-size="11">responds with</text>
+<rect x="361.4" y="1652.0" width="57.3" height="16.0" fill="#fff"/><text x="364.4" y="1663.0" text-anchor="start" font-size="11">is issued</text>
+<rect x="1403.0" y="852.0" width="63.0" height="16.0" fill="#fff"/><text x="1406.0" y="863.0" text-anchor="start" font-size="11">subject of</text>
+<rect x="2334.0" y="272.0" width="34.5" height="16.0" fill="#fff"/><text x="2337.0" y="283.0" text-anchor="start" font-size="11">sends</text>
+<rect x="614.0" y="1532.0" width="63.0" height="16.0" fill="#fff"/><text x="617.0" y="1543.0" text-anchor="start" font-size="11">is sent to</text>
+<rect x="2334.0" y="1212.0" width="40.2" height="16.0" fill="#fff"/><text x="2337.0" y="1223.0" text-anchor="start" font-size="11">offers</text>
+<rect x="1474.0" y="1212.0" width="51.6" height="16.0" fill="#fff"/><text x="1477.0" y="1223.0" text-anchor="start" font-size="11">receives</text>
+<rect x="920" y="90" width="240" height="110" fill="#fff" stroke="#000"/>
+<text x="1040.0" y="107" text-anchor="middle" font-weight="bold" font-size="12">User</text>
+<line x1="920" y1="116" x2="1160" y2="116" stroke="#000"/>
+<text x="930" y="136" font-size="12">name</text>
+<text x="930" y="152" font-size="12">email</text>
+<text x="930" y="168" font-size="12">phone</text>
+<text x="930" y="184" font-size="12">role</text>
+<rect x="920" y="670" width="240" height="70" fill="#fff" stroke="#000"/>
+<text x="1040.0" y="687" text-anchor="middle" font-weight="bold" font-size="12">Customer</text>
+<line x1="920" y1="696" x2="1160" y2="696" stroke="#000"/>
+<text x="930" y="716" font-size="12">preferences</text>
+<rect x="1780" y="370" width="240" height="80" fill="#fff" stroke="#000"/>
+<text x="1900.0" y="387" text-anchor="middle" font-weight="bold" font-size="12">VenueOwner</text>
+<line x1="1780" y1="396" x2="2020" y2="396" stroke="#000"/>
+<text x="1790" y="416" font-size="12">businessName</text>
+<text x="1790" y="432" font-size="12">contactNumber</text>
+<rect x="2210" y="90" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="2330.0" y="107" text-anchor="middle" font-weight="bold" font-size="12">Decorator</text>
+<line x1="2210" y1="116" x2="2450" y2="116" stroke="#000"/>
+<text x="2220" y="136" font-size="12">businessName</text>
+<text x="2220" y="152" font-size="12">bio</text>
+<text x="2220" y="168" font-size="12">city</text>
+<rect x="1350" y="370" width="240" height="70" fill="#fff" stroke="#000"/>
+<text x="1470.0" y="387" text-anchor="middle" font-weight="bold" font-size="12">Admin</text>
+<line x1="1350" y1="396" x2="1590" y2="396" stroke="#000"/>
+<text x="1360" y="416" font-size="12">permissions</text>
+<rect x="2210" y="950" width="240" height="190" fill="#fff" stroke="#000"/>
+<text x="2330.0" y="967" text-anchor="middle" font-weight="bold" font-size="12">Venue</text>
+<line x1="2210" y1="976" x2="2450" y2="976" stroke="#000"/>
+<text x="2220" y="996" font-size="12">name</text>
+<text x="2220" y="1012" font-size="12">address</text>
+<text x="2220" y="1028" font-size="12">city</text>
+<text x="2220" y="1044" font-size="12">location</text>
+<text x="2220" y="1060" font-size="12">venueType</text>
+<text x="2220" y="1076" font-size="12">supportedEvents</text>
+<text x="2220" y="1092" font-size="12">capacity</text>
+<text x="2220" y="1108" font-size="12">basePrice</text>
+<text x="2220" y="1124" font-size="12">facilities</text>
+<rect x="1780" y="950" width="240" height="130" fill="#fff" stroke="#000"/>
+<text x="1900.0" y="967" text-anchor="middle" font-weight="bold" font-size="12">TimeSlot</text>
+<line x1="1780" y1="976" x2="2020" y2="976" stroke="#000"/>
+<text x="1790" y="996" font-size="12">date</text>
+<text x="1790" y="1012" font-size="12">startTime</text>
+<text x="1790" y="1028" font-size="12">endTime</text>
+<text x="1790" y="1044" font-size="12">status</text>
+<text x="1790" y="1060" font-size="12">heldUntil</text>
+<rect x="1350" y="950" width="240" height="190" fill="#fff" stroke="#000"/>
+<text x="1470.0" y="967" text-anchor="middle" font-weight="bold" font-size="12">Booking</text>
+<line x1="1350" y1="976" x2="1590" y2="976" stroke="#000"/>
+<text x="1360" y="996" font-size="12">eventType</text>
+<text x="1360" y="1012" font-size="12">guestCount</text>
+<text x="1360" y="1028" font-size="12">status</text>
+<text x="1360" y="1044" font-size="12">source</text>
+<text x="1360" y="1060" font-size="12">clientName</text>
+<text x="1360" y="1076" font-size="12">clientPhone</text>
+<text x="1360" y="1092" font-size="12">totalAmount</text>
+<text x="1360" y="1108" font-size="12">advanceAmount</text>
+<text x="1360" y="1124" font-size="12">cancellationReason</text>
+<rect x="490" y="950" width="240" height="150" fill="#fff" stroke="#000"/>
+<text x="610.0" y="967" text-anchor="middle" font-weight="bold" font-size="12">Quotation</text>
+<line x1="490" y1="976" x2="730" y2="976" stroke="#000"/>
+<text x="500" y="996" font-size="12">amount</text>
+<text x="500" y="1012" font-size="12">terms</text>
+<text x="500" y="1028" font-size="12">validUntil</text>
+<text x="500" y="1044" font-size="12">status</text>
+<text x="500" y="1060" font-size="12">round</text>
+<text x="500" y="1076" font-size="12">proposedBy</text>
+<rect x="920" y="1310" width="240" height="130" fill="#fff" stroke="#000"/>
+<text x="1040.0" y="1327" text-anchor="middle" font-weight="bold" font-size="12">Payment</text>
+<line x1="920" y1="1336" x2="1160" y2="1336" stroke="#000"/>
+<text x="930" y="1356" font-size="12">amount</text>
+<text x="930" y="1372" font-size="12">type</text>
+<text x="930" y="1388" font-size="12">method</text>
+<text x="930" y="1404" font-size="12">status</text>
+<text x="930" y="1420" font-size="12">reference</text>
+<rect x="1780" y="1630" width="240" height="130" fill="#fff" stroke="#000"/>
+<text x="1900.0" y="1647" text-anchor="middle" font-weight="bold" font-size="12">MenuPackage</text>
+<line x1="1780" y1="1656" x2="2020" y2="1656" stroke="#000"/>
+<text x="1790" y="1676" font-size="12">name</text>
+<text x="1790" y="1692" font-size="12">description</text>
+<text x="1790" y="1708" font-size="12">pricePerHead</text>
+<text x="1790" y="1724" font-size="12">isCustomizable</text>
+<text x="1790" y="1740" font-size="12">minGuests</text>
+<rect x="2210" y="1310" width="240" height="130" fill="#fff" stroke="#000"/>
+<text x="2330.0" y="1327" text-anchor="middle" font-weight="bold" font-size="12">AddOn</text>
+<line x1="2210" y1="1336" x2="2450" y2="1336" stroke="#000"/>
+<text x="2220" y="1356" font-size="12">type</text>
+<text x="2220" y="1372" font-size="12">name</text>
+<text x="2220" y="1388" font-size="12">description</text>
+<text x="2220" y="1404" font-size="12">price</text>
+<text x="2220" y="1420" font-size="12">isAvailable</text>
+<rect x="2640" y="1310" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="2760.0" y="1327" text-anchor="middle" font-weight="bold" font-size="12">VenueImage</text>
+<line x1="2640" y1="1336" x2="2880" y2="1336" stroke="#000"/>
+<text x="2650" y="1356" font-size="12">imageUrl</text>
+<text x="2650" y="1372" font-size="12">verificationStatus</text>
+<text x="2650" y="1388" font-size="12">isPublished</text>
+<rect x="2640" y="1630" width="240" height="80" fill="#fff" stroke="#000"/>
+<text x="2760.0" y="1647" text-anchor="middle" font-weight="bold" font-size="12">ImageVerification</text>
+<line x1="2640" y1="1656" x2="2880" y2="1656" stroke="#000"/>
+<text x="2650" y="1676" font-size="12">aiScore</text>
+<text x="2650" y="1692" font-size="12">result</text>
+<rect x="2210" y="1630" width="240" height="80" fill="#fff" stroke="#000"/>
+<text x="2330.0" y="1647" text-anchor="middle" font-weight="bold" font-size="12">WalkthroughAsset</text>
+<line x1="2210" y1="1656" x2="2450" y2="1656" stroke="#000"/>
+<text x="2220" y="1676" font-size="12">assetType</text>
+<text x="2220" y="1692" font-size="12">fileUrl</text>
+<rect x="2640" y="670" width="240" height="70" fill="#fff" stroke="#000"/>
+<text x="2760.0" y="687" text-anchor="middle" font-weight="bold" font-size="12">StagePhoto</text>
+<line x1="2640" y1="696" x2="2880" y2="696" stroke="#000"/>
+<text x="2650" y="716" font-size="12">imageUrl</text>
+<rect x="920" y="950" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="1040.0" y="967" text-anchor="middle" font-weight="bold" font-size="12">Review</text>
+<line x1="920" y1="976" x2="1160" y2="976" stroke="#000"/>
+<text x="930" y="996" font-size="12">rating</text>
+<text x="930" y="1012" font-size="12">comment</text>
+<text x="930" y="1028" font-size="12">isFlagged</text>
+<rect x="2640" y="950" width="240" height="110" fill="#fff" stroke="#000"/>
+<text x="2760.0" y="967" text-anchor="middle" font-weight="bold" font-size="12">GoogleReview</text>
+<line x1="2640" y1="976" x2="2880" y2="976" stroke="#000"/>
+<text x="2650" y="996" font-size="12">authorName</text>
+<text x="2650" y="1012" font-size="12">rating</text>
+<text x="2650" y="1028" font-size="12">text</text>
+<text x="2650" y="1044" font-size="12">reviewDate</text>
+<rect x="490" y="370" width="240" height="110" fill="#fff" stroke="#000"/>
+<text x="610.0" y="387" text-anchor="middle" font-weight="bold" font-size="12">Notification</text>
+<line x1="490" y1="396" x2="730" y2="396" stroke="#000"/>
+<text x="500" y="416" font-size="12">type</text>
+<text x="500" y="432" font-size="12">title</text>
+<text x="500" y="448" font-size="12">message</text>
+<text x="500" y="464" font-size="12">isRead</text>
+<rect x="60" y="370" width="240" height="70" fill="#fff" stroke="#000"/>
+<text x="180.0" y="387" text-anchor="middle" font-weight="bold" font-size="12">ChatSession</text>
+<line x1="60" y1="396" x2="300" y2="396" stroke="#000"/>
+<text x="70" y="416" font-size="12">context</text>
+<rect x="60" y="90" width="240" height="80" fill="#fff" stroke="#000"/>
+<text x="180.0" y="107" text-anchor="middle" font-weight="bold" font-size="12">ChatMessage</text>
+<line x1="60" y1="116" x2="300" y2="116" stroke="#000"/>
+<text x="70" y="136" font-size="12">sender</text>
+<text x="70" y="152" font-size="12">content</text>
+<rect x="60" y="670" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="180.0" y="687" text-anchor="middle" font-weight="bold" font-size="12">SearchHistory</text>
+<line x1="60" y1="696" x2="300" y2="696" stroke="#000"/>
+<text x="70" y="716" font-size="12">queryText</text>
+<text x="70" y="732" font-size="12">filters</text>
+<text x="70" y="748" font-size="12">resultsCount</text>
+<rect x="490" y="1310" width="240" height="150" fill="#fff" stroke="#000"/>
+<text x="610.0" y="1327" text-anchor="middle" font-weight="bold" font-size="12">Invitation</text>
+<line x1="490" y1="1336" x2="730" y2="1336" stroke="#000"/>
+<text x="500" y="1356" font-size="12">title</text>
+<text x="500" y="1372" font-size="12">message</text>
+<text x="500" y="1388" font-size="12">eventDate</text>
+<text x="500" y="1404" font-size="12">eventTime</text>
+<text x="500" y="1420" font-size="12">shareLink</text>
+<text x="500" y="1436" font-size="12">qrEnabled</text>
+<rect x="490" y="1630" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="610.0" y="1647" text-anchor="middle" font-weight="bold" font-size="12">Guest</text>
+<line x1="490" y1="1656" x2="730" y2="1656" stroke="#000"/>
+<text x="500" y="1676" font-size="12">name</text>
+<text x="500" y="1692" font-size="12">phone</text>
+<text x="500" y="1708" font-size="12">inviteToken</text>
+<rect x="920" y="1630" width="240" height="70" fill="#fff" stroke="#000"/>
+<text x="1040.0" y="1647" text-anchor="middle" font-weight="bold" font-size="12">RSVP</text>
+<line x1="920" y1="1656" x2="1160" y2="1656" stroke="#000"/>
+<text x="930" y="1676" font-size="12">response</text>
+<rect x="60" y="1630" width="240" height="80" fill="#fff" stroke="#000"/>
+<text x="180.0" y="1647" text-anchor="middle" font-weight="bold" font-size="12">QRCode</text>
+<line x1="60" y1="1656" x2="300" y2="1656" stroke="#000"/>
+<text x="70" y="1676" font-size="12">code</text>
+<text x="70" y="1692" font-size="12">isUsed</text>
+<rect x="60" y="1310" width="240" height="70" fill="#fff" stroke="#000"/>
+<text x="180.0" y="1327" text-anchor="middle" font-weight="bold" font-size="12">CheckIn</text>
+<line x1="60" y1="1336" x2="300" y2="1336" stroke="#000"/>
+<text x="70" y="1356" font-size="12">result</text>
+<rect x="60" y="950" width="240" height="70" fill="#fff" stroke="#000"/>
+<text x="180.0" y="967" text-anchor="middle" font-weight="bold" font-size="12">Attendant</text>
+<line x1="60" y1="976" x2="300" y2="976" stroke="#000"/>
+<text x="70" y="996" font-size="12">name</text>
+<rect x="1350" y="1310" width="240" height="130" fill="#fff" stroke="#000"/>
+<text x="1470.0" y="1327" text-anchor="middle" font-weight="bold" font-size="12">WeatherAdvisory</text>
+<line x1="1350" y1="1336" x2="1590" y2="1336" stroke="#000"/>
+<text x="1360" y="1356" font-size="12">forecastDate</text>
+<text x="1360" y="1372" font-size="12">condition</text>
+<text x="1360" y="1388" font-size="12">rainProbability</text>
+<text x="1360" y="1404" font-size="12">severity</text>
+<text x="1360" y="1420" font-size="12">message</text>
+<rect x="2640" y="370" width="240" height="130" fill="#fff" stroke="#000"/>
+<text x="2760.0" y="387" text-anchor="middle" font-weight="bold" font-size="12">DecorPackage</text>
+<line x1="2640" y1="396" x2="2880" y2="396" stroke="#000"/>
+<text x="2650" y="416" font-size="12">name</text>
+<text x="2650" y="432" font-size="12">description</text>
+<text x="2650" y="448" font-size="12">price</text>
+<text x="2650" y="464" font-size="12">themeStyle</text>
+<text x="2650" y="480" font-size="12">portfolioImages</text>
+<rect x="2210" y="370" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="2330.0" y="387" text-anchor="middle" font-weight="bold" font-size="12">DecorQuotation</text>
+<line x1="2210" y1="396" x2="2450" y2="396" stroke="#000"/>
+<text x="2220" y="416" font-size="12">amount</text>
+<text x="2220" y="432" font-size="12">notes</text>
+<text x="2220" y="448" font-size="12">status</text>
+<rect x="2210" y="670" width="240" height="110" fill="#fff" stroke="#000"/>
+<text x="2330.0" y="687" text-anchor="middle" font-weight="bold" font-size="12">DecorPreview</text>
+<line x1="2210" y1="696" x2="2450" y2="696" stroke="#000"/>
+<text x="2220" y="716" font-size="12">conceptStyle</text>
+<text x="2220" y="732" font-size="12">prompt</text>
+<text x="2220" y="748" font-size="12">generatedImageUrl</text>
+<text x="2220" y="764" font-size="12">isShortlisted</text>
+<rect x="1350" y="670" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="1470.0" y="687" text-anchor="middle" font-weight="bold" font-size="12">Dispute</text>
+<line x1="1350" y1="696" x2="1590" y2="696" stroke="#000"/>
+<text x="1360" y="716" font-size="12">reason</text>
+<text x="1360" y="732" font-size="12">status</text>
+<text x="1360" y="748" font-size="12">resolution</text>
+<rect x="2640" y="90" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="2760.0" y="107" text-anchor="middle" font-weight="bold" font-size="12">DecorBooking</text>
+<line x1="2640" y1="116" x2="2880" y2="116" stroke="#000"/>
+<text x="2650" y="136" font-size="12">agreedAmount</text>
+<text x="2650" y="152" font-size="12">advancePaid</text>
+<text x="2650" y="168" font-size="12">status</text>
+<rect x="1350" y="1630" width="240" height="100" fill="#fff" stroke="#000"/>
+<text x="1470.0" y="1647" text-anchor="middle" font-weight="bold" font-size="12">MenuItem</text>
+<line x1="1350" y1="1656" x2="1590" y2="1656" stroke="#000"/>
+<text x="1360" y="1676" font-size="12">name</text>
+<text x="1360" y="1692" font-size="12">category</text>
+<text x="1360" y="1708" font-size="12">isOptional</text>
+</g></svg>
