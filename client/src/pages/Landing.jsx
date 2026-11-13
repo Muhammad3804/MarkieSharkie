@@ -1,6 +1,6 @@
 import SearchBar from '../features/search/SearchBar.jsx'
 import VenueRow from '../features/venues/VenueRow.jsx'
-import AskAiButton from '../features/chatbot/AskAiButton.jsx'
+import ChatWidget from '../features/chatbot/ChatWidget.jsx'
 import { landingSections } from '../features/venues/mockVenues.js'
 
 // Landing page from Figma (file zEl0W4jI3xx9Gm2L8eKVan, node 1:3).
@@ -18,7 +18,7 @@ export default function Landing() {
         ))}
       </div>
 
-      <AskAiButton />
+      <ChatWidget />
     </>
   )
 }
