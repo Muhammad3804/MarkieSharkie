@@ -1,0 +1,7 @@
+import { getMockVenue } from '../features/venues/mockVenues.js'
+
+// Venues API. Backed by mock data until the server exists; replace the body with
+// GET /api/venues/:id (404 -> null) and keep the same return shape.
+export async function getVenueById(id) {
+  return getMockVenue(id)
+}

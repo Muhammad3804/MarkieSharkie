@@ -1,6 +1,17 @@
-// Mock data for the landing page, copied from the Figma design (file zEl0W4jI3xx9Gm2L8eKVan, node 1:3).
-// Shaped like the future GET /api/venues/landing response (camelCase, money as a string),
-// so swapping to the real API only changes where `landingSections` comes from.
+// Mock venue data until the venues API exists.
+// - landingSections: the landing page rows, copied from the Figma design (file zEl0W4jI3xx9Gm2L8eKVan, node 1:3),
+//   shaped like the future GET /api/venues/landing response (camelCase, money as a string).
+// - getMockVenue(id): the full venue for the detail page, shaped like GET /api/venues/:id (see the builder at the
+//   bottom). Read through api/venues.js, never import this from pages directly.
+import { AMENITIES, EVENT_LABELS } from './constants.js'
+import gallery1Img from '../../assets/venue-detail/gallery-1.webp'
+import gallery2Img from '../../assets/venue-detail/gallery-2.webp'
+import gallery3Img from '../../assets/venue-detail/gallery-3.webp'
+import gallery4Img from '../../assets/venue-detail/gallery-4.webp'
+import gallery5Img from '../../assets/venue-detail/gallery-5.webp'
+import floorplan1Img from '../../assets/venue-detail/floorplan-1.webp'
+import floorplan2Img from '../../assets/venue-detail/floorplan-2.webp'
+import floorplan3Img from '../../assets/venue-detail/floorplan-3.webp'
 import qasarENoorImg from '../../assets/venues/qasar-e-noor.webp'
 import thePalmsMarqueeImg from '../../assets/venues/the-palms-marquee.webp'
 import rosewoodBanquetImg from '../../assets/venues/rosewood-banquet.webp'
@@ -724,3 +735,236 @@ export const landingSections = [
     ],
   },
 ]
+
+// ---------------------------------------------------------------------------
+// Venue detail builder
+// ---------------------------------------------------------------------------
+// Every venue's detail fields are derived deterministically from its id and card data, so the same venue always
+// shows the same details and the card and detail page agree (rating, review count, Menu 1 = "starting from" price).
+// Field names follow db/schema.sql in camelCase: venues, venue_images, menu_packages + menu_items, reviews.
+//
+// NOT IN THE SRS/ERD (UI-only, from the Figma design, flagged for a decision): `halls`, `ratingCategories`,
+// `host`, `parkingSpaces`, `eventNotes`. A real API would need new tables/columns for these.
+
+const FIGMA_GALLERY = [gallery1Img, gallery2Img, gallery3Img, gallery4Img, gallery5Img]
+const FLOOR_PLANS = [floorplan1Img, floorplan2Img, floorplan3Img]
+
+// Tiny seeded RNG (mulberry32) so each venue gets stable "random" details.
+function seededRandom(seedText) {
+  let seed = [...seedText].reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0
+  return () => {
+    seed = (seed + 0x6d2b79f5) >>> 0
+    let t = seed
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+const pick = (rand, list) => list[Math.floor(rand() * list.length)]
+const pickSome = (rand, list, count) =>
+  list
+    .map((item) => [rand(), item])
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, count)
+    .map(([, item]) => item)
+const between = (rand, min, max, step = 1) => min + step * Math.floor(rand() * ((max - min) / step + 1))
+
+const CITY_INFO = {
+  Lahore: { lat: 31.5204, lng: 74.3587, landmarks: ['DHA Phase 6', 'Gulberg', 'Liberty Market', 'Model Town', 'Lahore Canal'], airport: 'Allama Iqbal International Airport' },
+  Islamabad: { lat: 33.6844, lng: 73.0479, landmarks: ['F-7 Markaz', 'Blue Area', 'Faisal Mosque', 'Centaurus Mall', 'Margalla Road'], airport: 'Islamabad International Airport' },
+  Faisalabad: { lat: 31.4504, lng: 73.135, landmarks: ['Clock Tower', 'D Ground', 'Canal Road', 'Lyallpur Galleria', 'Susan Road'], airport: 'Faisalabad International Airport' },
+}
+
+// venue_type enum: indoor | outdoor | semi_outdoor
+function venueStyle(name) {
+  if (/garden|lawn|terrace|courtyard/i.test(name)) return { venueType: 'semi_outdoor', tagline: 'Garden & Lawn Venue', kind: 'Garden event venue' }
+  if (/marquee/i.test(name)) return { venueType: 'outdoor', tagline: 'Marquee & Lawn', kind: 'Marquee and lawn' }
+  if (/palace|manor|grand/i.test(name)) return { venueType: 'indoor', tagline: 'Banquet Palace', kind: 'Private event estate' }
+  if (/pavilion|court/i.test(name)) return { venueType: 'semi_outdoor', tagline: 'Event Pavilion', kind: 'Event pavilion' }
+  return { venueType: 'indoor', tagline: 'Banquet & Events', kind: 'Banquet venue' }
+}
+
+
+const HALL_TEMPLATES = [
+  { name: 'Grand Ballroom', kind: 'hall', description: 'The largest indoor space, ideal for weddings, corporate dinners and large receptions with a dedicated stage, bar and buffet area.' },
+  { name: 'Jasmine Pavilion', kind: 'hall', description: 'A versatile indoor hall suited for mehndi evenings, corporate launches and smaller wedding receptions with a compact stage and lounge area.' },
+  { name: 'Garden Lawn', kind: 'lawn', description: 'An outdoor lawn with flexible seating layouts, ideal for daytime events, mehndi gatherings and cocktail receptions under the trees.' },
+  { name: 'Crystal Hall', kind: 'hall', description: 'A chandelier-lit hall with a raised stage and a separate family seating section, popular for barat and walima receptions.' },
+  { name: 'Royal Court', kind: 'hall', description: 'A mid-sized hall with high ceilings and a private entrance, well suited to engagements and family dinners.' },
+  { name: 'Marquee Lawn', kind: 'lawn', description: 'A tented lawn that can be dressed for any theme, with side walls for winter evenings and open sides for summer.' },
+]
+const BRIDAL_SUITE = {
+  name: 'Bridal Suite',
+  description: 'A private preparation space with makeup area, lounge seating and a dedicated entry for the bridal party before the event.',
+  zones: ['Mirror', 'Dressing', 'Entry', 'Seating', 'Lounge', 'Private lounge'],
+}
+
+const STARTERS = ['Soup, crackers, mint margarita', 'Chicken corn soup, garlic bread, lemonade', 'Hot and sour soup, spring rolls, mint margarita', 'Cream of mushroom soup, canapés, piña colada', 'Fish crackers, chaat counter, fresh lime', 'Dahi bhallay, samosa chaat, peach iced tea']
+const MAINS = ['Chicken karahi, chicken pulao, chicken BBQ, live steak', 'Mutton qorma, vegetable pulao, chicken tikka, live pasta', 'Chicken handi, biryani, seekh kebab, live shawarma', 'Mutton karahi, Afghani pulao, malai boti, live steak', 'Beef nihari, chicken biryani, reshmi kebab, live naan', 'Palak paneer, daal makhni, vegetable biryani, chicken tikka']
+const DESSERTS = ['Kheer, custard, ice cream', 'Gulab jamun, fruit trifle, ice cream', 'Gajar halwa, custard, ice cream', 'Kheer, chocolate mousse, ice cream', 'Shahi tukray, ras malai, kulfi', 'Firni, brownies, fresh fruit']
+const DRINKS = ['Coke, Sprite, Fanta, water', 'Soft drinks, mineral water, green tea', 'Soft drinks, fresh juices, kashmiri chai']
+const MENU_TIERS = [
+  'A balanced selection of comfort favorites, live grills and classic desserts for weddings and corporate events.',
+  'A premium option with richer flavors, live pasta and a broader dessert spread for formal gatherings.',
+  'A flavorful package with spicy favorites, live stations and comforting desserts for lively celebrations.',
+  'A premium selection with richer proteins, premium desserts and a sophisticated beverage pairing for high-end events.',
+]
+// Menu 1 always equals the card's "starting from" per-person price.
+const MENU_STEPS = [0, 495, 995, 1495]
+
+const REVIEWERS = [
+  ['Amna Khan', 'Lahore'], ['Syed Raza', 'Islamabad'], ['Fatima Qureshi', 'Karachi'], ['Omar Malik', 'Lahore'], ['Hira Siddiqui', 'Faisalabad'],
+  ['Bilal Ahmed', 'Rawalpindi'], ['Zainab Hussain', 'Lahore'], ['Usman Tariq', 'Islamabad'], ['Mahnoor Ali', 'Multan'], ['Hamza Sheikh', 'Faisalabad'],
+  ['Ayesha Javed', 'Lahore'], ['Ali Haider', 'Sialkot'], ['Sana Iqbal', 'Islamabad'], ['Danish Mirza', 'Gujranwala'],
+]
+const REVIEW_TEXTS = {
+  wedding: 'Absolutely stunning venue. The hall was beautifully maintained and exceeded our expectations. The team was incredibly responsive and helped us coordinate every detail of our daughter’s wedding.',
+  mehndi: 'The setup for our mehndi was breathtaking. The stage décor team transformed the space beautifully and our guests couldn’t stop complimenting the venue throughout the evening.',
+  barat: 'Arrival for the barat was smooth, with plenty of parking and staff guiding guests. Food was served hot and on time for over 400 guests.',
+  walima: '{name} delivered everything they promised and more. Impeccable service and a flawlessly organized evening. The event manager was available at every moment.',
+  engagement: 'We booked a smaller space for our engagement and it felt intimate without being cramped. Lighting and sound were spot on.',
+  birthday: 'Hosted a 50th birthday dinner here. The staff handled a last-minute change in guest count without any fuss. Desserts were the highlight.',
+  corporate: 'We hosted our company’s annual dinner here. Valet was seamless, the catering was top-notch, and the climate control kept everyone comfortable. Highly recommended for corporate gatherings.',
+}
+const POLICIES = [
+  ['Outside photographers welcome', 'Indoor fireworks by approval'],
+  ['Outside decorators allowed', 'No outside catering'],
+  ['Sound must stop by 10:00 PM', 'Outside photographers welcome'],
+  ['Separate family seating available', 'Valet included for all events'],
+]
+
+// What `SELECT rating, count(*) FROM reviews WHERE venue_id = $1 GROUP BY rating` would return.
+function ratingCounts(avg, total) {
+  const fives = Math.round(total * Math.min(0.95, Math.max(0.4, avg - 4)))
+  const fours = Math.round((total - fives) * 0.75)
+  const threes = Math.round((total - fives - fours) * 0.6)
+  const twos = Math.round((total - fives - fours - threes) * 0.6)
+  return { 5: fives, 4: fours, 3: threes, 2: twos, 1: total - fives - fours - threes - twos }
+}
+
+const isoDay = (year, month, day) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+function buildVenue(card, allCards) {
+  const rand = seededRandom(card.id)
+  const style = venueStyle(card.name)
+  const city = CITY_INFO[card.city] ?? CITY_INFO.Lahore
+  const guestsInName = card.highlights.match(/(\d+) Guests/)
+  const capacity = guestsInName ? Number(guestsInName[1]) : between(rand, 350, 1000, 50)
+  const pricePerHead = Number(card.priceFrom)
+
+  const spacesInHighlights = (card.highlights.match(/\d+/g) ?? []).reduce((sum, n) => sum + Number(n), 0)
+  const hallCount = Math.min(4, Math.max(2, spacesInHighlights))
+  const templates = pickSome(rand, style.venueType === 'indoor' ? HALL_TEMPLATES.filter((h) => h.kind === 'hall') : HALL_TEMPLATES, hallCount - 1)
+  const halls = templates.map((template, index) => {
+    const seated = index === 0 ? capacity : between(rand, 150, Math.max(150, capacity - 100), 50)
+    const width = between(rand, 16, 26)
+    return {
+      hallId: `${card.id}-hall-${index + 1}`,
+      venueId: card.id,
+      name: template.name,
+      seatedCapacity: seated,
+      standingCapacity: Math.round((seated * 1.4) / 50) * 50,
+      widthM: width,
+      lengthM: width + between(rand, 4, 8),
+      description: template.description,
+      floorPlanUrl: FLOOR_PLANS[index % FLOOR_PLANS.length],
+      zones: null,
+    }
+  })
+  halls.push({ hallId: `${card.id}-hall-suite`, venueId: card.id, name: BRIDAL_SUITE.name, seatedCapacity: 20, standingCapacity: 40, widthM: 12, lengthM: 14, description: BRIDAL_SUITE.description, floorPlanUrl: null, zones: BRIDAL_SUITE.zones })
+
+  const otherPhotos = pickSome(rand, [...FIGMA_GALLERY, ...allCards.filter((c) => c.id !== card.id).map((c) => c.image)], 7)
+  const images = [card.image, ...otherPhotos].map((imageUrl, index) => ({
+    imageId: `${card.id}-img-${index + 1}`,
+    venueId: card.id,
+    imageUrl,
+    alt: index === 0 ? `${card.name}, main view` : `${card.name}, photo ${index + 1}`,
+    verificationStatus: 'genuine',
+    isPublished: true,
+  }))
+
+  const menuPackages = MENU_STEPS.map((step, index) => ({
+    menuId: `${card.id}-menu-${index + 1}`,
+    venueId: card.id,
+    name: `Menu ${index + 1}`,
+    description: MENU_TIERS[index],
+    pricePerHead: `${pricePerHead + step}.00`,
+    isCustomizable: index === 3,
+    minGuests: 100,
+    items: [
+      { category: 'Starters', name: STARTERS[(index + between(rand, 0, 1)) % STARTERS.length] },
+      { category: 'Main Course', name: MAINS[(index + between(rand, 0, 2)) % MAINS.length] },
+      { category: 'Desserts', name: DESSERTS[(index + between(rand, 0, 2)) % DESSERTS.length] },
+      { category: 'Drinks', name: pick(rand, DRINKS) },
+    ].map((item, itemIndex) => ({ itemId: `${card.id}-menu-${index + 1}-item-${itemIndex + 1}`, ...item, isOptional: false })),
+  }))
+
+  const eventTypes = Object.keys(EVENT_LABELS)
+  const reviews = pickSome(rand, REVIEWERS, 6).map(([customerName, customerCity], index) => {
+    const eventType = pick(rand, eventTypes)
+    return {
+      reviewId: `${card.id}-review-${index + 1}`,
+      venueId: card.id,
+      customerName,
+      customerCity: `${customerCity}, Pakistan`,
+      rating: rand() < card.rating - 4 + 0.1 ? 5 : 4,
+      comment: REVIEW_TEXTS[eventType].replace('{name}', card.name),
+      eventType,
+      createdAt: new Date(Date.UTC(2026, 10, 10) - between(rand, 6, 70) * 86400000).toISOString(),
+    }
+  })
+  const ratingCategories = ['Cleanliness', 'Accuracy', 'Check-in', 'Communication', 'Location', 'Value'].map((name) => ({
+    name,
+    score: Math.min(5, card.rating - 0.15 + rand() * 0.35).toFixed(1),
+  }))
+
+  // Booked dates over the next three months (time_slots with status = 'booked').
+  const bookedDates = new Set()
+  for (const [year, month, days] of [[2026, 11, 30], [2026, 12, 31], [2027, 1, 31]]) {
+    const count = between(rand, 4, 7)
+    for (let i = 0; i < count; i++) bookedDates.add(isoDay(year, month, between(rand, 1, days)))
+  }
+
+  const landmark = pick(rand, city.landmarks)
+  const minutes = between(rand, 8, 25)
+  const facilities = [...AMENITIES.slice(0, 6), ...pickSome(rand, AMENITIES.slice(6), between(rand, 4, 8))].map((a) => a.key)
+
+  return {
+    ...card,
+    // venues
+    tagline: style.tagline,
+    kindLabel: style.kind,
+    address: `${card.area}, ${card.city}, Punjab, Pakistan`,
+    location: { lat: +(city.lat + (rand() - 0.5) * 0.12).toFixed(5), lng: +(city.lng + (rand() - 0.5) * 0.12).toFixed(5) },
+    nearby: `${minutes} min from ${landmark}`,
+    locationDescription: `Located in ${card.area}, ${card.name} is about ${minutes} minutes from ${landmark} and ${between(rand, 20, 45)} minutes from ${city.airport}. Signage and parking attendants guide guests on arrival.`,
+    venueType: style.venueType,
+    supportedEvents: pickSome(rand, eventTypes, 4),
+    capacity,
+    minGuests: 50,
+    basePrice: `${Math.round((pricePerHead * 110) / 5000) * 5000}.00`,
+    facilities,
+    description: `${card.name} is a ${style.kind.toLowerCase()} in ${card.area}, ${card.city}, arranged for weddings, mehndi evenings and private celebrations of up to ${capacity} guests. ${card.highlights} give hosts room to plan separate functions on the same day, with independent guest arrival and an experienced on-site events team. Catering is handled in-house with menus from Rs ${pricePerHead.toLocaleString('en-US')} per head, and the team can coordinate décor, sound and lighting with your own vendors.`,
+    avgRating: card.rating,
+    approvalStatus: 'approved',
+    isActive: true,
+    images,
+    menuPackages,
+    reviews,
+    ratingCounts: ratingCounts(card.rating, card.reviewCount),
+    bookedDates: [...bookedDates].sort(),
+    // UI-only, not in the SRS/ERD (see note above)
+    halls,
+    ratingCategories,
+    host: { name: `${card.name} events team`, replyMinutes: between(rand, 10, 45, 5), isTopHost: card.rating >= 4.8, yearsHosting: between(rand, 3, 15) },
+    parkingSpaces: between(rand, 40, 200, 10),
+    eventNotes: { timing: [`Day events from ${pick(rand, ['11:00 AM', '12:00 PM'])}`, `Evening events until ${pick(rand, ['10:30 PM', '11:00 PM', '11:30 PM'])}`], policies: pick(rand, POLICIES) },
+  }
+}
+
+const allCards = landingSections.flatMap((section) => section.venues)
+const venuesById = new Map(allCards.map((card) => [card.id, buildVenue(card, allCards)]))
+
+export function getMockVenue(id) {
+  return venuesById.get(id) ?? null
+}
