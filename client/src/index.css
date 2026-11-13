@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Brand tokens. Colours come from the Figma landing page (maroon palette); change them here only. */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-primary: #7a1731;
+  --color-accent: #d1bfc2;
+  --color-surface: #f7f5f3;
+  --color-line: #e4dfe0;
+  --color-ink: #374151;
+  --color-ink-strong: #241f20;
+  --color-muted: #6c6c6c;
+  --color-muted-warm: #71696b;
+  --color-placeholder: #9ca3af;
+
+  --shadow-card: 0px 8px 24px 0px rgba(41, 28, 31, 0.14);
+  --shadow-search: 0px 4px 14.9px 0px rgba(31, 20, 23, 0.15);
+  --drop-shadow-pill: 0px 4px 7.45px rgba(0, 0, 0, 0.15);
+  --drop-shadow-float: 0px 4px 7.45px rgba(31, 20, 23, 0.15);
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+body {
+  /* Figma text uses line-height "normal", not Tailwind's default 1.5. */
+  @apply bg-white font-sans leading-[normal] text-ink antialiased;
+}
