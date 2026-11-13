@@ -28,36 +28,34 @@ export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <header className="relative border-b border-line">
-      <div className="flex h-[116px] items-center justify-between gap-6 px-4 lg:pl-11 lg:pr-[52px] xl:gap-[70px]">
+    <header className="sticky top-0 z-40 border-b border-line bg-white">
+      <div className="page-container relative grid h-[116px] grid-cols-[1fr_auto_1fr] items-center gap-6 xl:grid-cols-[minmax(241px,1fr)_minmax(0,850px)_minmax(241px,1fr)] xl:gap-10">
         <Logo className="-mr-[60px] origin-left scale-75 sm:mr-0 sm:scale-100" />
 
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-[55px]">
-          <nav aria-label="Main" className="hidden h-[50px] w-full max-w-[850px] items-center justify-center gap-[clamp(32px,4vw,82px)] rounded-[30px] bg-white drop-shadow-pill xl:flex">
-            {links.map((link) => (
-              <NavLink key={link.to} to={link.to} end className={linkClass}>
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-[25px]">
-            <IconButton icon={menuIcon} label="Menu" aria-expanded={menuOpen} aria-controls="mobile-menu" onClick={() => setMenuOpen((open) => !open)} />
-            <IconButton icon={langIcon} label="Language" className="hidden sm:block" />
-            <IconButton icon={accountIcon} label="Account" className="hidden sm:block" />
-          </div>
-        </div>
-      </div>
-
-      {menuOpen && (
-        <nav id="mobile-menu" aria-label="Main" className="absolute right-4 top-[104px] z-20 flex w-56 flex-col gap-4 rounded-2xl border border-line bg-white p-5 shadow-card lg:right-[52px]">
+        <nav aria-label="Main" className="hidden h-[50px] w-full max-w-[850px] items-center justify-center gap-[clamp(32px,4vw,82px)] justify-self-center rounded-[30px] bg-white drop-shadow-pill xl:flex">
           {links.map((link) => (
-            <NavLink key={link.to} to={link.to} end className={linkClass} onClick={() => setMenuOpen(false)}>
+            <NavLink key={link.to} to={link.to} end className={linkClass}>
               {link.label}
             </NavLink>
           ))}
         </nav>
-      )}
+
+        <div className="col-start-3 flex items-center gap-[25px] justify-self-end">
+          <IconButton icon={menuIcon} label="Menu" aria-expanded={menuOpen} aria-controls="mobile-menu" onClick={() => setMenuOpen((open) => !open)} />
+          <IconButton icon={langIcon} label="Language" className="hidden sm:block" />
+          <IconButton icon={accountIcon} label="Account" className="hidden sm:block" />
+        </div>
+
+        {menuOpen && (
+          <nav id="mobile-menu" aria-label="Main" className="absolute right-[var(--page-gutter)] top-[104px] z-20 flex w-56 flex-col gap-4 rounded-2xl border border-line bg-white p-5 shadow-card">
+          {links.map((link) => (
+            <NavLink key={link.to} to={link.to} end className={linkClass} onClick={() => setMenuOpen(false)}>
+              {link.label}
+            </NavLink>
+            ))}
+          </nav>
+        )}
+      </div>
     </header>
   )
 }

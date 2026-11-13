@@ -8,7 +8,7 @@ import { landingSections } from '../features/venues/mockVenues.js'
 export default function Landing() {
   return (
     <>
-      <div className="px-4 pt-2">
+      <div className="page-container flex justify-center pt-2">
         <SearchBar />
       </div>
 

@@ -3,7 +3,10 @@ import Button from '../../components/ui/Button.jsx'
 import VenueCard from './VenueCard.jsx'
 import arrowRightIcon from '../../assets/icons/arrow-right.svg'
 
-// Header is capped at the 1240px content width; the cards scroll sideways and bleed to the right edge.
+// Cards a 1536px-wide row shows before scrolling sideways; these load straight away in every row.
+const VISIBLE_CARDS = 4
+
+// Header sits in the page container; the cards start at the same left edge, scroll sideways and bleed to the right.
 export default function VenueRow({ section }) {
   const scroller = useRef(null)
   const headingId = `${section.id}-heading`
@@ -14,7 +17,7 @@ export default function VenueRow({ section }) {
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <div className="mx-auto flex w-full max-w-[1272px] items-center justify-between gap-4 px-4">
+      <div className="page-container flex items-center justify-between gap-4">
         <h2 id={headingId} className="text-[22px] font-bold text-ink sm:text-[28px]">{section.title}</h2>
         <div className="flex shrink-0 items-center gap-4">
           <Button variant="outline" to={`/search?section=${section.id}`} className="px-5 py-2">See All</Button>
@@ -26,10 +29,10 @@ export default function VenueRow({ section }) {
 
       <div
         ref={scroller}
-        className="scrollbar-none flex snap-x gap-5 overflow-x-auto px-4 pb-12 pt-4 [scroll-padding-inline:1rem] xl:px-[calc((100vw-1240px)/2)] xl:[scroll-padding-inline:calc((100vw-1240px)/2)]"
+        className="scrollbar-none flex snap-x gap-5 overflow-x-auto page-inset-left pb-12 pr-[var(--page-gutter)] pt-4"
       >
-        {section.venues.map((venue) => (
-          <VenueCard key={venue.id} venue={venue} />
+        {section.venues.map((venue, index) => (
+          <VenueCard key={venue.id} venue={venue} eager={index < VISIBLE_CARDS} />
         ))}
       </div>
     </section>
