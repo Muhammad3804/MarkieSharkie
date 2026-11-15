@@ -43,7 +43,7 @@ function VenueMessage({ title, body, onRetry }) {
       <div className="flex gap-3">
         {onRetry && <Button onClick={onRetry} className="px-5 py-2.5">Try again</Button>}
         <Button to="/" variant={onRetry ? 'outline' : 'primary'} className="px-5 py-2.5">Back to home</Button>
-        {!onRetry && <Button to="/search" variant="outline" className="px-5 py-2.5">Browse venues</Button>}
+        {!onRetry && <Button to="/explore" variant="outline" className="px-5 py-2.5">Browse venues</Button>}
       </div>
     </div>
   )

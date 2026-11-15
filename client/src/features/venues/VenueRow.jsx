@@ -20,7 +20,7 @@ export default function VenueRow({ section }) {
       <div className="page-container flex items-center justify-between gap-4">
         <h2 id={headingId} className="text-[22px] font-bold text-ink sm:text-[28px]">{section.title}</h2>
         <div className="flex shrink-0 items-center gap-4">
-          <Button variant="outline" to={`/search?section=${section.id}`} className="px-5 py-2">See All</Button>
+          <Button variant="outline" to={`/explore?section=${section.id}`} className="px-5 py-2">See All</Button>
           <Button aria-label={`Scroll ${section.title}`} onClick={scrollRight} className="px-3 py-2">
             <img src={arrowRightIcon} alt="" width="18" height="18" />
           </Button>

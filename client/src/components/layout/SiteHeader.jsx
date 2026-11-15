@@ -7,7 +7,7 @@ import accountIcon from '../../assets/icons/account.svg'
 
 const links = [
   { to: '/', label: 'Home' },
-  { to: '/search', label: 'Explore' },
+  { to: '/explore', label: 'Explore' },
   { to: '/owner', label: 'Become a host' },
   { to: '/about', label: 'About' },
 ]

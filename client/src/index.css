@@ -100,3 +100,78 @@ body {
   /* Figma text uses line-height "normal", not Tailwind's default 1.5. */
   @apply bg-white font-sans leading-[normal] text-ink antialiased;
 }
+
+/* Explore map (Leaflet divIcon markers and popups, features/explore/VenueMap.jsx). Plain CSS because Leaflet
+   creates these elements outside React. */
+.venue-pin {
+  outline: none;
+}
+.venue-pin__label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  white-space: nowrap;
+  border-radius: 9999px;
+  background: #fff;
+  padding: 6px 10px;
+  font: 600 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-strong);
+  box-shadow: var(--shadow-pin);
+  transition: background-color 150ms ease-out, color 150ms ease-out, scale 150ms ease-out;
+}
+.venue-pin:hover .venue-pin__label,
+.venue-pin.is-active .venue-pin__label {
+  background: var(--color-primary);
+  color: #fff;
+  scale: 1.08;
+}
+.venue-pin:focus-visible .venue-pin__label {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .venue-pin__label {
+    transition: none;
+  }
+}
+.venue-popup-shell .leaflet-popup-content-wrapper {
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 0;
+  box-shadow: var(--shadow-card);
+}
+.venue-popup-shell .leaflet-popup-content {
+  margin: 0;
+  width: 240px !important;
+}
+.venue-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 12px;
+  font: 400 13px/1.4 var(--font-sans);
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.venue-popup img {
+  display: block;
+  width: 100%;
+  height: 150px;
+  margin-bottom: 8px;
+  object-fit: cover;
+}
+.venue-popup strong,
+.venue-popup span {
+  padding-inline: 14px;
+}
+.venue-popup strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink-strong);
+}
+.venue-popup:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}

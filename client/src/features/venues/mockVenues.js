@@ -1004,7 +1004,11 @@ function buildVenue(card, allCards) {
   const areaPoint = AREA_COORDS.find(([key]) => card.area.includes(key)) ?? [card.city, city.lat, city.lng]
   const landmark = pick(rand, city.landmarks)
   const minutes = between(rand, 8, 25)
-  const facilities = [...AMENITIES.slice(0, 6), ...pickSome(rand, AMENITIES.slice(6), between(rand, 4, 8))].map((a) => a.key)
+  // The six headline amenities are dropped now and then (own seed, so the picks above stay the same) so the Explore
+  // amenity and "catering included" filters have something to filter.
+  const amenityRand = seededRandom(`${card.id}:amenities`)
+  const headline = AMENITIES.slice(0, 6).filter((a) => amenityRand() < (a.key === 'catering' ? 0.7 : 0.8))
+  const facilities = [...headline, ...pickSome(rand, AMENITIES.slice(6), between(rand, 4, 8))].map((a) => a.key)
 
   return {
     ...card,
@@ -1048,4 +1052,9 @@ const venuesById = new Map(allCards.map((card) => [card.id, buildVenue(card, all
 
 export function getMockVenue(id) {
   return venuesById.get(id) ?? null
+}
+
+// Every venue once (the landing rows repeat none, but dedupe anyway), for the mock search in api/venues.js.
+export function getAllMockVenues() {
+  return [...venuesById.values()]
 }
