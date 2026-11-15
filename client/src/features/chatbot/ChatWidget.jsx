@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { LayoutGroup, MotionConfig } from 'motion/react'
 import { sendMessage } from '../../api/chat.js'
 import AskAiButton from './AskAiButton.jsx'
@@ -8,7 +9,13 @@ import ChatPanel from './ChatPanel.jsx'
 // it back. Closing is two steps: fade the panel contents out, then unmount the panel (which starts the
 // morph). It's non-modal: the page behind stays usable on desktop, like most chat widgets.
 // reducedMotion="user" skips the morph (size/position) for people who ask for less motion; fades remain.
+// The site's main tabs (the header nav) get the full "Ask AI for help!" pill; every other page (venue detail,
+// gallery, and any future detail page) gets the compact icon-only launcher so it covers less content.
+const MAIN_PAGES = new Set(['/', '/search', '/owner', '/about'])
+
 export default function ChatWidget() {
+  const { pathname } = useLocation()
+  const compact = !MAIN_PAGES.has(pathname)
   const [phase, setPhase] = useState('closed') // 'closed' | 'open' | 'closing'
   const [hasOpened, setHasOpened] = useState(false)
   const [messages, setMessages] = useState([])
@@ -69,7 +76,7 @@ export default function ChatWidget() {
           handled by the 'closing' phase instead. */}
       <LayoutGroup>
         {phase === 'closed' ? (
-          <AskAiButton key="launcher" ref={launcherRef} onClick={openChat} pulse={!hasOpened} fadeContent={hasOpened} />
+          <AskAiButton key="launcher" ref={launcherRef} onClick={openChat} pulse={!hasOpened} fadeContent={hasOpened} compact={compact} />
         ) : (
           <ChatPanel
             key="panel"

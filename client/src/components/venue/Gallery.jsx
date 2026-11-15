@@ -1,21 +1,25 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import badgeCheckIcon from '../../assets/icons/venue/badge-check.svg'
 import mapPinIcon from '../../assets/icons/venue/map-pin.svg'
 import shareIcon from '../../assets/icons/venue/share.svg'
 import heartIcon from '../../assets/icons/venue/heart.svg'
 import layoutGridIcon from '../../assets/icons/venue/layout-grid.svg'
-import closeIcon from '../../assets/icons/close.svg'
 
 const pillButton =
   'flex h-[42px] items-center justify-center gap-2 rounded-full border border-line bg-white px-3.5 text-[15px] font-medium text-ink-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+const photoLink = 'group relative block min-h-0 overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white'
+const photoImg = 'size-full bg-surface object-cover transition-opacity duration-200 group-hover:opacity-90 motion-reduce:transition-none'
 
-// Title, actions and photo mosaic (Figma 44:1015). The first image is the hero: eager + high fetch priority.
+// Title, actions and photo mosaic (Figma 44:1015). Every photo opens the gallery page scrolled to that photo.
+// The first image is the hero: eager + high fetch priority.
 export default function Gallery({ venue }) {
   const [saved, setSaved] = useState(false)
   const [shareNote, setShareNote] = useState('')
-  const dialogRef = useRef(null)
-  const [hero, ...rest] = venue.images
+  const [hero, ...rest] = venue.heroImages
   const columns = [rest.slice(0, 2), rest.slice(2, 4)]
+  const photosPath = `/venues/${venue.id}/photos`
+  const photoHref = (image) => `${photosPath}#${image.imageId}`
 
   async function share() {
     setShareNote('')
@@ -66,50 +70,31 @@ export default function Gallery({ venue }) {
 
       {hero ? (
         <div className="relative grid h-[260px] grid-cols-1 gap-2 overflow-hidden rounded-[18px] sm:h-[438px] md:grid-cols-[650fr_327fr_327fr]">
-          <img src={hero.imageUrl} alt={hero.alt} width="650" height="438" fetchPriority="high" loading="eager" decoding="async" className="size-full bg-surface object-cover" />
+          <Link to={photoHref(hero)} aria-label={`Open photo: ${hero.alt}`} className={photoLink}>
+            <img src={hero.imageUrl} alt={hero.alt} width="650" height="438" fetchPriority="high" loading="eager" decoding="async" className={photoImg} />
+          </Link>
           {columns.map((column, index) =>
             column.length > 0 ? (
               <div key={index} className="hidden flex-col gap-2 md:flex">
                 {column.map((image) => (
-                  <img key={image.imageId} src={image.imageUrl} alt={image.alt} width="327" height="215" loading="lazy" decoding="async" className="min-h-0 w-full flex-1 bg-surface object-cover" />
+                  <Link key={image.imageId} to={photoHref(image)} aria-label={`Open photo: ${image.alt}`} className={`${photoLink} flex-1`}>
+                    <img src={image.imageUrl} alt={image.alt} width="327" height="215" loading="lazy" decoding="async" className={photoImg} />
+                  </Link>
                 ))}
               </div>
             ) : null,
           )}
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.showModal()}
+          <Link
+            to={photosPath}
             className="absolute bottom-4 right-4 flex items-center gap-2 rounded-[12px] bg-white px-3.5 py-2.5 text-[13px] font-semibold text-ink-strong shadow-chip hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             <img src={layoutGridIcon} alt="" width="17" height="17" />
             Show all {venue.images.length} photos
-          </button>
+          </Link>
         </div>
       ) : (
         <div className="flex h-[260px] items-center justify-center rounded-[18px] bg-surface text-[15px] text-muted-warm sm:h-[438px]">No photos yet</div>
       )}
-
-      {/* Clicking the backdrop (the dialog element itself, outside the content) closes it; Esc is native. */}
-      <dialog
-        ref={dialogRef}
-        aria-labelledby="all-photos-title"
-        onClick={(event) => event.target === dialogRef.current && dialogRef.current.close()}
-        className="m-auto max-h-[calc(100dvh-2rem)] w-[min(1100px,calc(100vw-2rem))] overscroll-contain rounded-[18px] p-0 backdrop:bg-ink-strong/60"
-      >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-white px-5 py-4">
-          <h2 id="all-photos-title" className="font-heading text-[20px] font-semibold text-ink-strong">{venue.name} photos</h2>
-          <button type="button" aria-label="Close photos" onClick={() => dialogRef.current?.close()} className="rounded-full bg-ink-strong p-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-            <img src={closeIcon} alt="" width="20" height="20" />
-          </button>
-        </div>
-        <ul className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
-          {venue.images.map((image) => (
-            <li key={image.imageId}>
-              <img src={image.imageUrl} alt={image.alt} width="520" height="325" loading="lazy" decoding="async" className="aspect-[8/5] w-full rounded-[12px] bg-surface object-cover" />
-            </li>
-          ))}
-        </ul>
-      </dialog>
     </section>
   )
 }

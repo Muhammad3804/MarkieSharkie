@@ -6,7 +6,7 @@ export default function HallCard({ hall }) {
         <div className="flex flex-col gap-1">
           <h3 id={`${hall.hallId}-name`} className="font-heading text-[18px] font-semibold text-ink-strong">{hall.name}</h3>
           <p className="text-[13px] text-muted-warm">
-            {hall.seatedCapacity.toLocaleString('en-US')} seated · {hall.standingCapacity.toLocaleString('en-US')} standing
+            {hall.capacity.toLocaleString('en-US')} seated · {hall.standingCapacity.toLocaleString('en-US')} standing
           </p>
         </div>
         <p className="flex shrink-0 flex-col items-end gap-1 font-semibold">

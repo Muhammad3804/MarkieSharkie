@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { formatEventDate } from '../../lib/format.js'
 import { formatPaisa, toPaisa } from '../../lib/money.js'
-import { SLOT_HOLD_MINUTES, SLOT_PRESETS, guestOptions } from '../../lib/booking.js'
+import { MIN_GUESTS, SLOT_HOLD_MINUTES, SLOT_PRESETS, guestCountError } from '../../lib/booking.js'
+import usersIcon from '../../assets/icons/venue/users.svg'
 import calendarDaysIcon from '../../assets/icons/venue/calendar-days.svg'
 import clockIcon from '../../assets/icons/venue/clock.svg'
 import chevronDownIcon from '../../assets/icons/venue/chevron-down.svg'
@@ -10,7 +11,7 @@ import headphonesIcon from '../../assets/icons/venue/headphones.svg'
 import flagIcon from '../../assets/icons/venue/flag.svg'
 
 const fieldBox =
-  'relative flex items-center justify-between px-3.5 py-3 focus-within:bg-surface has-[select:focus-visible]:outline-2 has-[select:focus-visible]:-outline-offset-2 has-[select:focus-visible]:outline-primary'
+  'relative flex items-center justify-between px-3.5 py-2.5 focus-within:bg-surface has-[select:focus-visible]:outline-2 has-[select:focus-visible]:-outline-offset-2 has-[select:focus-visible]:outline-primary'
 const fieldLabel = 'text-[10px] font-bold uppercase text-muted-warm'
 const fieldValue = 'text-[13px] font-medium text-ink-strong'
 
@@ -32,27 +33,32 @@ function SelectField({ id, label, value, display, onChange, options, icon = chev
   )
 }
 
-// Booking card (Figma 44:1141). UI only: the hold/booking flow needs the booking API (docs/booking-engine.md),
-// so "Check availability" explains that instead of pretending to hold a slot.
+// Booking card (Figma 44:1141), compacted so the whole panel fits a 720px-tall screen without scrolling.
+// One live total near the button: guests × the selected menu's per-guest price.
+// UI only: the hold/booking flow needs the booking API (docs/booking-engine.md), so "Check availability"
+// explains that instead of pretending to hold a slot.
 export default function BookingSidebar({ venue, booking, onChange, onPickDate }) {
   // The message is tied to the date + slot it was written for, so it disappears once either changes.
   const [status, setStatus] = useState({ key: '', message: '' })
   const [reported, setReported] = useState(false)
-  const hall = venue.halls.find((h) => h.hallId === booking.hallId)
-  const menu = venue.menuPackages.find((m) => m.menuId === booking.menuId)
+  // The guest limit comes from the selected hall, so changing hall revalidates the count automatically.
+  const hall = venue.halls.find((h) => h.hallId === booking.hallId) ?? venue.halls[0]
+  const menu = venue.menuPackages.find((m) => m.menuId === booking.menuId) ?? venue.menuPackages[0] ?? { menuId: '', name: 'No menu', pricePerHead: '0.00' }
   const slot = SLOT_PRESETS.find((s) => s.value === booking.slot)
-  const statusKey = `${booking.date}|${booking.slot}`
+  const statusKey = `${booking.date}|${booking.slot}|${booking.guests}|${hall.hallId}`
   const statusMessage = status.key === statusKey ? status.message : ''
-  const guestChoices = guestOptions(venue.minGuests, venue.capacity).map((n) => ({ value: String(n), label: `${n} guests` }))
+  const guestError = guestCountError(booking.guests, hall)
+  const guests = guestError ? null : Number(booking.guests)
 
   // Integer paisa only (no float math on money).
-  const estimate = useMemo(() => {
-    const venuePackage = toPaisa(venue.basePrice)
-    const menuTotal = menu ? toPaisa(menu.pricePerHead) * Number(booking.guests) : 0
-    return { venuePackage, menuTotal, total: venuePackage + menuTotal }
-  }, [venue.basePrice, menu, booking.guests])
+  const total = useMemo(() => (guests === null ? null : toPaisa(menu.pricePerHead) * guests), [menu.pricePerHead, guests])
 
   function checkAvailability() {
+    if (guestError) {
+      setStatus({ key: statusKey, message: 'Fix the guest count first.' })
+      document.getElementById('booking-guests')?.focus()
+      return
+    }
     if (!booking.date) {
       setStatus({ key: statusKey, message: 'Pick an event date first.' })
       onPickDate()
@@ -65,14 +71,9 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
   }
 
   return (
-    <div className="flex flex-col gap-[18px]">
-      <div className="flex flex-col gap-[18px] rounded-[18px] border border-line bg-white p-6 shadow-booking">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 rounded-[18px] border border-line bg-white p-5 shadow-booking">
         <h2 className="sr-only">Book {venue.name}</h2>
-        <p id="booking-price" className="flex items-baseline gap-[7px]">
-          <span className="font-heading text-[24px] font-semibold tabular-nums text-ink-strong">{formatPaisa(toPaisa(venue.basePrice), 'PKR')}</span>
-          <span className="text-[13px] text-muted-warm">starting package</span>
-        </p>
-
         <div className="overflow-hidden rounded-[12px] border border-outline-strong">
           <div className="grid grid-cols-2 border-b border-line">
             <button type="button" onClick={onPickDate} className={`${fieldBox} border-r border-line text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary`}>
@@ -85,12 +86,35 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
             <SelectField id="booking-slot" label="Start time" value={booking.slot} display={slot.label} icon={clockIcon} onChange={(value) => onChange({ slot: value })} options={SLOT_PRESETS.map((s) => ({ value: s.value, label: `${s.label} (${s.time})` }))} />
           </div>
           <div className="border-b border-line">
-            <SelectField id="booking-guests" label="Guest count" value={booking.guests} display={`${booking.guests} guests`} onChange={(value) => onChange({ guests: value })} options={guestChoices} />
+            <SelectField id="booking-hall" label="Hall" value={hall.hallId} display={`${hall.name} · up to ${hall.capacity.toLocaleString('en-US')} guests`} onChange={(value) => onChange({ hallId: value })} options={venue.halls.map((h) => ({ value: h.hallId, label: `${h.name} (up to ${h.capacity.toLocaleString('en-US')} guests)` }))} />
           </div>
-          <div className="border-b border-line">
-            <SelectField id="booking-hall" label="Hall" value={booking.hallId} display={hall?.name ?? 'Select hall'} onChange={(value) => onChange({ hallId: value })} options={[{ value: '', label: 'Select hall' }, ...venue.halls.map((h) => ({ value: h.hallId, label: h.name }))]} />
+          <div className={`border-b border-line ${guestError ? 'bg-[#fdf2f2]' : ''}`}>
+            <div className={`${fieldBox} has-[input:focus-visible]:outline-2 has-[input:focus-visible]:-outline-offset-2 has-[input:focus-visible]:outline-primary`}>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <label htmlFor="booking-guests" className={fieldLabel}>Guest count</label>
+                <input
+                  id="booking-guests"
+                  name="guests"
+                  autoComplete="off"
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_GUESTS}
+                  max={hall.capacity}
+                  step="1"
+                  value={booking.guests}
+                  onChange={(event) => onChange({ guests: event.target.value })}
+                  aria-invalid={guestError ? true : undefined}
+                  aria-describedby="booking-guests-hint"
+                  className={`${fieldValue} w-full bg-transparent outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
+                />
+              </div>
+              <img src={usersIcon} alt="" width="17" height="17" className="shrink-0" />
+            </div>
+            <p id="booking-guests-hint" aria-live="polite" className={`-mt-1 px-3.5 pb-2 text-[11px] ${guestError ? 'font-medium text-[#b42318]' : 'text-muted-warm'}`}>
+              {guestError ?? `${MIN_GUESTS} to ${hall.capacity.toLocaleString('en-US')} guests in ${hall.name}`}
+            </p>
           </div>
-          <SelectField id="booking-menu" label="Menu" value={booking.menuId} display={menu ? `${menu.name} · ${formatPaisa(toPaisa(menu.pricePerHead))} per guest` : 'Select menu'} onChange={(value) => onChange({ menuId: value })} options={[{ value: '', label: 'Select menu' }, ...venue.menuPackages.map((m) => ({ value: m.menuId, label: `${m.name} (${formatPaisa(toPaisa(m.pricePerHead))} per guest)` }))]} />
+          <SelectField id="booking-menu" label="Menu" value={menu.menuId} display={`${menu.name} · ${formatPaisa(toPaisa(menu.pricePerHead), 'Rs.')} per guest`} onChange={(value) => onChange({ menuId: value })} options={venue.menuPackages.map((m) => ({ value: m.menuId, label: `${m.name} (${formatPaisa(toPaisa(m.pricePerHead), 'Rs.')} per guest)` }))} />
         </div>
 
         <p className="flex items-center gap-2 text-[12px] text-muted-warm">
@@ -98,46 +122,28 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
           Your slot is held for {SLOT_HOLD_MINUTES} minutes while you confirm
         </p>
 
-        <button type="button" onClick={checkAvailability} className="flex h-[52px] items-center justify-center rounded-[12px] bg-primary text-[15px] font-semibold text-white hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-          Check availability
-        </button>
-        <p role="status" className="text-center text-[12px] text-muted-warm empty:hidden">{statusMessage}</p>
-        <p className="text-center text-[12px] text-muted-warm">No payment is required to send an inquiry</p>
+        <p className="flex flex-wrap items-baseline justify-between gap-x-3 border-t border-line pt-3">
+          <span className="text-[13px] text-muted-warm">{guests === null ? 'Enter a guest count' : `Total for ${guests.toLocaleString('en-US')} guests · ${menu.name}`}</span>
+          <span id="booking-price" className="font-heading text-[22px] font-semibold tabular-nums text-ink-strong">{total === null ? 'Rs. –' : formatPaisa(total, 'Rs.')}</span>
+        </p>
 
-        <div className="h-px bg-line" />
-        <dl className="flex flex-col gap-3 text-[13px] tabular-nums">
-          <div className="flex justify-between">
-            <dt className="text-muted-warm">Venue package</dt>
-            <dd className="text-ink-strong">{formatPaisa(estimate.venuePackage, 'PKR')}</dd>
-          </div>
-          {menu && (
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-warm">
-                {menu.name} × {booking.guests} guests
-              </dt>
-              <dd className="text-ink-strong">{formatPaisa(estimate.menuTotal, 'PKR')}</dd>
-            </div>
-          )}
-          <div className="flex justify-between">
-            <dt className="text-muted-warm">Marketplace service</dt>
-            <dd className="text-ink-strong">Included</dd>
-          </div>
-          {menu && (
-            <div className="flex justify-between border-t border-line pt-3 font-semibold">
-              <dt className="text-ink-strong">Estimated total</dt>
-              <dd className="text-ink-strong">{formatPaisa(estimate.total, 'PKR')}</dd>
-            </div>
-          )}
-        </dl>
+        <div className="flex flex-col gap-2">
+          <button type="button" onClick={checkAvailability} className="flex h-12 items-center justify-center rounded-[12px] bg-primary text-[15px] font-semibold text-white hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+            Check availability
+          </button>
+          <p className="text-center text-xs text-muted-warm">Marketplace services included</p>
+          <p role="status" className="text-center text-[12px] text-muted-warm empty:hidden">{statusMessage}</p>
+          <p className="text-center text-[12px] text-muted-warm">No payment is required to send an inquiry</p>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3.5 rounded-[12px] bg-surface p-[18px]">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white">
+      <div className="flex items-center gap-3 rounded-[12px] bg-surface px-4 py-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white">
           <img src={headphonesIcon} alt="" width="19" height="19" />
         </span>
         <div className="flex flex-col gap-[3px]">
           <p className="text-[13px] font-semibold text-ink-strong">Need help choosing?</p>
-          <p className="text-[12px] leading-[1.35] text-muted-warm">A venue advisor can compare packages and available dates.</p>
+          <p className="text-[12px] leading-[1.35] text-muted-warm">An advisor can compare packages and dates.</p>
         </div>
       </div>
 

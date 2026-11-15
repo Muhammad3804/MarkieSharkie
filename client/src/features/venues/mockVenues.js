@@ -3,7 +3,7 @@
 //   shaped like the future GET /api/venues/landing response (camelCase, money as a string).
 // - getMockVenue(id): the full venue for the detail page, shaped like GET /api/venues/:id (see the builder at the
 //   bottom). Read through api/venues.js, never import this from pages directly.
-import { AMENITIES, EVENT_LABELS } from './constants.js'
+import { AMENITIES, EVENT_LABELS, GALLERY_SECTIONS } from './constants.js'
 import gallery1Img from '../../assets/venue-detail/gallery-1.webp'
 import gallery2Img from '../../assets/venue-detail/gallery-2.webp'
 import gallery3Img from '../../assets/venue-detail/gallery-3.webp'
@@ -12,6 +12,35 @@ import gallery5Img from '../../assets/venue-detail/gallery-5.webp'
 import floorplan1Img from '../../assets/venue-detail/floorplan-1.webp'
 import floorplan2Img from '../../assets/venue-detail/floorplan-2.webp'
 import floorplan3Img from '../../assets/venue-detail/floorplan-3.webp'
+import tour1Img from '../../assets/gallery/tour-1.webp'
+import hall1Img from '../../assets/gallery/hall-1.webp'
+import hall2Img from '../../assets/gallery/hall-2.webp'
+import hall3Img from '../../assets/gallery/hall-3.webp'
+import hall4Img from '../../assets/gallery/hall-4.webp'
+import stage1Img from '../../assets/gallery/stage-1.webp'
+import stage2Img from '../../assets/gallery/stage-2.webp'
+import stage3Img from '../../assets/gallery/stage-3.webp'
+import stage4Img from '../../assets/gallery/stage-4.webp'
+import bridal1Img from '../../assets/gallery/bridal-1.webp'
+import bridal2Img from '../../assets/gallery/bridal-2.webp'
+import bridal3Img from '../../assets/gallery/bridal-3.webp'
+import bridal4Img from '../../assets/gallery/bridal-4.webp'
+import bathroom1Img from '../../assets/gallery/bathroom-1.webp'
+import bathroom2Img from '../../assets/gallery/bathroom-2.webp'
+import bathroom3Img from '../../assets/gallery/bathroom-3.webp'
+import bathroom4Img from '../../assets/gallery/bathroom-4.webp'
+import parking1Img from '../../assets/gallery/parking-1.webp'
+import parking2Img from '../../assets/gallery/parking-2.webp'
+import parking3Img from '../../assets/gallery/parking-3.webp'
+import parking4Img from '../../assets/gallery/parking-4.webp'
+import entrance1Img from '../../assets/gallery/entrance-1.webp'
+import entrance2Img from '../../assets/gallery/entrance-2.webp'
+import entrance3Img from '../../assets/gallery/entrance-3.webp'
+import entrance4Img from '../../assets/gallery/entrance-4.webp'
+import hallway1Img from '../../assets/gallery/hallway-1.webp'
+import hallway2Img from '../../assets/gallery/hallway-2.webp'
+import hallway3Img from '../../assets/gallery/hallway-3.webp'
+import hallway4Img from '../../assets/gallery/hallway-4.webp'
 import qasarENoorImg from '../../assets/venues/qasar-e-noor.webp'
 import thePalmsMarqueeImg from '../../assets/venues/the-palms-marquee.webp'
 import rosewoodBanquetImg from '../../assets/venues/rosewood-banquet.webp'
@@ -746,8 +775,33 @@ export const landingSections = [
 // NOT IN THE SRS/ERD (UI-only, from the Figma design, flagged for a decision): `halls`, `ratingCategories`,
 // `host`, `parkingSpaces`, `eventNotes`. A real API would need new tables/columns for these.
 
-const FIGMA_GALLERY = [gallery1Img, gallery2Img, gallery3Img, gallery4Img, gallery5Img]
 const FLOOR_PLANS = [floorplan1Img, floorplan2Img, floorplan3Img]
+
+// Photo pools per gallery section (Figma gallery frame 90:1063). The Hall pool also uses the venue card photos.
+const GALLERY_POOLS = {
+  tour: [tour1Img, hall1Img, hall3Img, hall4Img],
+  hall: [hall1Img, hall2Img, hall3Img, hall4Img],
+  stage: [stage1Img, stage2Img, stage3Img, stage4Img, gallery2Img, gallery4Img],
+  bridal: [bridal1Img, bridal2Img, bridal3Img, bridal4Img],
+  bathroom: [bathroom1Img, bathroom2Img, bathroom3Img, bathroom4Img],
+  parking: [parking1Img, parking2Img, parking3Img, parking4Img],
+  entrance: [entrance1Img, entrance2Img, entrance3Img, entrance4Img, gallery1Img, gallery3Img, gallery5Img],
+  hallway: [hallway1Img, hallway2Img, hallway3Img, hallway4Img],
+}
+
+// Approximate real coordinates for the areas our venues are in (venues.location). Each venue is offset a little
+// from its area so venues in the same area get distinct map markers. First match wins (Gulberg III before II).
+const AREA_COORDS = [
+  ['Polo Ground', 31.5245, 74.366], ['Canal Bank Road', 31.479, 74.427], ['Liberty', 31.5107, 74.3446], ['Gulberg III', 31.5085, 74.343],
+  ['Lawrence Garden', 31.556, 74.3285], ['Askari 10', 31.515, 74.403], ['Johar Town', 31.4697, 74.2728], ['DHA Phase 5', 31.463, 74.411],
+  ['Model Town', 31.484, 74.326], ['Garden Town', 31.502, 74.312], ['Gulberg II', 31.525, 74.351], ['Bahria Town', 31.37, 74.185],
+  ['Faisal Town', 31.479, 74.302], ['Wapda Town', 31.438, 74.265],
+  ['G-11', 33.668, 72.996], ['E-11', 33.696, 72.98], ['DHA Phase 2', 33.528, 73.165], ['Bahria Enclave', 33.712, 73.216],
+  ['F-7', 33.721, 73.056], ['F-10', 33.695, 73.013],
+  ['D Ground', 31.4005, 73.1105], ['Canal Road', 31.438, 73.121], ['Satiana Road', 31.395, 73.063], ['Jaranwala Road', 31.418, 73.14],
+  ['Peoples Colony', 31.396, 73.1], ['Susan Road', 31.4205, 73.096],
+]
+const PROVINCE = { Lahore: 'Punjab', Faisalabad: 'Punjab', Islamabad: 'Islamabad Capital Territory' }
 
 // Tiny seeded RNG (mulberry32) so each venue gets stable "random" details.
 function seededRandom(seedText) {
@@ -852,36 +906,58 @@ function buildVenue(card, allCards) {
   const capacity = guestsInName ? Number(guestsInName[1]) : between(rand, 350, 1000, 50)
   const pricePerHead = Number(card.priceFrom)
 
-  const spacesInHighlights = (card.highlights.match(/\d+/g) ?? []).reduce((sum, n) => sum + Number(n), 0)
-  const hallCount = Math.min(4, Math.max(2, spacesInHighlights))
-  const templates = pickSome(rand, style.venueType === 'indoor' ? HALL_TEMPLATES.filter((h) => h.kind === 'hall') : HALL_TEMPLATES, hallCount - 1)
+  // Halls: 1–4 bookable spaces per venue, shaped like a proposed `halls` table (hall_id, venue_id, name, capacity).
+  // NOT IN THE ERD: db/schema.sql has no halls table yet. The largest hall's capacity is the venue capacity.
+  const spacesInHighlights = (card.highlights.match(/\d+(?= (?:Master|Corp|Grand|Banquet|Marquee))/g) ?? []).reduce((sum, n) => sum + Number(n), 0)
+  const hallCount = guestsInName ? 1 : Math.min(4, Math.max(1, spacesInHighlights))
+  const templates = pickSome(rand, style.venueType === 'indoor' ? HALL_TEMPLATES.filter((h) => h.kind === 'hall') : HALL_TEMPLATES, hallCount)
   const halls = templates.map((template, index) => {
-    const seated = index === 0 ? capacity : between(rand, 150, Math.max(150, capacity - 100), 50)
+    const hallCapacity = index === 0 ? capacity : between(rand, 100, Math.max(100, capacity - 50), 50)
     const width = between(rand, 16, 26)
     return {
       hallId: `${card.id}-hall-${index + 1}`,
       venueId: card.id,
       name: template.name,
-      seatedCapacity: seated,
-      standingCapacity: Math.round((seated * 1.4) / 50) * 50,
+      capacity: hallCapacity,
+      standingCapacity: Math.round((hallCapacity * 1.4) / 50) * 50,
       widthM: width,
       lengthM: width + between(rand, 4, 8),
       description: template.description,
       floorPlanUrl: FLOOR_PLANS[index % FLOOR_PLANS.length],
-      zones: null,
     }
   })
-  halls.push({ hallId: `${card.id}-hall-suite`, venueId: card.id, name: BRIDAL_SUITE.name, seatedCapacity: 20, standingCapacity: 40, widthM: 12, lengthM: 14, description: BRIDAL_SUITE.description, floorPlanUrl: null, zones: BRIDAL_SUITE.zones })
+  // The bridal suite is a preparation room, not a bookable hall.
+  const bridalSuite = { hallId: `${card.id}-suite`, venueId: card.id, name: BRIDAL_SUITE.name, capacity: 20, standingCapacity: 40, widthM: 12, lengthM: 14, description: BRIDAL_SUITE.description, zones: BRIDAL_SUITE.zones }
 
-  const otherPhotos = pickSome(rand, [...FIGMA_GALLERY, ...allCards.filter((c) => c.id !== card.id).map((c) => c.image)], 7)
-  const images = [card.image, ...otherPhotos].map((imageUrl, index) => ({
-    imageId: `${card.id}-img-${index + 1}`,
-    venueId: card.id,
-    imageUrl,
-    alt: index === 0 ? `${card.name}, main view` : `${card.name}, photo ${index + 1}`,
-    verificationStatus: 'genuine',
-    isPublished: true,
+  // Photo gallery: one set of sections per hall. Hall 1's "Hall" section opens with the card
+  // photo, which is also the hero image on the venue page.
+  const otherCardPhotos = allCards.filter((c) => c.id !== card.id).map((c) => c.image)
+  const gallery = halls.map((hall, hallIndex) => ({
+    hallId: hall.hallId,
+    sections: GALLERY_SECTIONS.map((section) => {
+      const count = section.key === 'tour' ? 1 : 4
+      const pool = section.key === 'hall' ? [...GALLERY_POOLS.hall, ...otherCardPhotos] : GALLERY_POOLS[section.key]
+      let urls = pickSome(rand, pool, count)
+      if (section.key === 'hall' && hallIndex === 0) urls = [card.image, ...urls.slice(0, 3)]
+      return {
+        key: section.key,
+        images: urls.map((imageUrl, index) => ({
+          imageId: `${card.id}-h${hallIndex + 1}-${section.key}-${index + 1}`,
+          venueId: card.id,
+          hallId: hall.hallId,
+          category: section.key,
+          imageUrl,
+          alt: `${card.name}, ${hall.name}: ${section.title.toLowerCase()} photo ${index + 1}`,
+          verificationStatus: 'genuine',
+          isPublished: true,
+        })),
+      }
+    }),
   }))
+  const images = gallery.flatMap((hallGallery) => hallGallery.sections.flatMap((section) => section.images))
+  const hall1 = Object.fromEntries(gallery[0].sections.map((section) => [section.key, section.images]))
+  // Hero mosaic on the venue page: card photo, then stage, hall, entrance and parking photos from Hall 1.
+  const heroImages = [hall1.hall[0], hall1.stage[0], hall1.hall[1], hall1.entrance[0], hall1.parking[0]]
 
   const menuPackages = MENU_STEPS.map((step, index) => ({
     menuId: `${card.id}-menu-${index + 1}`,
@@ -925,6 +1001,7 @@ function buildVenue(card, allCards) {
     for (let i = 0; i < count; i++) bookedDates.add(isoDay(year, month, between(rand, 1, days)))
   }
 
+  const areaPoint = AREA_COORDS.find(([key]) => card.area.includes(key)) ?? [card.city, city.lat, city.lng]
   const landmark = pick(rand, city.landmarks)
   const minutes = between(rand, 8, 25)
   const facilities = [...AMENITIES.slice(0, 6), ...pickSome(rand, AMENITIES.slice(6), between(rand, 4, 8))].map((a) => a.key)
@@ -934,14 +1011,15 @@ function buildVenue(card, allCards) {
     // venues
     tagline: style.tagline,
     kindLabel: style.kind,
-    address: `${card.area}, ${card.city}, Punjab, Pakistan`,
-    location: { lat: +(city.lat + (rand() - 0.5) * 0.12).toFixed(5), lng: +(city.lng + (rand() - 0.5) * 0.12).toFixed(5) },
+    address: `${card.area}, ${card.city}, ${PROVINCE[card.city] ?? 'Punjab'}, Pakistan`,
+    lat: +(areaPoint[1] + (rand() - 0.5) * 0.005).toFixed(5),
+    lng: +(areaPoint[2] + (rand() - 0.5) * 0.005).toFixed(5),
     nearby: `${minutes} min from ${landmark}`,
     locationDescription: `Located in ${card.area}, ${card.name} is about ${minutes} minutes from ${landmark} and ${between(rand, 20, 45)} minutes from ${city.airport}. Signage and parking attendants guide guests on arrival.`,
     venueType: style.venueType,
     supportedEvents: pickSome(rand, eventTypes, 4),
     capacity,
-    minGuests: 50,
+    minGuests: 25,
     basePrice: `${Math.round((pricePerHead * 110) / 5000) * 5000}.00`,
     facilities,
     description: `${card.name} is a ${style.kind.toLowerCase()} in ${card.area}, ${card.city}, arranged for weddings, mehndi evenings and private celebrations of up to ${capacity} guests. ${card.highlights} give hosts room to plan separate functions on the same day, with independent guest arrival and an experienced on-site events team. Catering is handled in-house with menus from Rs ${pricePerHead.toLocaleString('en-US')} per head, and the team can coordinate décor, sound and lighting with your own vendors.`,
@@ -949,12 +1027,15 @@ function buildVenue(card, allCards) {
     approvalStatus: 'approved',
     isActive: true,
     images,
+    heroImages,
+    gallery,
     menuPackages,
     reviews,
     ratingCounts: ratingCounts(card.rating, card.reviewCount),
     bookedDates: [...bookedDates].sort(),
     // UI-only, not in the SRS/ERD (see note above)
     halls,
+    bridalSuite,
     ratingCategories,
     host: { name: `${card.name} events team`, replyMinutes: between(rand, 10, 45, 5), isTopHost: card.rating >= 4.8, yearsHosting: between(rand, 3, 15) },
     parkingSpaces: between(rand, 40, 200, 10),

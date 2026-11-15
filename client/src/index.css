@@ -91,7 +91,7 @@ html {
   scroll-padding-top: 132px;
 }
 
-/* Stop the page scrolling behind an open modal dialog (venue photos). */
+/* Lock page scroll while a modal dialog (the photo lightbox) is open. */
 html:has(dialog[open]:modal) {
   overflow: hidden;
 }

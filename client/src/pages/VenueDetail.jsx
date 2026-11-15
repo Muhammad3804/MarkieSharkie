@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useVenue } from '../features/venues/useVenue.js'
+import { useCenteredSticky } from '../features/venues/useCenteredSticky.js'
 import Button from '../components/ui/Button.jsx'
 import Gallery from '../components/venue/Gallery.jsx'
 import { VENUE_TABS } from '../features/venues/constants.js'
@@ -18,7 +19,7 @@ import HallCard from '../components/venue/HallCard.jsx'
 import MenuCard from '../components/venue/MenuCard.jsx'
 import BookingSidebar from '../components/venue/BookingSidebar.jsx'
 import VenueDetailSkeleton from '../components/venue/VenueDetailSkeleton.jsx'
-import { defaultGuests } from '../lib/booking.js'
+import { DEFAULT_GUESTS } from '../lib/booking.js'
 import { formatAmount } from '../lib/money.js'
 
 // Venue detail page (Figma frames 44:992 Overview, 65:692 Halls, 71:2 Menu, 73:2 Availability, 69:63 Reviews).
@@ -58,9 +59,10 @@ function VenueDetailView({ venue }) {
   const [booking, setBooking] = useState(() => ({
     date: '',
     slot: 'evening',
-    guests: defaultGuests(venue.minGuests, venue.capacity),
-    hallId: '',
-    menuId: '',
+    guests: DEFAULT_GUESTS,
+    hallId: venue.halls[0]?.hallId ?? '',
+    // Package 1 by default so a live price shows on load.
+    menuId: venue.menuPackages[0]?.menuId ?? '',
   }))
   const updateBooking = useCallback((changes) => setBooking((current) => ({ ...current, ...changes })), [])
   const selectDate = useCallback((date) => updateBooking({ date }), [updateBooking])
@@ -108,6 +110,7 @@ function VenueDetailView({ venue }) {
     <AvailabilityCalendar ref={calendarRef} title={title} bookedDates={venue.bookedDates} selectedDate={booking.date} onSelect={selectDate} />
   )
   const tabLabel = VENUE_TABS.find((t) => t.id === tab).label
+  const stickyRef = useCenteredSticky()
 
   return (
     <div className="page-container pb-14">
@@ -148,12 +151,16 @@ function VenueDetailView({ venue }) {
 
             {tab === 'halls' && (
               <>
-                <TabIntro title="Halls" body={`${venue.name} offers ${venue.halls.length} event spaces with dedicated arrival paths, flexible layouts and clear circulation for guests.`} />
+                <TabIntro
+                  title="Halls"
+                  body={`${venue.name} offers ${venue.halls.length === 1 ? 'one event hall' : `${venue.halls.length} event halls`} plus a private bridal suite, with dedicated arrival paths, flexible layouts and clear circulation for guests.`}
+                />
                 <Divider />
                 <div className="flex flex-col gap-4">
                   {venue.halls.map((hall) => (
                     <HallCard key={hall.hallId} hall={hall} />
                   ))}
+                  <HallCard hall={venue.bridalSuite} />
                 </div>
               </>
             )}
@@ -191,8 +198,14 @@ function VenueDetailView({ venue }) {
           </div>
         </div>
 
-        <aside aria-label="Book this venue" className="lg:sticky lg:top-[140px] lg:self-start lg:pt-[55px]">
-          <BookingSidebar venue={venue} booking={booking} onChange={updateBooking} onPickDate={pickDate} />
+        {/* The aside is a full-height grid column (default stretch), and the sticky element is the panel inside it,
+            so it stays pinned while scrolling and releases at the end of the column, just above the footer.
+            useCenteredSticky centres it below the header (no internal scroll).
+            The side padding/negative margin leaves room for the card shadow when it scrolls. Normal flow on mobile. */}
+        <aside aria-label="Book this venue">
+          <div ref={stickyRef} className="lg:sticky lg:-mx-5 lg:my-6 lg:px-5 lg:pb-1">
+            <BookingSidebar venue={venue} booking={booking} onChange={updateBooking} onPickDate={pickDate} />
+          </div>
         </aside>
       </div>
     </div>
