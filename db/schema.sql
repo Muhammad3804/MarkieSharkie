@@ -9,6 +9,9 @@
 -- that needs it. These are additions the SRS text requires but the
 -- diagram does not show. See docs/database.md for the full list.
 --
+-- Anything marked `-- [Design]` is a team design addition that neither the
+-- ERD nor the SRS text asks for (logged in docs/srs-alignment.md).
+--
 -- Do not rename or drop ERD columns without updating docs/database.md.
 -- =====================================================================
 
@@ -175,6 +178,18 @@ CREATE INDEX venues_location_idx ON venues USING gist(location);
 CREATE INDEX venues_events_idx   ON venues USING gin(supported_events);
 CREATE INDEX venues_embedding_idx ON venues USING hnsw (description_embedding vector_cosine_ops);
 
+-- [Design] Not in the ERD or SRS text (docs/srs-alignment.md #17): a marquee has one or more halls, each with
+-- its own capacity. venues.capacity (ERD) stays as the venue's largest capacity.
+CREATE TABLE halls (
+  hall_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id   uuid        NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
+  name       text        NOT NULL,
+  capacity   int         NOT NULL CHECK (capacity > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT halls_name_per_venue UNIQUE (venue_id, name),
+  CONSTRAINT halls_venue_hall UNIQUE (venue_id, hall_id)   -- target of bookings_hall_same_venue; also the venue_id index
+);
+
 CREATE TABLE venue_images (
   image_id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   venue_id            uuid                NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
@@ -291,6 +306,9 @@ CREATE TABLE bookings (
   created_at          timestamptz    NOT NULL DEFAULT now(),
   qr_check_in_enabled boolean        NOT NULL DEFAULT false,                 -- [SRS] REQ-40 (mirrors invitation.qr_enabled)
   updated_at          timestamptz    NOT NULL DEFAULT now(),                 -- [SRS] audit of status changes
+  hall_id             uuid,                                                  -- [Design] nullable: NULL = whole venue / no halls listed
+  -- The booked hall must belong to the booked venue (composite FK; skipped when hall_id is NULL).
+  CONSTRAINT bookings_hall_same_venue FOREIGN KEY (venue_id, hall_id) REFERENCES halls(venue_id, hall_id),
   CONSTRAINT bookings_party CHECK (
     (source = 'online'  AND customer_id IS NOT NULL)
     OR (source = 'offline' AND client_name IS NOT NULL AND client_phone IS NOT NULL)
@@ -302,6 +320,7 @@ CREATE TRIGGER bookings_updated_at BEFORE UPDATE ON bookings FOR EACH ROW EXECUT
 CREATE UNIQUE INDEX bookings_one_active_per_slot ON bookings(slot_id) WHERE status <> 'cancelled';
 CREATE INDEX bookings_customer_idx ON bookings(customer_id);
 CREATE INDEX bookings_venue_idx ON bookings(venue_id, status);
+CREATE INDEX bookings_hall_idx ON bookings(hall_id);
 
 CREATE TABLE booking_add_ons (
   booking_id uuid           NOT NULL REFERENCES bookings(booking_id) ON DELETE CASCADE,

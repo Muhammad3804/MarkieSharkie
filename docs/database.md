@@ -33,6 +33,8 @@ Source: SRS Figure 6 (ERD). All 36 ERD tables and every ERD column are present. 
 
 Added by SRS text: `password_reset_codes`, `refresh_tokens`, `admin_audit_log`.
 
+Team design additions (`-- [Design]`, not in the ERD or SRS, see `docs/srs-alignment.md` #17): `halls` (`hall_id`, `venue_id`, `name`, `capacity`, `created_at`) and `bookings.hall_id` (nullable; NULL = whole venue). `venues.capacity` stays as the largest capacity.
+
 Columns: ERD camelCase → snake_case (`heldUntil` → `held_until`, `menuPackageId` → `menu_package_id`). Exceptions: `MenuPackage.menuId` stays `menu_id`, `Booking.menuPackageId` → `menu_package_id` (FK to `menu_packages.menu_id`).
 
 ## Role tables
@@ -75,6 +77,8 @@ Adding an enum value: `ALTER TYPE x ADD VALUE 'y';` in a migration. Never remove
 | `time_slots_hold_fields` | `held` ⇔ `held_by` + `held_until` set |
 | `bookings_party` | online needs `customer_id`; offline needs client name + phone |
 | `bookings_cancel_reason` | REQ-22 reason required |
+| `bookings_hall_same_venue` (composite FK `(venue_id, hall_id)` → `halls`) | a booking's hall belongs to the booked venue |
+| `halls_name_per_venue` | no two halls with the same name in one venue |
 | `venue_images_publish_rule` | REQ-9 only genuine/approved images published |
 | `reviews.booking_id UNIQUE` | REQ-42 one review per booking |
 | `rsvps.guest_id UNIQUE` | one current reply per guest, updated on change |
@@ -82,7 +86,7 @@ Adding an enum value: `ALTER TYPE x ADD VALUE 'y';` in a migration. Never remove
 | `users_phone_pk_format` | REQ-1 phone stored as `+923XXXXXXXXX` |
 | `disputes_resolved_fields` | resolved disputes have resolution, time, admin |
 
-Rules enforced in services (need data from several tables): review only after `completed` booking; invitation only for `confirmed` booking; payment ≤ balance; menu `min_guests`; guest count ≤ capacity; add-on available on the date; slot state transitions; quotation turn-taking.
+Rules enforced in services (need data from several tables): review only after `completed` booking; invitation only for `confirmed` booking; payment ≤ balance; menu `min_guests`; guest count ≤ capacity (the booked hall's `capacity` when `hall_id` is set, else `venues.capacity`); add-on available on the date; slot state transitions; quotation turn-taking.
 
 ## Derived values (do not store separately)
 
@@ -105,4 +109,5 @@ Rules enforced in services (need data from several tables): review only after `c
 
 - `db/schema.sql` = full current schema (for reading and fresh setup).
 - `server/migrations/` (node-pg-migrate, SQL files) = how the live DB gets there. The first migration is a copy of `schema.sql`. Every later change = new migration + update `schema.sql` + update this doc.
+- No migration exists yet (no `server/`), so changes made before the first migration (e.g. `halls`, `bookings.hall_id`) go straight into `schema.sql` and ship in that first migration. Separate migrations start after it.
 - `db/seeds/`: 15-20 real local marquees (with permission) + 50-100 synthetic venues around Faisalabad, Lahore, Islamabad, Karachi; one demo user per role; slots for the next 60 days. Seeds must be idempotent.

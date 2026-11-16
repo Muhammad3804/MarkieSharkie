@@ -15,7 +15,7 @@ The UI is designed in **Figma**. When a Figma link is given, match it (use the F
 ## Brand
 
 - Name: **MarkieSharkie**. Logo: tent in a dome with "MARKIE SHARKIE" text (from the SRS cover).
-- Palette: **not confirmed yet**. Options from planning: deep teal + blush (recommended), coral + charcoal, indigo + peach. Define colours as Tailwind theme tokens (`primary`, `accent`, `surface`, `muted`, `danger`, `success`, `warning`) so changing palette is one file.
+- Palette: **maroon, confirmed by the Figma landing page**: `primary` #7a1731, `accent` (blush border) #d1bfc2, `surface` #f7f5f3, `muted` #6c6c6c, plus `ink` #374151 for body text. Colours are Tailwind theme tokens in `client/src/index.css` (`@theme`), so changing palette is one file. `danger`, `success` and `warning` aren't in the design yet; add them there when a screen needs them.
 - Hero copy: **"Find and book the perfect venue for your event, in minutes."** Sub: **"Compare venues, check availability, and book online. No calls, no visits."** Hero has a search bar: location, date, guests.
 
 ## Slot status colours (used everywhere the calendar appears)

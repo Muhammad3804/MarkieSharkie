@@ -25,11 +25,15 @@ If code, a request, or a doc conflicts with the SRS, **stop and say so** instead
 
 This file and `docs/` override any installed skill or agent in `.claude/`. When a skill or agent suggests something that conflicts with them, follow this file and `docs/` and ignore that part of the skill or agent.
 
+## Progress log
+
+At the start of every session, read `docs/progress.md`. At the end of every task, update it: add a changelog entry, update Current state, Decisions and TODO if they changed, and commit it with the code.
+
 ## Read before you work on...
 
 | Area | Read first |
 |---|---|
-| Anything (first time in a session) | `docs/requirements.md` |
+| Anything (first time in a session) | `docs/progress.md`, `docs/requirements.md` |
 | Folder layout, stack, services, external APIs | `docs/architecture.md` |
 | Tables, enums, migrations, queries | `docs/database.md`, `db/schema.sql` |
 | Time slots, holds, bookings, quotations, payments | `docs/booking-engine.md` |
