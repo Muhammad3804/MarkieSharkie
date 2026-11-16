@@ -11,7 +11,7 @@ import ChatPanel from './ChatPanel.jsx'
 // reducedMotion="user" skips the morph (size/position) for people who ask for less motion; fades remain.
 // The site's main tabs (the header nav) get the full "Ask AI for help!" pill; every other page (venue detail,
 // gallery, and any future detail page) gets the compact icon-only launcher so it covers less content.
-const MAIN_PAGES = new Set(['/', '/explore', '/owner', '/about'])
+const MAIN_PAGES = new Set(['/', '/explore', '/owner', '/about', '/host'])
 
 export default function ChatWidget() {
   const { pathname } = useLocation()

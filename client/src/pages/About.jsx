@@ -61,7 +61,7 @@ function Hero() {
           <Button to="/explore" className="min-h-12 px-6">
             Explore venues
           </Button>
-          <Button to="/owner" variant="outline" className="min-h-12 px-6">
+          <Button to="/host" variant="outline" className="min-h-12 px-6">
             List your venue
           </Button>
         </div>
@@ -153,7 +153,7 @@ function HowItWorks() {
           audience="For venue owners"
           title="From listing to booked out"
           steps={OWNER_STEPS}
-          link={{ to: '/owner', label: 'List your venue' }}
+          link={{ to: '/host', label: 'List your venue' }}
           className="bg-blush"
         />
       </div>
@@ -322,7 +322,7 @@ function ListYourVenue() {
           </p>
         </div>
         <Link
-          to="/owner"
+          to="/host"
           className="relative inline-flex min-h-12 w-fit items-center gap-2 rounded-[20px] bg-white px-6 text-[15px] font-semibold text-primary transition-colors hover:bg-blush focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           List your venue

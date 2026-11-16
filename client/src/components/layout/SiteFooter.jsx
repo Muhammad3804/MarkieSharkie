@@ -5,7 +5,7 @@ import globeIcon from '../../assets/icons/globe.svg'
 const columns = [
   { title: 'MarkieSharkie', links: [['About us', '/about'], ['How it works', '/about#how-it-works'], ['FAQs', '/about#faq']] },
   { title: 'Discover', links: [['Venues in Lahore', '/explore?city=Lahore'], ['Wedding packages', '/explore?eventType=wedding'], ['Planning guide', '/guide']] },
-  { title: 'For venues', links: [['List your space', '/owner'], ['Partner standards', '/partners'], ['Host resources', '/hosts']] },
+  { title: 'For venues', links: [['List your space', '/host'], ['Partner standards', '/partners'], ['Host resources', '/hosts']] },
   { title: 'Support', links: [['Help center', '/help'], ['Contact an advisor', '/contact'], ['Trust & safety', '/trust']] },
 ]
 

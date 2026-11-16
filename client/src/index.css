@@ -24,6 +24,10 @@
   --color-chat-text: #303030;
   --color-chat-meta: #737373; /* Figma has #a5a5a5 (2.4:1); darkened to meet the 4.5:1 contrast rule in docs/ui-and-dashboards.md */
   --color-chat-placeholder: #cccccc;
+  --color-danger: #b42318; /* form errors, 6.5:1 on white */
+  --color-success: #067647;
+  --color-pending: #8a5300; /* "Pending verification" badge, 6:1 on pending-bg */
+  --color-pending-bg: #fef6e7;
 
   --shadow-card: 0px 8px 24px 0px rgba(41, 28, 31, 0.14);
   --shadow-search: 0px 4px 14.9px 0px rgba(31, 20, 23, 0.15);
@@ -91,6 +95,12 @@ html {
   scroll-padding-top: 132px;
 }
 
+/* Host wizard: keep focused fields clear of its sticky header (88px) and fixed bottom bar. */
+html:has([data-host-wizard]) {
+  scroll-padding-top: 104px;
+  scroll-padding-bottom: 152px;
+}
+
 /* Lock page scroll while a modal dialog (the photo lightbox) is open. */
 html:has(dialog[open]:modal) {
   overflow: hidden;
@@ -135,6 +145,36 @@ body {
   .venue-pin__label {
     transition: none;
   }
+}
+/* Host wizard map pin (features/host/steps/PinMap.jsx). */
+.host-pin {
+  outline: none;
+}
+.host-pin__dot {
+  display: flex;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: var(--shadow-pin);
+  cursor: grab;
+}
+.host-pin__dot::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  translate: -50% 0;
+  border: 8px solid transparent;
+  border-top-color: var(--color-primary);
+  border-bottom-width: 0;
+}
+.host-pin:focus-visible .host-pin__dot {
+  outline: 3px solid var(--color-ink-strong);
+  outline-offset: 3px;
 }
 .venue-popup-shell .leaflet-popup-content-wrapper {
   overflow: hidden;
