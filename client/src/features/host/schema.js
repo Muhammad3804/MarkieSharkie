@@ -6,12 +6,18 @@ import {
   CITIES,
   EVENT_TYPES,
   HALL_SETTINGS,
+  HOUSE_RULES,
+  LAYOUT_ZONES,
+  MAX_DISHES,
   MAX_PHOTOS,
+  MAX_POLICY_TIERS,
   MIN_PHOTOS,
   PAKISTAN_BOUNDS,
   VENUE_CATEGORIES,
+  WALKTHROUGH_MODES,
   WEEKDAYS,
 } from './options.js'
+import { dishCount, sectionKey } from './draft.js'
 import { MIN_GUESTS } from '../../lib/booking.js'
 
 // Validation for every wizard step, in one place. Each schema takes the whole draft and returns errors keyed
@@ -37,6 +43,18 @@ const wholeNumber = (label, min, max) =>
     .refine((text) => Number(text) >= min, `${capitalise(label)} must be at least ${min.toLocaleString('en-US')}.`)
     .refine((text) => Number(text) <= max, `${capitalise(label)} can be at most ${max.toLocaleString('en-US')}.`)
 
+// Optional whole number: '' or a number in range. Not a z.union, which would replace these messages with
+// "Invalid input".
+const optionalWhole = (label, min, max) =>
+  z
+    .string()
+    .trim()
+    .refine((text) => text === '' || /^\d+$/.test(text), `Use a whole number for ${label}.`)
+    .refine((text) => !/^\d+$/.test(text) || Number(text) >= min, `${capitalise(label)} must be at least ${min.toLocaleString('en-US')}.`)
+    .refine((text) => !/^\d+$/.test(text) || Number(text) <= max, `${capitalise(label)} can be at most ${max.toLocaleString('en-US')}.`)
+
+const optionalText = (max, label) => z.string().trim().max(max, `Keep ${label} under ${max + 1} characters.`)
+
 // Rupee amount typed into a text field: digits, optional paisa. Never parsed as a float (money.js does the maths).
 const rupees = (label, { allowZero = false } = {}) =>
   z
@@ -50,7 +68,13 @@ const venueTypeStep = z.object({
   venue: z.object({ category: z.enum(values(VENUE_CATEGORIES), { error: 'Pick the option that fits your venue best.' }) }),
 })
 
-const nameStep = z.object({ venue: z.object({ name: trimmed(3, 80, 'the venue name') }) })
+const thisYear = new Date().getFullYear()
+const nameStep = z.object({
+  venue: z.object({
+    name: trimmed(3, 80, 'the venue name'),
+    hostingSince: optionalWhole('the year', 1947, thisYear),
+  }),
+})
 
 const locationStep = z.object({
   venue: z.object({
@@ -87,18 +111,38 @@ const pinStep = z.object({
   }),
 })
 
+const directionsStep = z.object({
+  venue: z.object({
+    landmark: optionalText(80, 'the landmark'),
+    landmarkMinutes: optionalWhole('the travel time', 1, 180),
+    directions: optionalText(500, 'the directions'),
+  }),
+})
+
 const hall = z.object({
   name: trimmed(2, 60, 'the hall name'),
   capacity: wholeNumber('seated capacity', MIN_GUESTS, 10000),
-  // Optional: '' or a whole number. Not a z.union, which would replace these messages with "Invalid input".
-  standingCapacity: z
-    .string()
-    .trim()
-    .refine((text) => text === '' || /^\d+$/.test(text), 'Use a whole number for standing capacity, like 800.')
-    .refine((text) => !/^\d+$/.test(text) || Number(text) >= MIN_GUESTS, `Standing capacity must be at least ${MIN_GUESTS}.`)
-    .refine((text) => !/^\d+$/.test(text) || Number(text) <= 20000, 'Standing capacity can be at most 20,000.'),
+  standingCapacity: optionalWhole('standing capacity', MIN_GUESTS, 20000),
   setting: z.enum(values(HALL_SETTINGS)),
   hasAc: z.boolean(),
+  lengthFt: wholeNumber('the length', 10, 1000),
+  widthFt: wholeNumber('the width', 10, 1000),
+  ceilingFt: wholeNumber('the ceiling height', 8, 100),
+  description: optionalText(300, 'the description'),
+})
+
+const bridalStep = z.object({
+  bridalSuite: z.discriminatedUnion('enabled', [
+    z.object({ enabled: z.literal(false) }),
+    z.object({
+      enabled: z.literal(true),
+      name: trimmed(2, 60, 'the suite name'),
+      capacity: wholeNumber('the capacity', 1, 200),
+      lengthFt: optionalWhole('the length', 5, 200),
+      widthFt: optionalWhole('the width', 5, 200),
+      description: optionalText(300, 'the description'),
+    }),
+  ]),
 })
 
 const hallsStep = z.object({
@@ -118,6 +162,7 @@ const amenitiesStep = z.object({
   venue: z.object({
     facilities: z.array(z.enum(AMENITY_KEYS)),
     customFacilities: z.array(trimmed(2, 40, 'the amenity')).max(10, 'You can add up to 10 of your own amenities.'),
+    parkingSpaces: optionalWhole('the number of cars', 1, 5000),
   }),
 })
 
@@ -143,10 +188,9 @@ const menusStep = z.object({
         description: z.string().trim().max(200, 'Keep the description under 201 characters.'),
         pricePerHead: rupees('the price per guest'),
         minGuests: wholeNumber('the minimum guest count', 1, 10000),
-        items: z
-          .array(z.object({ name: trimmed(1, 60, 'the dish name') }))
-          .min(1, 'Add at least one dish.')
-          .max(40, 'A package can list up to 40 dishes.'),
+        sections: z
+          .array(z.object({ name: trimmed(2, 40, 'the section name'), items: z.array(z.object({ name: trimmed(1, 60, 'the dish name') })) }))
+          .max(15, 'A package can have up to 15 sections.'),
       }),
     )
     .min(1, 'Add at least one menu package.')
@@ -178,6 +222,13 @@ const rulesStep = z.object({
     slots: z.object({ lunch: slot, dinner: slot }),
     advancePercent: wholeNumber('the advance', 0, 100),
     cancellationPolicy: z.enum(values(CANCELLATION_POLICIES), { error: 'Choose a cancellation policy.' }),
+  }),
+})
+
+const houseRulesStep = z.object({
+  venue: z.object({
+    houseRules: z.array(z.enum(HOUSE_RULES.map((rule) => rule.key))),
+    customHouseRules: z.array(trimmed(3, 80, 'the rule')).max(10, 'You can add up to 10 of your own rules.'),
   }),
 })
 
@@ -230,12 +281,108 @@ function menuFitsHalls(draft) {
   return errors
 }
 
+// "15 min from Clock Tower" needs both halves.
+function landmarkPair(draft) {
+  const { landmark, landmarkMinutes } = draft.venue
+  if (landmark.trim() && !landmarkMinutes.trim()) return { 'venue.landmarkMinutes': 'Add how many minutes away it is, or clear the landmark.' }
+  if (!landmark.trim() && landmarkMinutes.trim()) return { 'venue.landmark': 'Name the landmark, or clear the minutes.' }
+  return {}
+}
+
+// At least one dish per package, section names unique within the package, and a cap on dishes.
+function menuSections(draft) {
+  const errors = {}
+  draft.menuPackages.forEach((menu, index) => {
+    const dishes = dishCount(menu)
+    if (dishes === 0) errors[`menuPackages.${index}.sections`] = 'Add at least one dish to any section.'
+    if (dishes > MAX_DISHES) errors[`menuPackages.${index}.sections`] = `A package can list up to ${MAX_DISHES} dishes.`
+    const seen = new Set()
+    menu.sections.forEach((section, sectionIndex) => {
+      const key = sectionKey(section.name)
+      const path = `menuPackages.${index}.sections.${sectionIndex}.name`
+      if (!key && section.items.length) errors[path] = 'Name this section, or remove it.'
+      else if (key && seen.has(key)) errors[path] = 'Each section needs its own name.'
+      seen.add(key)
+    })
+  })
+  return errors
+}
+
+// Two zones can't sit in the same cell of the plan.
+function zonesApart(draft) {
+  const errors = {}
+  draft.halls.forEach((hall, index) => {
+    const taken = new Map()
+    for (const zone of LAYOUT_ZONES) {
+      const cell = hall.zones[zone.key]
+      if (cell == null) continue
+      if (taken.has(cell)) errors[`halls.${index}.zones.${zone.key}`] = `${zone.label} is in the same spot as ${taken.get(cell)}. Pick another spot.`
+      else taken.set(cell, zone.label.toLowerCase())
+    }
+  })
+  return errors
+}
+
+const isHttpsUrl = (text) => {
+  try {
+    return new URL(text).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function walkthroughs(draft) {
+  const errors = {}
+  draft.halls.forEach((hall, index) => {
+    const { mode, file, url } = hall.walkthrough
+    if (!WALKTHROUGH_MODES.some((m) => m.value === mode)) errors[`halls.${index}.walkthrough.mode`] = 'Choose an option for this hall.'
+    if (mode === 'upload' && !file) errors[`halls.${index}.walkthrough.file`] = 'Upload a .glb model or a 360° photo, or pick another option.'
+    if (mode === 'link' && !isHttpsUrl(url.trim())) errors[`halls.${index}.walkthrough.url`] = 'Paste a full link that starts with https://, like https://my.matterport.com/show/?m=…'
+  })
+  return errors
+}
+
+// Custom cancellation policy: valid rows that don't overlap. A row covers [fromDays, toDays) days before the event;
+// an empty toDays means "or more".
+function customPolicy(draft) {
+  const { cancellationPolicy, customPolicy: policy } = draft.bookingRules
+  if (cancellationPolicy !== 'custom') return {}
+  const errors = {}
+  const base = 'bookingRules.customPolicy'
+  if (!policy.tiers.length) errors[`${base}.tiers`] = 'Add at least one rule.'
+  if (policy.tiers.length > MAX_POLICY_TIERS) errors[`${base}.tiers`] = `Use up to ${MAX_POLICY_TIERS} rules.`
+  if (policy.note.trim().length > 300) errors[`${base}.note`] = 'Keep the note under 301 characters.'
+  const ranges = []
+  policy.tiers.forEach((tier, index) => {
+    const path = `${base}.tiers.${index}`
+    const from = tier.fromDays.trim()
+    const to = tier.toDays.trim()
+    const refund = tier.refundPercent.trim()
+    if (!/^\d+$/.test(from) || Number(from) > 365) errors[`${path}.fromDays`] = 'Enter whole days from 0 to 365.'
+    if (to && (!/^\d+$/.test(to) || Number(to) > 366)) errors[`${path}.toDays`] = 'Enter whole days up to 366, or leave it empty for “or more”.'
+    else if (to && /^\d+$/.test(from) && Number(to) <= Number(from)) errors[`${path}.toDays`] = 'This has to be more than the “from” days.'
+    if (!/^\d+$/.test(refund) || Number(refund) > 100) errors[`${path}.refundPercent`] = 'Enter a refund from 0 to 100%.'
+    if (!errors[`${path}.fromDays`] && !errors[`${path}.toDays`]) ranges.push({ index, from: Number(from), to: to ? Number(to) : Infinity })
+  })
+  for (let a = 0; a < ranges.length; a++) {
+    for (let b = a + 1; b < ranges.length; b++) {
+      const [x, y] = [ranges[a], ranges[b]]
+      if (x.from < y.to && y.from < x.to) {
+        errors[`${base}.tiers.${y.index}.fromDays`] ??= `Overlaps rule ${x.index + 1}. Each day count can only be in one rule.`
+      }
+    }
+  }
+  return errors
+}
+
 export const STEP_SCHEMAS = {
   'venue-type': venueTypeStep,
   name: nameStep,
   location: locationStep,
   pin: pinStep,
+  directions: directionsStep,
   halls: hallsStep,
+  'bridal-suite': bridalStep,
   events: eventsStep,
   amenities: amenitiesStep,
   photos: photosStep,
@@ -243,17 +390,25 @@ export const STEP_SCHEMAS = {
   menus: menusStep,
   custom: customStep,
   rules: rulesStep,
+  'house-rules': houseRulesStep,
 }
 
-const EXTRA_CHECKS = { halls: uniqueHallNames, photos: photosCoverHalls, menus: menuFitsHalls, rules: slotsFit }
+const EXTRA_CHECKS = {
+  directions: landmarkPair,
+  halls: uniqueHallNames,
+  photos: photosCoverHalls,
+  layout: zonesApart,
+  walkthrough: walkthroughs,
+  menus: (draft) => ({ ...menuSections(draft), ...menuFitsHalls(draft) }),
+  rules: (draft) => ({ ...slotsFit(draft), ...customPolicy(draft) }),
+}
 
-// { valid, errors: { 'halls.0.name': 'message', ... } }. Steps without a schema (intros, review) are always valid.
+// { valid, errors: { "halls.0.name": "message", ... } }. Steps with neither a schema nor checks (intros, review) are always valid.
 export function validateStep(stepId, draft) {
   const schema = STEP_SCHEMAS[stepId]
-  if (!schema) return { valid: true, errors: {} }
   const errors = {}
-  const result = schema.safeParse(draft)
-  if (!result.success) {
+  const result = schema?.safeParse(draft)
+  if (result && !result.success) {
     for (const issue of result.error.issues) {
       const key = issue.path.join('.')
       if (!(key in errors)) errors[key] = issue.message

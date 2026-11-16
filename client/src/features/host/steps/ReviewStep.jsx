@@ -2,8 +2,21 @@ import { Link } from 'react-router-dom'
 import { useWizard } from '../WizardContext.js'
 import { StepHeading } from '../fields.jsx'
 import { usePhotoUrls } from '../photoStore.js'
-import { deriveVenueType, formatAddress } from '../draft.js'
-import { ADD_ON_TYPES, AMENITY_LABELS, CANCELLATION_POLICIES, EVENT_TYPES, HALL_SETTINGS, SLOT_TYPES, VENUE_CATEGORIES, WEEKDAYS } from '../options.js'
+import { deriveVenueType, dishCount, formatAddress, hallArea, tierSummary } from '../draft.js'
+import {
+  ADD_ON_TYPES,
+  AMENITY_LABELS,
+  CANCELLATION_POLICIES,
+  EVENT_TYPES,
+  HALL_SETTINGS,
+  HOUSE_RULES,
+  LAYOUT_CELLS,
+  LAYOUT_ZONES,
+  SLOT_TYPES,
+  VENUE_CATEGORIES,
+  WALKTHROUGH_MODES,
+  WEEKDAYS,
+} from '../options.js'
 import { formatAmount } from '../../../lib/money.js'
 
 // Summary of every answer with an Edit link back to its step (?from=review brings the host straight back here).
@@ -18,10 +31,11 @@ function time12(value) {
 
 export default function ReviewStep() {
   const { draft } = useWizard()
-  const { venue, halls, venueImages, menuPackages, addOns, customMenu, bookingRules } = draft
+  const { venue, halls, bridalSuite, venueImages, menuPackages, addOns, customMenu, bookingRules } = draft
   const cover = venueImages.find((image) => image.isCover)
   const photos = usePhotoUrls(cover ? [cover.imageId] : [])
   const facilities = [...venue.facilities.map((key) => AMENITY_LABELS[key]), ...venue.customFacilities]
+  const houseRules = [...venue.houseRules.map((key) => HOUSE_RULES.find((rule) => rule.key === key)?.label), ...venue.customHouseRules]
   const workingDays = bookingRules.days.length === 7 ? 'Every day' : bookingRules.days.map((d) => label(WEEKDAYS, d).slice(0, 3)).join(', ')
   const venueType = label(HALL_SETTINGS, deriveVenueType(halls))
 
@@ -50,6 +64,7 @@ export default function ReviewStep() {
         </Summary>
         <Summary title="Venue name" step="name">
           {venue.name}
+          {venue.hostingSince && <span className="block text-muted-warm">Hosting events since {venue.hostingSince}</span>}
         </Summary>
         <Summary title="Address" step="location">
           {formatAddress(venue)}
@@ -60,6 +75,10 @@ export default function ReviewStep() {
           </span>
           {venue.googleMapsUrl && <span className="block break-all text-muted-warm">{venue.googleMapsUrl}</span>}
         </Summary>
+        <Summary title="Getting there" step="directions">
+          {venue.landmark ? `${venue.landmarkMinutes} min from ${venue.landmark}` : 'No landmark added'}
+          {venue.directions && <span className="mt-1 line-clamp-2 block text-muted-warm">{venue.directions}</span>}
+        </Summary>
         <Summary title={`Halls (${halls.length})`} step="halls">
           <ul className="grid gap-1">
             {halls.map((hall) => (
@@ -67,18 +86,51 @@ export default function ReviewStep() {
                 <span className="font-medium text-ink-strong">{hall.name}</span> · {number(hall.capacity)} seated
                 {hall.standingCapacity && ` · ${number(hall.standingCapacity)} standing`} · {label(HALL_SETTINGS, hall.setting)}
                 {hall.hasAc ? ' · AC' : ''}
+                <span className="block text-muted-warm">
+                  {hall.lengthFt} × {hall.widthFt} ft · {hallArea(hall)?.toLocaleString('en-US')} sq ft · {hall.ceilingFt} ft ceiling
+                </span>
               </li>
             ))}
           </ul>
+        </Summary>
+        <Summary title="Bridal suite" step="bridal-suite">
+          {bridalSuite.enabled
+            ? [bridalSuite.name, `fits ${bridalSuite.capacity}`, hallArea(bridalSuite) && `${bridalSuite.lengthFt} × ${bridalSuite.widthFt} ft`].filter(Boolean).join(' · ')
+            : 'No bridal suite'}
         </Summary>
         <Summary title="Events" step="events">
           {venue.supportedEvents.map((e) => label(EVENT_TYPES, e)).join(', ')}
         </Summary>
         <Summary title="Amenities" step="amenities">
           {facilities.length ? facilities.join(', ') : 'None selected'}
+          {venue.parkingSpaces && <span className="block text-muted-warm">Parking for {number(venue.parkingSpaces)} cars</span>}
         </Summary>
         <Summary title="Photos" step="photos">
           {venueImages.length} photos · {halls.length} {halls.length === 1 ? 'hall' : 'halls'} covered · cover chosen
+        </Summary>
+        <Summary title="Layouts" step="layout">
+          <ul className="grid gap-1">
+            {halls.map((hall) => {
+              const zones = LAYOUT_ZONES.filter((zone) => hall.zones[zone.key] != null).map((zone) => `${zone.label}: ${LAYOUT_CELLS[hall.zones[zone.key]].toLowerCase()}`)
+              return (
+                <li key={hall.hallId}>
+                  <span className="font-medium text-ink-strong">{hall.name}</span> · {hall.floorPlan ? `Plan: ${hall.floorPlan.fileName}` : 'No floor plan'}
+                  {zones.length > 0 && <span className="block text-muted-warm">{zones.join(' · ')}</span>}
+                </li>
+              )
+            })}
+          </ul>
+        </Summary>
+        <Summary title="3D walkthroughs" step="walkthrough">
+          <ul className="grid gap-1">
+            {halls.map((hall) => (
+              <li key={hall.hallId} className="min-w-0">
+                <span className="font-medium text-ink-strong">{hall.name}</span> · {label(WALKTHROUGH_MODES, hall.walkthrough.mode)}
+                {hall.walkthrough.mode === 'upload' && hall.walkthrough.file && ` (${hall.walkthrough.file.fileName})`}
+                {hall.walkthrough.mode === 'link' && <span className="block break-all text-muted-warm">{hall.walkthrough.url}</span>}
+              </li>
+            ))}
+          </ul>
         </Summary>
         <Summary title="Title and description" step="title">
           <span className="block font-medium text-ink-strong">{venue.headline}</span>
@@ -89,7 +141,13 @@ export default function ReviewStep() {
             {menuPackages.map((menu) => (
               <li key={menu.menuId}>
                 <span className="font-medium text-ink-strong">{menu.name}</span> · <span className="tabular-nums">{formatAmount(menu.pricePerHead, 'Rs.')}</span> per guest · from{' '}
-                {number(menu.minGuests)} guests · {menu.items.length} dishes
+                {number(menu.minGuests)} guests · {dishCount(menu)} dishes
+                <span className="block text-muted-warm">
+                  {menu.sections
+                    .filter((section) => section.items.length)
+                    .map((section) => `${section.name} (${section.items.length})`)
+                    .join(' · ')}
+                </span>
               </li>
             ))}
           </ul>
@@ -116,6 +174,19 @@ export default function ReviewStep() {
           <span className="block">
             {bookingRules.advancePercent}% advance · {label(CANCELLATION_POLICIES, bookingRules.cancellationPolicy)} cancellation
           </span>
+          {bookingRules.cancellationPolicy === 'custom' && (
+            <ul className="mt-1 text-muted-warm">
+              {[...bookingRules.customPolicy.tiers]
+                .sort((a, b) => Number(b.fromDays) - Number(a.fromDays))
+                .map((tier) => (
+                  <li key={tier.tierId}>{tierSummary(tier)}</li>
+                ))}
+              {bookingRules.customPolicy.note && <li>{bookingRules.customPolicy.note}</li>}
+            </ul>
+          )}
+        </Summary>
+        <Summary title="House rules" step="house-rules">
+          {houseRules.length ? houseRules.join(' · ') : 'No house rules'}
         </Summary>
       </div>
 

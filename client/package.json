@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.8.2",
     "@tailwindcss/vite": "^4.3.5",
     "leaflet": "^1.9.4",
     "motion": "^14.14.0",
@@ -17,6 +18,7 @@
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
     "tailwindcss": "^4.3.5",
+    "three": "^0.187.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {

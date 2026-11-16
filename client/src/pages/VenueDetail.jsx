@@ -153,14 +153,14 @@ function VenueDetailView({ venue }) {
               <>
                 <TabIntro
                   title="Halls"
-                  body={`${venue.name} offers ${venue.halls.length === 1 ? 'one event hall' : `${venue.halls.length} event halls`} plus a private bridal suite, with dedicated arrival paths, flexible layouts and clear circulation for guests.`}
+                  body={`${venue.name} offers ${venue.halls.length === 1 ? 'one event hall' : `${venue.halls.length} event halls`}${venue.bridalSuite ? ' plus a private bridal suite' : ''}, with dedicated arrival paths, flexible layouts and clear circulation for guests.`}
                 />
                 <Divider />
                 <div className="flex flex-col gap-4">
                   {venue.halls.map((hall) => (
                     <HallCard key={hall.hallId} hall={hall} />
                   ))}
-                  <HallCard hall={venue.bridalSuite} />
+                  {venue.bridalSuite && <HallCard hall={venue.bridalSuite} />}
                 </div>
               </>
             )}

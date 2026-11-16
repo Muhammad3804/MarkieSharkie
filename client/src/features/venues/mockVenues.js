@@ -850,8 +850,22 @@ const HALL_TEMPLATES = [
 const BRIDAL_SUITE = {
   name: 'Bridal Suite',
   description: 'A private preparation space with makeup area, lounge seating and a dedicated entry for the bridal party before the event.',
-  zones: ['Mirror', 'Dressing', 'Entry', 'Seating', 'Lounge', 'Private lounge'],
+  areas: ['Mirror', 'Dressing', 'Entry', 'Seating', 'Lounge', 'Private lounge'],
 }
+// The three mock floor plans all have the stage at the back centre, the foyer entrance on the middle right and the
+// hall floor in the middle (cells of the wizard's 3 x 3 layout grid, row 0 = back wall).
+const PLAN_ZONES = { stage: 1, entrance: 5, seating: 4 }
+
+// Menu sections in the order the wizard offers them (menu_items.category). Mock dish strings are split into one item
+// per dish and sorted into a section by keyword.
+const MENU_SECTION_ORDER = ['Appetizers', 'Main course', 'Rice / Biryani', 'BBQ', 'Breads', 'Desserts / Sweets', 'Drinks']
+function mainCourseSection(dish) {
+  if (/pulao|biryani/i.test(dish)) return 'Rice / Biryani'
+  if (/bbq|kebab|tikka|boti|steak|shawarma/i.test(dish)) return 'BBQ'
+  if (/naan/i.test(dish)) return 'Breads'
+  return 'Main course'
+}
+const capitalise = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 
 const STARTERS = ['Soup, crackers, mint margarita', 'Chicken corn soup, garlic bread, lemonade', 'Hot and sour soup, spring rolls, mint margarita', 'Cream of mushroom soup, canapés, piña colada', 'Fish crackers, chaat counter, fresh lime', 'Dahi bhallay, samosa chaat, peach iced tea']
 const MAINS = ['Chicken karahi, chicken pulao, chicken BBQ, live steak', 'Mutton qorma, vegetable pulao, chicken tikka, live pasta', 'Chicken handi, biryani, seekh kebab, live shawarma', 'Mutton karahi, Afghani pulao, malai boti, live steak', 'Beef nihari, chicken biryani, reshmi kebab, live naan', 'Palak paneer, daal makhni, vegetable biryani, chicken tikka']
@@ -910,24 +924,42 @@ function buildVenue(card, allCards) {
   // NOT IN THE ERD: db/schema.sql has no halls table yet. The largest hall's capacity is the venue capacity.
   const spacesInHighlights = (card.highlights.match(/\d+(?= (?:Master|Corp|Grand|Banquet|Marquee))/g) ?? []).reduce((sum, n) => sum + Number(n), 0)
   const hallCount = guestsInName ? 1 : Math.min(4, Math.max(1, spacesInHighlights))
+  const layoutRand = seededRandom(`${card.id}:layout`) // own seed: new fields don't change the existing picks
   const templates = pickSome(rand, style.venueType === 'indoor' ? HALL_TEMPLATES.filter((h) => h.kind === 'hall') : HALL_TEMPLATES, hallCount)
   const halls = templates.map((template, index) => {
     const hallCapacity = index === 0 ? capacity : between(rand, 100, Math.max(100, capacity - 50), 50)
-    const width = between(rand, 16, 26)
+    // Same rand() calls as before (metres), converted to feet, so the other mock details don't shift.
+    const widthM = between(rand, 16, 26)
+    const lengthM = widthM + between(rand, 4, 8)
     return {
       hallId: `${card.id}-hall-${index + 1}`,
       venueId: card.id,
       name: template.name,
       capacity: hallCapacity,
       standingCapacity: Math.round((hallCapacity * 1.4) / 50) * 50,
-      widthM: width,
-      lengthM: width + between(rand, 4, 8),
+      // UI-only, like the wizard's hall fields: size in feet, layout and walkthrough.
+      widthFt: Math.round((widthM * 3.28) / 5) * 5,
+      lengthFt: Math.round((lengthM * 3.28) / 5) * 5,
+      ceilingFt: between(layoutRand, 14, 24),
       description: template.description,
       floorPlanUrl: FLOOR_PLANS[index % FLOOR_PLANS.length],
+      floorPlanType: 'image',
+      zones: PLAN_ZONES,
+      walkthrough: { mode: layoutRand() < 0.85 ? 'generate' : 'skip', url: '' },
     }
   })
   // The bridal suite is a preparation room, not a bookable hall.
-  const bridalSuite = { hallId: `${card.id}-suite`, venueId: card.id, name: BRIDAL_SUITE.name, capacity: 20, standingCapacity: 40, widthM: 12, lengthM: 14, description: BRIDAL_SUITE.description, zones: BRIDAL_SUITE.zones }
+  const bridalSuite = {
+    hallId: `${card.id}-suite`,
+    venueId: card.id,
+    name: BRIDAL_SUITE.name,
+    capacity: 20,
+    standingCapacity: 40,
+    widthFt: 40,
+    lengthFt: 45,
+    description: BRIDAL_SUITE.description,
+    areas: BRIDAL_SUITE.areas,
+  }
 
   // Photo gallery: one set of sections per hall. Hall 1's "Hall" section opens with the card
   // photo, which is also the hero image on the venue page.
@@ -967,12 +999,15 @@ function buildVenue(card, allCards) {
     pricePerHead: `${pricePerHead + step}.00`,
     isCustomizable: index === 3,
     minGuests: 100,
+    // menu_items: one row per dish, category = section. Ordered by section, like the wizard saves them.
     items: [
-      { category: 'Starters', name: STARTERS[(index + between(rand, 0, 1)) % STARTERS.length] },
-      { category: 'Main Course', name: MAINS[(index + between(rand, 0, 2)) % MAINS.length] },
-      { category: 'Desserts', name: DESSERTS[(index + between(rand, 0, 2)) % DESSERTS.length] },
-      { category: 'Drinks', name: pick(rand, DRINKS) },
-    ].map((item, itemIndex) => ({ itemId: `${card.id}-menu-${index + 1}-item-${itemIndex + 1}`, ...item, isOptional: false })),
+      ...STARTERS[(index + between(rand, 0, 1)) % STARTERS.length].split(', ').map((name) => ({ category: 'Appetizers', name })),
+      ...MAINS[(index + between(rand, 0, 2)) % MAINS.length].split(', ').map((name) => ({ category: mainCourseSection(name), name })),
+      ...DESSERTS[(index + between(rand, 0, 2)) % DESSERTS.length].split(', ').map((name) => ({ category: 'Desserts / Sweets', name })),
+      ...pick(rand, DRINKS).split(', ').map((name) => ({ category: 'Drinks', name })),
+    ]
+      .sort((a, b) => MENU_SECTION_ORDER.indexOf(a.category) - MENU_SECTION_ORDER.indexOf(b.category))
+      .map((item, itemIndex) => ({ itemId: `${card.id}-menu-${index + 1}-item-${itemIndex + 1}`, ...item, name: capitalise(item.name), isOptional: false })),
   }))
 
   const eventTypes = Object.keys(EVENT_LABELS)

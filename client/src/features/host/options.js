@@ -112,7 +112,7 @@ export const VENUE_PHOTO_CATEGORIES = [
   { value: 'entrance', label: 'Entrance' },
   { value: 'exterior', label: 'Exterior' },
   { value: 'parking', label: 'Parking' },
-  { value: 'lobby', label: 'Lobby' },
+  { value: 'hallway', label: 'Lobby / hallways' }, // "Hallway" section on the venue page's gallery
 ]
 
 // REQ-8 and docs/api-and-security.md: JPEG/PNG only, at most 5 MB each.
@@ -121,28 +121,56 @@ export const PHOTO_MAX_BYTES = 5 * 1024 * 1024
 export const MIN_PHOTOS = 5
 export const MAX_PHOTOS = 60
 
+// Default dish sections in every package (menu_items.category). Hosts can rename, reorder, remove or add their own.
+export const MENU_SECTIONS = ['Appetizers', 'Main course', 'Rice / Biryani', 'BBQ', 'Breads', 'Desserts / Sweets', 'Drinks']
+export const MAX_DISHES = 60
+
 // Starter menu packages the host can edit (menu_packages + menu_items). Prices are rupees per guest.
+// `sections` maps a section name to its dishes; sections left out start empty.
 export const MENU_TEMPLATES = [
   {
     name: 'Classic',
     description: 'A simple two-dish menu for smaller events.',
     pricePerHead: '1800',
     minGuests: '100',
-    items: ['Chicken qorma', 'Vegetable pulao', 'Naan', 'Raita', 'Salad', 'Kheer'],
+    sections: {
+      'Main course': ['Chicken qorma'],
+      'Rice / Biryani': ['Vegetable pulao'],
+      Breads: ['Naan'],
+      'Desserts / Sweets': ['Kheer'],
+      'Salads & raita': ['Raita', 'Green salad'],
+    },
   },
   {
     name: 'Premium',
     description: 'Our most booked wedding menu.',
     pricePerHead: '2800',
     minGuests: '150',
-    items: ['Chicken biryani', 'Mutton qorma', 'Chicken tikka', 'Naan', 'Raita', 'Salad', 'Gajar ka halwa', 'Soft drinks'],
+    sections: {
+      Appetizers: ['Chicken corn soup'],
+      'Main course': ['Mutton qorma'],
+      'Rice / Biryani': ['Chicken biryani'],
+      BBQ: ['Chicken tikka'],
+      Breads: ['Naan'],
+      'Desserts / Sweets': ['Gajar ka halwa'],
+      Drinks: ['Soft drinks'],
+      'Salads & raita': ['Raita', 'Green salad'],
+    },
   },
   {
     name: 'Royal',
     description: 'A full spread with live counters.',
     pricePerHead: '4200',
     minGuests: '200',
-    items: ['Mutton biryani', 'Chicken karahi', 'Beef nihari', 'Fish tikka', 'Live BBQ counter', 'Naan', 'Raita', 'Salad', 'Shahi tukray', 'Ice cream', 'Green tea'],
+    sections: {
+      Appetizers: ['Hot and sour soup', 'Fish crackers'],
+      'Main course': ['Chicken karahi', 'Beef nihari'],
+      'Rice / Biryani': ['Mutton biryani'],
+      BBQ: ['Live BBQ counter', 'Fish tikka'],
+      Breads: ['Naan', 'Roghni naan'],
+      'Desserts / Sweets': ['Shahi tukray', 'Ice cream'],
+      Drinks: ['Soft drinks', 'Green tea'],
+    },
   },
 ]
 
@@ -174,4 +202,49 @@ export const CANCELLATION_POLICIES = [
   { value: 'flexible', label: 'Flexible', description: 'Full advance returned if the customer cancels at least 7 days before the event.' },
   { value: 'moderate', label: 'Moderate', description: 'Half the advance returned if the customer cancels at least 30 days before the event.' },
   { value: 'strict', label: 'Strict', description: 'The advance is not returned once the booking is confirmed.' },
+  { value: 'custom', label: 'Custom', description: 'Set your own refund for each period before the event.' },
+]
+
+// Rule builder rows for the Custom cancellation policy (UI-only, like the other policies).
+export const CUSTOM_POLICY_STARTER = [
+  { fromDays: '30', toDays: '', refundPercent: '100' },
+  { fromDays: '7', toDays: '30', refundPercent: '50' },
+  { fromDays: '0', toDays: '7', refundPercent: '0' },
+]
+export const MAX_POLICY_TIERS = 6
+
+// House rules shown under "Good to know" on the venue page (UI-only).
+export const HOUSE_RULES = [
+  { key: 'outside_decorators', label: 'Outside decorators allowed' },
+  { key: 'outside_catering', label: 'Outside catering allowed' },
+  { key: 'outside_photographers', label: 'Outside photographers welcome' },
+  { key: 'fireworks', label: 'Fireworks by approval' },
+  { key: 'family_seating', label: 'Separate family seating available' },
+  { key: 'no_smoking', label: 'No smoking indoors' },
+  { key: 'sound_curfew', label: 'Sound must stop by 10:00 PM' },
+]
+
+// Hall layout zones, each placed in one cell of a 3 x 3 grid over the floor plan (row 0 = back of the hall).
+export const LAYOUT_ZONES = [
+  { key: 'stage', label: 'Stage', short: 'S' },
+  { key: 'entrance', label: 'Entrance', short: 'E' },
+  { key: 'seating', label: 'Seating', short: 'T' },
+]
+export const LAYOUT_CELLS = ['Back left', 'Back centre', 'Back right', 'Middle left', 'Middle centre', 'Middle right', 'Front left', 'Front centre', 'Front right']
+
+// Floor plans: an image or a PDF (UI-only; not covered by REQ-8, which is about venue photos).
+export const FLOOR_PLAN_TYPES = ['image/jpeg', 'image/png', 'application/pdf']
+export const FLOOR_PLAN_MAX_BYTES = 10 * 1024 * 1024
+
+// 3D walkthrough per hall. `upload` is REQ-11 (walkthrough_assets); generate and link are UI-only extras.
+export const WALKTHROUGH_MODES = [
+  { value: 'generate', label: 'Generate from dimensions', description: 'We build a 3D model of the room from its size and layout.' },
+  { value: 'upload', label: 'Upload a 3D model or 360° photo', description: '.glb or .gltf up to 50 MB, or a 360° JPEG up to 20 MB.' },
+  { value: 'link', label: 'Paste a 360° or Matterport link', description: 'A virtual tour you already have online.' },
+  { value: 'skip', label: 'Skip for now', description: 'Customers see your photos. You can add a walkthrough later.' },
+]
+// docs/api-and-security.md: 3D .glb/.gltf ≤ 50 MB, 360 JPEG ≤ 20 MB.
+export const WALKTHROUGH_FILES = [
+  { assetType: 'model_3d', extensions: ['.glb', '.gltf'], maxBytes: 50 * 1024 * 1024 },
+  { assetType: 'panorama_360', extensions: ['.jpg', '.jpeg'], maxBytes: 20 * 1024 * 1024 },
 ]

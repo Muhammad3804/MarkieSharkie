@@ -1,6 +1,16 @@
 import { formatAmount } from '../../lib/money.js'
 
-// One menu package with its items (Figma 71:75): menu_packages + menu_items, price per head.
+// One menu package with its items (Figma 71:75): menu_packages + menu_items, price per head. Dishes are grouped by
+// menu_items.category (the host wizard's menu sections), in the order the items arrive.
+function groupBySection(items) {
+  const sections = new Map()
+  for (const item of items) {
+    if (!sections.has(item.category)) sections.set(item.category, [])
+    sections.get(item.category).push(item)
+  }
+  return [...sections]
+}
+
 export default function MenuCard({ menu }) {
   return (
     <article aria-labelledby={`${menu.menuId}-name`} className="flex flex-col gap-4 rounded-[16px] border border-line bg-white p-5">
@@ -15,11 +25,11 @@ export default function MenuCard({ menu }) {
           <span className="sr-only">per guest</span>
         </p>
       </div>
-      <dl className="flex flex-col gap-3">
-        {menu.items.map((item) => (
-          <div key={item.itemId} className="flex flex-col gap-1">
-            <dt className="text-[11px] font-semibold text-muted-warm">{item.category}</dt>
-            <dd className="text-[13px] leading-[1.45] text-ink-strong">{item.name}</dd>
+      <dl className="grid gap-3 sm:grid-cols-2">
+        {groupBySection(menu.items).map(([section, items]) => (
+          <div key={section} className="flex flex-col gap-1">
+            <dt className="text-[11px] font-semibold text-muted-warm">{section}</dt>
+            <dd className="text-[13px] leading-[1.45] text-ink-strong">{items.map((item) => item.name).join(', ')}</dd>
           </div>
         ))}
       </dl>

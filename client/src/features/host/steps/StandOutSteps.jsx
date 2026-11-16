@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useWizard } from '../WizardContext.js'
-import { ChoiceCard, ErrorText, StepHeading, TextArea } from '../fields.jsx'
+import { ChoiceCard, ErrorText, StepHeading, TextArea, TextField } from '../fields.jsx'
 import { fieldId, inputClass } from '../fieldStyles.js'
 import { AMENITY_GROUPS } from '../options.js'
 import HostIcon from '../icons.jsx'
@@ -58,6 +58,20 @@ export function AmenitiesStep() {
             </div>
           </fieldset>
         ))}
+
+        {(selected.has('parking') || selected.has('valet')) && (
+          <TextField
+            path="venue.parkingSpaces"
+            label="How many cars can park?"
+            optional
+            hint="Shown on your listing as “parking for 120 vehicles”."
+            value={draft.venue.parkingSpaces}
+            onChange={(parkingSpaces) => update(setVenue({ parkingSpaces: parkingSpaces.replace(/\D/g, '').slice(0, 4) }))}
+            inputMode="numeric"
+            placeholder="e.g. 120…"
+            className="-mt-4 max-w-xs"
+          />
+        )}
 
         <section aria-labelledby="custom-amenities-title">
           <h2 id="custom-amenities-title" className="mb-1 font-heading text-[20px] font-semibold text-ink-strong">

@@ -229,7 +229,7 @@ export function Switch({ checked, onChange, label, description, id }) {
 
 // Tags typed one at a time: Enter or comma adds, Backspace on an empty field removes the last, each tag has its
 // own remove button. Pasting "a, b, c" adds three.
-export function TagInput({ path, label, hint, tags, onChange, placeholder, maxTags = 40 }) {
+export function TagInput({ path, label, hint, tags, onChange, placeholder, maxTags = 40, labelClassName = 'mb-2 block text-[15px] font-medium text-ink-strong' }) {
   const { errorFor, touch } = useWizard()
   const [text, setText] = useState('')
   const id = fieldId(path)
@@ -253,7 +253,7 @@ export function TagInput({ path, label, hint, tags, onChange, placeholder, maxTa
 
   return (
     <div>
-      <label htmlFor={id} className="mb-2 block text-[15px] font-medium text-ink-strong">
+      <label htmlFor={id} className={labelClassName}>
         {label}
       </label>
       <div className="rounded-xl border border-outline-strong bg-white p-2 has-[:focus-visible]:border-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary has-[[aria-invalid=true]]:border-danger">
@@ -300,13 +300,15 @@ export function TagInput({ path, label, hint, tags, onChange, placeholder, maxTa
             touch(path)
           }}
           aria-invalid={error ? 'true' : undefined}
-          aria-describedby={describedBy(`${id}-hint`, error && `${id}-error`)}
+          aria-describedby={describedBy(hint && `${id}-hint`, error && `${id}-error`)}
           className="h-11 w-full min-w-0 bg-transparent px-2 text-[16px] text-ink-strong outline-none placeholder:text-placeholder"
         />
       </div>
-      <p id={`${id}-hint`} className="mt-2 text-[14px] text-muted-warm">
-        {hint}
-      </p>
+      {hint && (
+        <p id={`${id}-hint`} className="mt-2 text-[14px] text-muted-warm">
+          {hint}
+        </p>
+      )}
       <ErrorText id={`${id}-error`}>{error}</ErrorText>
     </div>
   )

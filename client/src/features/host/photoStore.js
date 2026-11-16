@@ -54,10 +54,14 @@ function setUrl(imageId, blob) {
 
 // Resolves false when the file couldn't be stored, so the UI can warn that it only lasts until a refresh.
 export async function savePhoto(imageId, file) {
-  deleted.delete(imageId)
   setUrl(imageId, file)
   emit()
   const stored = await run('readwrite', (store) => store.put(file, imageId))
+  // Removed while the write was in flight: delete it again so it doesn't linger in IndexedDB.
+  if (deleted.has(imageId)) {
+    await run('readwrite', (store) => store.delete(imageId))
+    return true
+  }
   if (stored === undefined) console.warn('[host] photo kept in memory only; it will be lost on refresh')
   return stored !== undefined
 }

@@ -75,6 +75,18 @@ export const STEPS = [
     },
   },
   {
+    id: 'directions',
+    phase: 1,
+    help: {
+      title: 'Getting there',
+      tips: [
+        'Pick a landmark most guests know, like a mall, a chowk or a mosque.',
+        'Mention the gate to use, where drivers can drop guests and where parking is.',
+        'This step is optional. You can skip it with Next.',
+      ],
+    },
+  },
+  {
     id: 'halls',
     phase: 1,
     help: {
@@ -83,7 +95,16 @@ export const STEPS = [
         'Add one hall for every space that can host an event on its own.',
         'Seated capacity is what customers search by. Bookings start at 25 guests.',
         'Halls with a mix of covered and open areas are “Semi-outdoor”. Outdoor venues get a rain advisory before confirmed events.',
+        'Measure length along the hall from the entrance to the back wall. Approximate sizes are fine; we use them for the 3D model.',
       ],
+    },
+  },
+  {
+    id: 'bridal-suite',
+    phase: 1,
+    help: {
+      title: 'Bridal suite',
+      tips: ['A bridal suite is a private room for getting ready. It isn’t booked on its own.', 'No suite? Leave the switch off and continue.'],
     },
   },
   {
@@ -125,6 +146,30 @@ export const STEPS = [
     },
   },
   {
+    id: 'layout',
+    phase: 2,
+    help: {
+      title: 'Floor plans',
+      tips: [
+        'A floor plan is optional. A photo of a printed plan works, or a PDF from your architect (up to 10 MB).',
+        'Marking the stage, entrance and seating helps customers picture the room and places them in your 3D model.',
+        'Spots are rough: back, middle or front, and left, centre or right as you face the back wall.',
+      ],
+    },
+  },
+  {
+    id: 'walkthrough',
+    phase: 2,
+    help: {
+      title: '3D walkthroughs',
+      tips: [
+        '“Generate from dimensions” builds a simple 3D room from the size and layout you entered. Customers can turn and zoom it.',
+        'Have a real 3D scan? Upload a .glb model, or a 360° photo taken from the middle of the hall. Uploads are checked before they go live.',
+        'Already on Matterport or another 360° site? Paste the link instead.',
+      ],
+    },
+  },
+  {
     id: 'title',
     phase: 2,
     help: {
@@ -152,7 +197,8 @@ export const STEPS = [
       title: 'Menu packages',
       tips: [
         'Start from a template and change it to match your menu.',
-        'Press Enter or comma after each dish.',
+        'Put each dish in a section: press Enter or type a comma after each one. Empty sections are hidden from customers.',
+        'Use the arrows to reorder sections, or add your own, like “Live stations”.',
         'The minimum guest count applies to the package, not the hall.',
       ],
     },
@@ -177,7 +223,16 @@ export const STEPS = [
         'Slots can’t overlap and can’t run past midnight.',
         'The advance is recorded by you when the customer pays. MarkieSharkie doesn’t take payments.',
         'Customers can cancel a booking any time before the event date; your policy tells them what happens to the advance.',
+        'A custom policy is a list of rules like “30 or more days before: 100% back”. Rules can’t overlap.',
       ],
+    },
+  },
+  {
+    id: 'house-rules',
+    phase: 3,
+    help: {
+      title: 'House rules',
+      tips: ['House rules appear under “Good to know” on your listing.', 'Only list rules you enforce for every event.'],
     },
   },
   {

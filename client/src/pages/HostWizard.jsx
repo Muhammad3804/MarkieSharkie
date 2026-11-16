@@ -10,10 +10,11 @@ import { WizardContext } from '../features/host/WizardContext.js'
 import { clearPhotos } from '../features/host/photoStore.js'
 import HelpDrawer from '../features/host/HelpDrawer.jsx'
 import PhaseIntro from '../features/host/steps/PhaseIntro.jsx'
-import { EventsStep, HallsStep, LocationStep, NameStep, PinStep, VenueTypeStep } from '../features/host/steps/AboutSteps.jsx'
+import { BridalSuiteStep, DirectionsStep, EventsStep, HallsStep, LocationStep, NameStep, PinStep, VenueTypeStep } from '../features/host/steps/AboutSteps.jsx'
+import { LayoutStep, WalkthroughStep } from '../features/host/steps/HallMediaSteps.jsx'
 import { AmenitiesStep, TitleStep } from '../features/host/steps/StandOutSteps.jsx'
 import PhotosStep from '../features/host/steps/PhotosStep.jsx'
-import { CustomStep, MenusStep, RulesStep } from '../features/host/steps/PackageSteps.jsx'
+import { CustomStep, HouseRulesStep, MenusStep, RulesStep } from '../features/host/steps/PackageSteps.jsx'
 import ReviewStep from '../features/host/steps/ReviewStep.jsx'
 
 // "Become a host" listing wizard: /host/new/:step. One question per screen, autosaved to this device after every
@@ -26,16 +27,21 @@ const STEP_VIEWS = {
   name: NameStep,
   location: LocationStep,
   pin: PinStep,
+  directions: DirectionsStep,
   halls: HallsStep,
+  'bridal-suite': BridalSuiteStep,
   events: EventsStep,
   'stand-out': () => <PhaseIntro phase={2} />,
   amenities: AmenitiesStep,
   photos: PhotosStep,
+  layout: LayoutStep,
+  walkthrough: WalkthroughStep,
   title: TitleStep,
   finish: () => <PhaseIntro phase={3} />,
   menus: MenusStep,
   custom: CustomStep,
   rules: RulesStep,
+  'house-rules': HouseRulesStep,
   review: ReviewStep,
 }
 
@@ -220,7 +226,7 @@ function Wizard({ step, index, draft, saved }) {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className={`mx-auto flex w-full flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12 ${wide ? 'max-w-6xl justify-center lg:px-12' : step === 'photos' || step === 'review' ? 'max-w-[840px]' : 'max-w-[720px]'}`}
+                  className={`mx-auto flex w-full flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12 ${wide ? 'max-w-6xl justify-center lg:px-12' : ['photos', 'layout', 'walkthrough', 'menus', 'review'].includes(step) ? 'max-w-[840px]' : 'max-w-[720px]'}`}
                 >
                   {slideState.moved && <StepFocus />}
                   <View />

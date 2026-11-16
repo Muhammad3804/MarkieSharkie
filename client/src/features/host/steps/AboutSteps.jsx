@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useWizard } from '../WizardContext.js'
-import { ChoiceCard, Counter, ErrorText, SelectField, StepHeading, Switch, TextField } from '../fields.jsx'
+import { ChoiceCard, Counter, ErrorText, SelectField, StepHeading, Switch, TextArea, TextField } from '../fields.jsx'
 import { fieldId } from '../fieldStyles.js'
 import { CITIES, EVENT_TYPES, HALL_SETTINGS, PAKISTAN_BOUNDS, VENUE_CATEGORIES } from '../options.js'
-import { cityCenter, ensureCover, formatAddress, newHall } from '../draft.js'
+import { cityCenter, ensureCover, formatAddress, hallArea, newHall } from '../draft.js'
 import { deletePhotos } from '../photoStore.js'
 import HostIcon from '../icons.jsx'
 
@@ -54,6 +54,112 @@ export function NameStep() {
         maxLength={80}
         inputClassName="h-16 text-[20px]"
       />
+      <TextField
+        path="venue.hostingSince"
+        label="Hosting events since"
+        optional
+        hint="The year you started hosting events. Your listing shows how many years that is."
+        value={draft.venue.hostingSince}
+        onChange={(hostingSince) => update(setVenue({ hostingSince: hostingSince.replace(/\D/g, '').slice(0, 4) }))}
+        placeholder="e.g. 2012…"
+        inputMode="numeric"
+        className="mt-8 max-w-xs"
+      />
+    </>
+  )
+}
+
+export function DirectionsStep() {
+  const { draft, update } = useWizard()
+  const { venue } = draft
+  return (
+    <>
+      <StepHeading title="Help guests find you" subtitle="Optional. Your listing shows how far you are from a landmark, and how to get in on the day." />
+      <div className="grid gap-6">
+        <div className="grid gap-6 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <TextField
+            path="venue.landmark"
+            label="Nearest landmark"
+            optional
+            value={venue.landmark}
+            onChange={(landmark) => update(setVenue({ landmark }))}
+            maxLength={80}
+            placeholder="e.g. Clock Tower…"
+          />
+          <TextField
+            path="venue.landmarkMinutes"
+            label="Minutes by car"
+            optional
+            value={venue.landmarkMinutes}
+            onChange={(landmarkMinutes) => update(setVenue({ landmarkMinutes: landmarkMinutes.replace(/\D/g, '').slice(0, 3) }))}
+            inputMode="numeric"
+            placeholder="e.g. 15…"
+          />
+        </div>
+        {venue.landmark.trim() && /^\d+$/.test(venue.landmarkMinutes) && (
+          <p className="-mt-2 text-[14px] text-muted-warm">
+            Shows as “{venue.landmarkMinutes} min from {venue.landmark.trim()}”.
+          </p>
+        )}
+        <TextArea
+          path="venue.directions"
+          label="Getting there"
+          value={venue.directions}
+          onChange={(directions) => update(setVenue({ directions }))}
+          maxLength={500}
+          rows={4}
+          hint="Optional. Which gate to use, where drivers drop guests, and where to park."
+          placeholder="e.g. Use Gate 2 on Canal Road. Drivers can drop guests at the porch; parking is behind the hall…"
+        />
+      </div>
+    </>
+  )
+}
+
+export function BridalSuiteStep() {
+  const { draft, update } = useWizard()
+  const suite = draft.bridalSuite
+  const setSuite = (patch) => update((current) => ({ ...current, bridalSuite: { ...current.bridalSuite, ...patch } }))
+  const area = hallArea(suite)
+  return (
+    <>
+      <StepHeading title="Do you have a bridal suite?" subtitle="A private room where the bride and family get ready. It’s shown with your halls but isn’t booked on its own." />
+      <div className="rounded-3xl border border-line p-5 sm:p-7">
+        <Switch id="bridal-suite-enabled" label="We have a bridal suite" checked={suite.enabled} onChange={(enabled) => setSuite({ enabled })} />
+        {suite.enabled && (
+          <div className="mt-6 grid gap-6 border-t border-line pt-6">
+            <TextField path="bridalSuite.name" label="Name" value={suite.name} onChange={(name) => setSuite({ name })} maxLength={60} />
+            <TextField
+              path="bridalSuite.capacity"
+              label="People it fits"
+              value={suite.capacity}
+              onChange={(capacity) => setSuite({ capacity: digits(capacity).slice(0, 3) })}
+              inputMode="numeric"
+              placeholder="e.g. 20…"
+              className="max-w-xs"
+            />
+            <fieldset>
+              <legend className="mb-2 text-[15px] font-medium text-ink-strong">
+                Size <span className="font-normal text-muted-warm">(optional)</span>
+              </legend>
+              <div className="grid grid-cols-2 gap-4 sm:max-w-md">
+                <TextField path="bridalSuite.lengthFt" label="Length" suffix="ft" value={suite.lengthFt} onChange={(lengthFt) => setSuite({ lengthFt: digits(lengthFt).slice(0, 3) })} inputMode="numeric" />
+                <TextField path="bridalSuite.widthFt" label="Width" suffix="ft" value={suite.widthFt} onChange={(widthFt) => setSuite({ widthFt: digits(widthFt).slice(0, 3) })} inputMode="numeric" />
+              </div>
+              {area && <p className="mt-2 text-[14px] text-muted-warm">{area.toLocaleString('en-US')} sq ft</p>}
+            </fieldset>
+            <TextArea
+              path="bridalSuite.description"
+              label="Description"
+              value={suite.description}
+              onChange={(description) => setSuite({ description })}
+              maxLength={300}
+              rows={3}
+              hint="Optional. Mirrors, lounge seating, a private entrance…"
+            />
+          </div>
+        )}
+      </div>
     </>
   )
 }
@@ -207,13 +313,20 @@ export function HallsStep() {
     }
     const removed = halls[halls.length - 1]
     const photoIds = draft.venueImages.filter((image) => image.hallId === removed.hallId).map((image) => image.imageId)
-    if (photoIds.length && !window.confirm(`Remove ${removed.name || 'the last hall'} and its ${photoIds.length} photo${photoIds.length === 1 ? '' : 's'}?`)) return
+    const files = [
+      photoIds.length && `${photoIds.length} photo${photoIds.length === 1 ? '' : 's'}`,
+      removed.floorPlan && 'floor plan',
+      removed.walkthrough.file && '3D file',
+    ].filter(Boolean)
+    if (files.length && !window.confirm(`Remove ${removed.name || 'the last hall'} and its ${files.join(', ')}?`)) return
     update((current) => ({
       ...current,
       halls: current.halls.slice(0, -1),
       venueImages: ensureCover(current.venueImages.filter((image) => image.hallId !== removed.hallId)),
     }))
-    if (photoIds.length) deletePhotos(photoIds)
+    // Its photos, floor plan and 3D file go with it.
+    const fileIds = [...photoIds, removed.floorPlan?.fileId, removed.walkthrough.file?.fileId].filter(Boolean)
+    if (fileIds.length) deletePhotos(fileIds)
   }
 
   const setHall = (index, patch) =>
@@ -276,6 +389,34 @@ export function HallsStep() {
                 </div>
               </fieldset>
               <Switch id={`hall-ac-${hall.hallId}`} label="Air conditioned" checked={hall.hasAc} onChange={(hasAc) => setHall(index, { hasAc })} />
+              <fieldset>
+                <legend className="mb-1 text-[15px] font-medium text-ink-strong">Size</legend>
+                <p className="mb-3 text-[14px] text-muted-warm">In feet. Approximate is fine; we use it for the floor area and the 3D model.</p>
+                <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                  <TextField path={`halls.${index}.lengthFt`} label="Length" suffix="ft" value={hall.lengthFt} onChange={(lengthFt) => setHall(index, { lengthFt: digits(lengthFt).slice(0, 4) })} inputMode="numeric" inputClassName="pr-10" />
+                  <TextField path={`halls.${index}.widthFt`} label="Width" suffix="ft" value={hall.widthFt} onChange={(widthFt) => setHall(index, { widthFt: digits(widthFt).slice(0, 4) })} inputMode="numeric" inputClassName="pr-10" />
+                  <TextField path={`halls.${index}.ceilingFt`} label="Ceiling" suffix="ft" value={hall.ceilingFt} onChange={(ceilingFt) => setHall(index, { ceilingFt: digits(ceilingFt).slice(0, 3) })} inputMode="numeric" inputClassName="pr-10" />
+                </div>
+                {/* Read out when it changes, so screen reader users hear the calculated area. */}
+                <p aria-live="polite" className="mt-3 text-[15px] text-ink">
+                  {hallArea(hall) ? (
+                    <>
+                      Floor area: <strong className="font-semibold tabular-nums text-ink-strong">{hallArea(hall).toLocaleString('en-US')} sq ft</strong>
+                    </>
+                  ) : (
+                    <span className="text-muted-warm">Floor area appears once you add the length and width.</span>
+                  )}
+                </p>
+              </fieldset>
+              <TextArea
+                path={`halls.${index}.description`}
+                label="Description"
+                value={hall.description}
+                onChange={(description) => setHall(index, { description })}
+                maxLength={300}
+                rows={3}
+                hint="Optional. What the hall is best for: stage, lighting, family seating…"
+              />
             </div>
           </fieldset>
         ))}
