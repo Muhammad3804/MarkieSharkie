@@ -89,6 +89,22 @@ export async function clearPhotos() {
   await run('readwrite', (store) => store.clear())
 }
 
+// The stored files for these ids ({ id: Blob }), for submitListing to hand over before the wizard clears them.
+// Falls back to the in-memory copy when IndexedDB is unavailable; ids with no file are left out.
+export async function readPhotoFiles(imageIds) {
+  const files = {}
+  for (const id of imageIds) {
+    const blob = await run('readonly', (store) => store.get(id))
+    if (blob instanceof Blob) {
+      files[id] = blob
+    } else if (urls.has(id)) {
+      const fallback = await fetch(urls.get(id)).then((response) => response.blob()).catch(() => null)
+      if (fallback) files[id] = fallback
+    }
+  }
+  return files
+}
+
 // Load any files that aren't in memory yet (after a refresh). Missing files resolve to "missing".
 const missing = new Set()
 async function loadPhotos(imageIds) {

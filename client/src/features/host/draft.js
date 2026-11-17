@@ -243,6 +243,7 @@ export function toListingPayload(draft) {
     // UI-only, kept so nothing the host typed is lost before the columns exist.
     extras: {
       category: venue.category,
+      area: venue.area.trim(), // card subtitle ("Johar Town - Lahore"); venues.address has the full line
       headline: venue.headline.trim(),
       googleMapsUrl: venue.googleMapsUrl.trim(),
       hostingSince: venue.hostingSince,

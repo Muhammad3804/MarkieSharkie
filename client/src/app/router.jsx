@@ -4,6 +4,7 @@ import VenueDetailRoute, { AboutRoute, ExploreRoute, HostIntroRoute, HostSubmitt
 import Landing from '../pages/Landing.jsx'
 import SearchRedirect from './SearchRedirect.jsx'
 import HostResumeRedirect from './HostResumeRedirect.jsx'
+import { AdminPageRoute, AdminShellRoute } from './adminRoutes.jsx'
 
 export const router = createBrowserRouter([
   {
@@ -23,4 +24,20 @@ export const router = createBrowserRouter([
   // TODO(auth): venue_owner only, see pages/HostWizard.jsx.
   { path: '/host/new', element: <HostResumeRedirect /> },
   { path: '/host/new/:step', element: <HostWizardRoute /> },
+  // Admin dashboard, own shell. TODO(auth): RequireRole('admin'), see app/adminRoutes.jsx.
+  {
+    path: '/admin',
+    element: <AdminShellRoute />,
+    children: [
+      { index: true, element: <AdminPageRoute page="overview" /> },
+      { path: 'approvals', element: <AdminPageRoute page="approvals" /> },
+      { path: 'approvals/:id', element: <AdminPageRoute page="review" /> },
+      { path: 'images', element: <AdminPageRoute page="images" /> },
+      { path: 'venues', element: <AdminPageRoute page="venues" /> },
+      { path: 'users', element: <AdminPageRoute page="users" /> },
+      { path: 'reports', element: <AdminPageRoute page="reports" /> },
+      { path: 'audit', element: <AdminPageRoute page="audit" /> },
+      { path: 'settings', element: <AdminPageRoute page="settings" /> },
+    ],
+  },
 ])

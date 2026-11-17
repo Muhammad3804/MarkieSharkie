@@ -9,6 +9,7 @@ import chevronDownIcon from '../../assets/icons/venue/chevron-down.svg'
 import shieldCheckIcon from '../../assets/icons/venue/shield-check.svg'
 import headphonesIcon from '../../assets/icons/venue/headphones.svg'
 import flagIcon from '../../assets/icons/venue/flag.svg'
+import ReportListingDialog from './ReportListingDialog.jsx'
 
 const fieldBox =
   'relative flex items-center justify-between px-3.5 py-2.5 focus-within:bg-surface has-[select:focus-visible]:outline-2 has-[select:focus-visible]:-outline-offset-2 has-[select:focus-visible]:outline-primary'
@@ -41,6 +42,7 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
   // The message is tied to the date + slot it was written for, so it disappears once either changes.
   const [status, setStatus] = useState({ key: '', message: '' })
   const [reported, setReported] = useState(false)
+  const [reporting, setReporting] = useState(false)
   // The guest limit comes from the selected hall, so changing hall revalidates the count automatically.
   const hall = venue.halls.find((h) => h.hallId === booking.hallId) ?? venue.halls[0]
   const menu = venue.menuPackages.find((m) => m.menuId === booking.menuId) ?? venue.menuPackages[0] ?? { menuId: '', name: 'No menu', pricePerHead: '0.00' }
@@ -148,12 +150,13 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
       </div>
 
       <div className="flex flex-col items-center gap-1">
-        <button type="button" onClick={() => setReported(true)} disabled={reported} className="flex items-center justify-center gap-2 text-[12px] text-muted-warm underline hover:text-ink-strong focus-visible:outline-2 focus-visible:outline-primary disabled:no-underline disabled:hover:text-muted-warm">
+        <button type="button" onClick={() => setReporting(true)} disabled={reported} className="flex items-center justify-center gap-2 text-[12px] text-muted-warm underline hover:text-ink-strong focus-visible:outline-2 focus-visible:outline-primary disabled:no-underline disabled:hover:text-muted-warm">
           <img src={flagIcon} alt="" width="15" height="15" />
-          Report this listing
+          {reported ? 'Listing reported' : 'Report this listing'}
         </button>
-        <p role="status" className="text-[12px] text-muted-warm empty:hidden">{reported ? 'Thanks. Reporting isn’t connected yet, so nothing was sent.' : ''}</p>
+        <p role="status" className="text-[12px] text-muted-warm empty:hidden">{reported ? 'Thanks. Our team will look into it.' : ''}</p>
       </div>
+      <ReportListingDialog venue={venue} open={reporting} onClose={() => setReporting(false)} onSent={() => setReported(true)} />
     </div>
   )
 }

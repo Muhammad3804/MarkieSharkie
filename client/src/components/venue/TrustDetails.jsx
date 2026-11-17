@@ -9,7 +9,9 @@ export default function TrustDetails({ venue }) {
   const items = [
     [badgeCheckIcon, 'Verified venue and management', 'MarkieSharkie has reviewed ownership, event spaces and venue photos before listing.'],
     [calendarCheckIcon, `Your slot is held for ${SLOT_HOLD_MINUTES} minutes`, 'Nobody else can book your chosen slot while you confirm your event details.'],
-    [messagesIcon, 'Exceptional planning support', `Recent hosts rated the team ${venue.ratingCategories[3].score}/5 for communication and coordination.`],
+    venue.ratingCategories.length > 3
+      ? [messagesIcon, 'Exceptional planning support', `Recent hosts rated the team ${venue.ratingCategories[3].score}/5 for communication and coordination.`]
+      : [messagesIcon, 'Talk to the venue team', 'Send an inquiry with your date and guest count; the team replies through MarkieSharkie.'],
   ]
   return (
     <ul className="flex flex-col gap-[22px]">

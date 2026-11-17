@@ -1,4 +1,6 @@
-import { hydrateDraft, toListingPayload } from '../features/host/draft.js'
+import { hydrateDraft } from '../features/host/draft.js'
+import { readPhotoFiles, savePhoto } from '../features/host/photoStore.js'
+import { createListing, getListingRecord, readListingFiles } from './listings.js'
 
 // Host listing API, stubbed until the server exists. Drafts live in localStorage for now; later:
 //   saveDraft     -> PUT  /api/owner/venue-drafts/current
@@ -36,17 +38,24 @@ export function clearDraft() {
   }
 }
 
-// Resolves with the created listing. The real endpoint creates the venue as approval_status 'pending'; an admin
-// approves or rejects it with a reason (REQ-7) before customers can see it.
+// Resolves with the created listing. The listing goes into the mock listings store (api/listings.js) as
+// approval_status 'pending'; an admin approves, rejects with a reason (REQ-7) or asks for changes before customers
+// can see it. The photo, floor plan and walkthrough files are copied out of the wizard's IndexedDB first, because
+// the wizard clears that store once this resolves.
 export async function submitListing(draft) {
-  const payload = toListingPayload(draft)
-  await new Promise((resolve) => setTimeout(resolve, 700))
+  const fileIds = [
+    ...draft.venueImages.map((image) => image.imageId),
+    ...draft.halls.flatMap((hall) => [hall.floorPlan?.fileId, hall.walkthrough.mode === 'upload' ? hall.walkthrough.file?.fileId : null]).filter(Boolean),
+  ]
+  const files = await readPhotoFiles(fileIds)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const listing = await createListing({ draft, files })
   const result = {
-    venueId: `draft-${Date.now().toString(36)}`,
-    name: payload.venue.name,
-    city: payload.venue.city,
-    approvalStatus: 'pending',
-    submittedAt: new Date().toISOString(),
+    venueId: listing.id,
+    name: listing.payload.venue.name,
+    city: listing.payload.venue.city,
+    approvalStatus: listing.status,
+    submittedAt: listing.submittedAt,
   }
   try {
     localStorage.setItem(SUBMISSION_KEY, JSON.stringify(result))
@@ -54,6 +63,24 @@ export async function submitListing(draft) {
     // the success screen falls back to generic text
   }
   return result
+}
+
+// Live approval status for the "Listing submitted" screen: { status, rejectionReason, changesNote, decidedAt }
+// or null when the listing is gone (e.g. demo data was reset). Later: GET /api/owner/venues/:id.
+export function getSubmissionStatus(venueId) {
+  const listing = getListingRecord(venueId)
+  if (!listing) return null
+  return { status: listing.status, rejectionReason: listing.rejectionReason, changesNote: listing.changesNote, decidedAt: listing.decidedAt, isActive: listing.isActive }
+}
+
+// "Edit and resubmit" after the admin asked for changes: puts the submitted draft and its files back into the
+// wizard. Submitting it again updates the same listing (back to 'pending') instead of creating a new one.
+export async function reopenListingForChanges(venueId) {
+  const listing = getListingRecord(venueId)
+  if (!listing || listing.status !== 'changes_requested') return false
+  const files = await readListingFiles(listing)
+  await Promise.all(Object.entries(files).map(([id, blob]) => savePhoto(id, blob)))
+  return saveDraft({ ...listing.draft, listingId: listing.id, lastStep: 'review', updatedAt: new Date().toISOString() })
 }
 
 export function loadLastSubmission() {

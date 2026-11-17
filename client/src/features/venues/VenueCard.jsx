@@ -38,10 +38,14 @@ function VenueCard({ venue, eager = false, fluid = false, onActiveChange }) {
             <h3 className="truncate text-[20px] font-semibold text-ink">{venue.name}</h3>
             <p className="flex shrink-0 items-center gap-[5px] text-[15px] text-ink">
               <img src={starIcon} alt="" width="16" height="16" />
-              <span>
-                {venue.rating.toFixed(2)} <span className="sr-only">out of 5,</span>({venue.reviewCount}
-                <span className="sr-only"> reviews</span>)
-              </span>
+              {venue.reviewCount === 0 ? (
+                <span>New<span className="sr-only"> venue, no reviews yet</span></span>
+              ) : (
+                <span>
+                  {venue.rating.toFixed(2)} <span className="sr-only">out of 5,</span>({venue.reviewCount}
+                  <span className="sr-only"> reviews</span>)
+                </span>
+              )}
             </p>
           </div>
           <p className={`text-[15px] text-muted ${fluid ? 'truncate' : 'max-w-[299px]'}`}>

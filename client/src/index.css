@@ -28,6 +28,15 @@
   --color-success: #067647;
   --color-pending: #8a5300; /* "Pending verification" badge, 6:1 on pending-bg */
   --color-pending-bg: #fef6e7;
+  /* Admin status badges (text colours are 4.5:1+ on their own background) */
+  --color-success-bg: #ecfdf3;
+  --color-danger-bg: #fef3f2;
+  --color-info: #1d4ed8;
+  --color-info-bg: #eff4ff;
+  --color-app: #f8f7f6; /* admin page background, one step off white */
+  /* Admin chart series (validated: lightness band, CVD separation, 3:1 vs white) */
+  --color-chart-submitted: #b0405c;
+  --color-chart-approved: #b8862e;
 
   --shadow-card: 0px 8px 24px 0px rgba(41, 28, 31, 0.14);
   --shadow-search: 0px 4px 14.9px 0px rgba(31, 20, 23, 0.15);
@@ -41,6 +50,12 @@
 
   /* Soft maroon ring that pulses out from the AI launcher until the chat is first opened. */
   --animate-glow: glow 2.2s ease-out infinite;
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      translate: 0 8px;
+    }
+  }
   @keyframes glow {
     0% {
       box-shadow: 0 0 0 0 rgb(122 23 49 / 0.45);

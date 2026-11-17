@@ -21,7 +21,7 @@ function popupContent(venue) {
   link.className = 'venue-popup'
   const img = Object.assign(document.createElement('img'), { src: venue.image, alt: '', width: 240, height: 150, loading: 'lazy' })
   const name = Object.assign(document.createElement('strong'), { textContent: venue.name })
-  const meta = Object.assign(document.createElement('span'), { textContent: `★ ${venue.rating.toFixed(2)} · ${venue.city}` })
+  const meta = Object.assign(document.createElement('span'), { textContent: `${venue.reviewCount ? `★ ${venue.rating.toFixed(2)}` : 'New'} · ${venue.city}` })
   const price = Object.assign(document.createElement('span'), { textContent: `${formatPKR(venue.priceFrom)} per guest` })
   link.append(img, name, meta, price)
   return link

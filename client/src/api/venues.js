@@ -1,22 +1,42 @@
 import { getAllMockVenues, getMockVenue, landingSections } from '../features/venues/mockVenues.js'
 import { CAPACITY_OPTIONS, PAGE_SIZE } from '../features/explore/filters.js'
 import { toPaisa } from '../lib/money.js'
+import { getListingVenue, getPublicListingVenues, isVenueSuspended } from './listings.js'
 
-// Venues API. Backed by mock data until the server exists; replace the body with
-// GET /api/venues/:id (404 -> null) and keep the same return shape.
-export async function getVenueById(id) {
-  return getMockVenue(id)
+// Venues API. Backed by the mock catalogue (mockVenues.js) plus host listings an admin approved (api/listings.js),
+// until the server exists. Suspended venues (admin, REQ-47/48) and listings that aren't approved never show here;
+// the server does the same with `approval_status = 'approved' AND is_active`.
+
+// The full mock catalogue, suspended ones included (admin "All venues" reads this through api/admin.js).
+export function listMockCatalog() {
+  return getAllMockVenues()
 }
 
-// Landing page rows ({ id, title, venues: card[] }[]). Replace the body with GET /api/venues/landing later.
+const visibleMockVenues = () => getAllMockVenues().filter((venue) => !isVenueSuspended(venue.id))
+async function allPublicVenues() {
+  return [...visibleMockVenues(), ...(await getPublicListingVenues())]
+}
+
+// Replace the body with GET /api/venues/:id (404 -> null) and keep the same return shape.
+export async function getVenueById(id) {
+  if (isVenueSuspended(id)) return null
+  return getMockVenue(id) ?? getListingVenue(id, { publicOnly: true })
+}
+
+// Landing page rows ({ id, title, venues: card[] }[]). Newly approved listings get their own first row.
+// Replace the body with GET /api/venues/landing later.
 export async function getLandingSections() {
-  return landingSections
+  const fresh = await getPublicListingVenues()
+  const rows = landingSections
+    .map((section) => ({ ...section, venues: section.venues.filter((venue) => !isVenueSuspended(venue.id)) }))
+    .filter((section) => section.venues.length > 0)
+  return fresh.length ? [{ id: 'new', title: 'New on MarkieSharkie', venues: fresh.map(toResult) }, ...rows] : rows
 }
 
 // Headline numbers for the About page: { venueCount, cityCount, hallCount, averageRating } (rating to one
 // decimal, null when nothing is rated). Replace the body with GET /api/stats later (approved venues only).
 export async function getPlatformStats() {
-  const all = getAllMockVenues()
+  const all = await allPublicVenues()
   const rated = all.filter((venue) => venue.reviewCount > 0)
   const ratingTotal = rated.reduce((sum, venue) => sum + venue.rating, 0)
   return {
@@ -52,13 +72,14 @@ function toResult(venue) {
 // { venues, total, page, pageCount, pageSize, priceRange: { min, max } (rupees, all venues), sectionTitle }.
 // Replace the body with GET /api/venues?<toSearchParams(filters)> later; the server does the same filtering in SQL.
 export async function searchVenues(filters) {
-  const all = getAllMockVenues()
+  const fresh = await getPublicListingVenues()
+  const all = [...visibleMockVenues(), ...fresh]
   const city = lower(filters.city)
   const capacity = CAPACITY_OPTIONS.find((c) => c.value === filters.capacity) ?? CAPACITY_OPTIONS[0]
   const minPaisa = filters.priceMin === null ? null : filters.priceMin * 100
   const maxPaisa = filters.priceMax === null ? null : filters.priceMax * 100
   const minRating = filters.rating ? Number(filters.rating) : 0
-  const inSection = filters.section ? sectionVenueIds.get(filters.section) : null
+  const inSection = filters.section === 'new' ? new Set(fresh.map((venue) => venue.id)) : filters.section ? sectionVenueIds.get(filters.section) : null
 
   const matches = all.filter((venue) => {
     const price = toPaisa(venue.priceFrom)
@@ -92,6 +113,6 @@ export async function searchVenues(filters) {
     pageCount,
     pageSize: PAGE_SIZE,
     priceRange: { min: Math.floor(Math.min(...prices) / 100), max: Math.ceil(Math.max(...prices) / 100) },
-    sectionTitle: landingSections.find((s) => s.id === filters.section)?.title ?? '',
+    sectionTitle: filters.section === 'new' ? 'New on MarkieSharkie' : (landingSections.find((s) => s.id === filters.section)?.title ?? ''),
   }
 }

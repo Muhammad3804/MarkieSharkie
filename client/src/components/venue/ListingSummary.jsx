@@ -6,7 +6,7 @@ export default function ListingSummary({ venue, title, subtitle, showStats = tru
     [venue.capacity.toLocaleString('en-US'), 'seated guests'],
     [venue.halls.length, 'event spaces'],
     [venue.parkingSpaces, 'parking spaces'],
-    [`${venue.host.yearsHosting} yrs`, 'hosting events'],
+    venue.host.yearsHosting ? [`${venue.host.yearsHosting} yrs`, 'hosting events'] : ['New', 'on MarkieSharkie'],
   ]
   return (
     <div className="flex flex-col gap-[18px]">
@@ -18,8 +18,14 @@ export default function ListingSummary({ venue, title, subtitle, showStats = tru
         {showStats && (
           <p className="flex shrink-0 items-center gap-1.5">
             <img src={starIcon} alt="" width="17" height="17" />
-            <span className="text-[15px] font-semibold text-ink-strong">{venue.avgRating.toFixed(2)}</span>
-            <span className="text-[13px] text-muted-warm">· {venue.reviewCount} reviews</span>
+            {venue.reviewCount === 0 ? (
+              <span className="text-[15px] font-semibold text-ink-strong">New · no reviews yet</span>
+            ) : (
+              <>
+                <span className="text-[15px] font-semibold text-ink-strong">{venue.avgRating.toFixed(2)}</span>
+                <span className="text-[13px] text-muted-warm">· {venue.reviewCount} reviews</span>
+              </>
+            )}
           </p>
         )}
       </div>

@@ -9,7 +9,7 @@ export default function HostRow({ venue }) {
       <Avatar name={venue.name} size={52} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="text-[17px] font-semibold text-ink-strong">Hosted by the {host.name}</p>
-        <p className="text-[13px] text-muted-warm">Typically replies within {host.replyMinutes} minutes · Identity and venue verified</p>
+        <p className="text-[13px] text-muted-warm">{host.replyMinutes ? `Typically replies within ${host.replyMinutes} minutes · ` : ''}Identity and venue verified</p>
       </div>
       {host.isTopHost && (
         <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-blush px-3 py-[7px] text-[12px] font-semibold text-primary sm:flex">

@@ -1,0 +1,255 @@
+import { emptyDraft, newHall, newMenuPackage, newAddOn } from '../host/draft.js'
+import { CITIES, MENU_TEMPLATES } from '../host/options.js'
+
+// Demo listings for the admin queue, so the dashboard isn't empty on first load. Each one is built as a real
+// wizard draft and goes through the same toListingPayload() as a host's submission (api/listings.js), so seeded
+// and submitted listings look the same everywhere. Photos are bundled gallery images (asset keys), not uploads.
+const SEEDS = [
+  {
+    id: 'seed-shalimar-lawn',
+    status: 'pending',
+    ageHours: 3 * 24 + 4,
+    owner: { name: 'Imran Siddiqui', email: 'imran.siddiqui@example.pk', phone: '+923001234561' },
+    category: 'marquee',
+    name: 'Shalimar Lawn & Marquee',
+    headline: 'Lantern-lit marquee and lawn on Canal Road',
+    city: 'Faisalabad',
+    area: 'Canal Road',
+    street: 'Plot 14, Canal Expressway',
+    hostingSince: '2016',
+    landmark: 'Canal Road flyover',
+    halls: [
+      { name: 'Marquee', capacity: '800', setting: 'outdoor', lengthFt: '160', widthFt: '90', ceilingFt: '22' },
+      { name: 'Lawn', capacity: '400', setting: 'outdoor', lengthFt: '120', widthFt: '80', ceilingFt: '' },
+    ],
+    events: ['wedding', 'mehndi', 'barat', 'walima'],
+    facilities: ['generator', 'parking', 'bridal', 'washrooms', 'catering', 'lighting', 'cctv'],
+    menus: [0, 1],
+    photos: ['hall-1', 'stage-1', 'hall-2', 'entrance-1', 'parking-1', 'hallway-1', 'stage-2'],
+  },
+  {
+    id: 'seed-noor-mahal',
+    status: 'pending',
+    ageHours: 26,
+    owner: { name: 'Sana Tariq', email: 'sana.tariq@example.pk', phone: '+923211234562' },
+    category: 'banquet_hall',
+    name: 'Noor Mahal Banquet',
+    headline: 'Chandelier ballroom for barat and walima nights',
+    city: 'Lahore',
+    area: 'Johar Town',
+    street: '88-B, Main Boulevard',
+    hostingSince: '2012',
+    landmark: 'Emporium Mall',
+    halls: [{ name: 'Grand Hall', capacity: '650', setting: 'indoor', lengthFt: '140', widthFt: '85', ceilingFt: '20' }],
+    events: ['wedding', 'barat', 'walima', 'engagement', 'corporate'],
+    facilities: ['ac', 'generator', 'valet', 'bridal', 'prayer', 'stage', 'catering', 'sound', 'security'],
+    menus: [0, 1, 2],
+    photos: ['hall-3', 'stage-3', 'bridal-1', 'entrance-2', 'parking-2', 'bathroom-1'],
+  },
+  {
+    id: 'seed-margalla-farmhouse',
+    status: 'pending',
+    ageHours: 5 * 24,
+    owner: { name: 'Bilal Ahmed', email: 'bilal.ahmed@example.pk', phone: '+923331234563' },
+    category: 'farmhouse',
+    name: 'Margalla View Farmhouse',
+    headline: 'Private farmhouse lawns with a view of the hills',
+    city: 'Islamabad',
+    area: 'Park Road',
+    street: 'Farm 7, Chak Shahzad',
+    hostingSince: '2019',
+    landmark: 'Lake View Park',
+    halls: [{ name: 'Front lawn', capacity: '350', setting: 'outdoor', lengthFt: '110', widthFt: '70', ceilingFt: '' }],
+    events: ['mehndi', 'engagement', 'birthday', 'other'],
+    facilities: ['generator', 'parking', 'washrooms', 'kitchen', 'decor', 'lighting'],
+    menus: [0],
+    photos: ['entrance-3', 'hall-4', 'stage-4', 'parking-3', 'hallway-2'],
+  },
+  {
+    id: 'seed-chenab-riverside',
+    status: 'pending',
+    ageHours: 9 * 24 + 6,
+    owner: { name: 'Usman Ghani', email: 'usman.ghani@example.pk', phone: '+923451234564' },
+    category: 'marquee',
+    name: 'Chenab Riverside Marquee',
+    headline: 'Riverside marquee for big family weddings',
+    city: 'Chiniot',
+    area: 'Sargodha Road',
+    street: 'Near Chenab Bridge',
+    hostingSince: '2014',
+    landmark: 'Chenab Bridge',
+    halls: [
+      { name: 'Main marquee', capacity: '1000', setting: 'outdoor', lengthFt: '180', widthFt: '100', ceilingFt: '24' },
+      { name: 'Family hall', capacity: '300', setting: 'indoor', lengthFt: '90', widthFt: '60', ceilingFt: '16' },
+    ],
+    events: ['wedding', 'barat', 'walima', 'religious'],
+    facilities: ['generator', 'parking', 'prayer', 'washrooms', 'catering', 'security'],
+    menus: [0, 2],
+    photos: ['hall-2', 'stage-2', 'hall-1', 'entrance-4', 'parking-4', 'bridal-2'],
+  },
+  {
+    id: 'seed-rooftop-21',
+    status: 'pending',
+    ageHours: 2,
+    owner: { name: 'Hira Javed', email: 'hira.javed@example.pk', phone: '+923121234565' },
+    category: 'rooftop',
+    name: 'Rooftop 21',
+    headline: 'City-view rooftop for engagements and corporate dinners',
+    city: 'Lahore',
+    area: 'Gulberg III',
+    street: '21st floor, MM Alam Road',
+    hostingSince: '2022',
+    landmark: 'Liberty Market',
+    halls: [{ name: 'Sky deck', capacity: '200', setting: 'semi_outdoor', lengthFt: '90', widthFt: '50', ceilingFt: '12' }],
+    events: ['engagement', 'birthday', 'corporate'],
+    facilities: ['ac', 'generator', 'valet', 'washrooms', 'sound', 'lighting', 'cctv', 'fire'],
+    menus: [1],
+    photos: ['hallway-3', 'hall-3', 'stage-1', 'entrance-1', 'hallway-4'],
+  },
+  {
+    id: 'seed-al-rehman',
+    status: 'changes_requested',
+    ageHours: 12 * 24,
+    decidedHoursAgo: 10 * 24,
+    changesNote: 'Two stage photos look like stock images. Please upload photos of your own stage, and add the parking capacity.',
+    owner: { name: 'Faisal Rehman', email: 'faisal.rehman@example.pk', phone: '+923061234566' },
+    category: 'banquet_hall',
+    name: 'Al-Rehman Banquet',
+    headline: 'Family banquet hall near Bosan Road',
+    city: 'Multan',
+    area: 'Bosan Road',
+    street: '12 Gulgasht Colony',
+    hostingSince: '2010',
+    landmark: 'Bahauddin Zakariya University',
+    halls: [{ name: 'Hall A', capacity: '500', setting: 'indoor', lengthFt: '120', widthFt: '70', ceilingFt: '18' }],
+    events: ['wedding', 'walima', 'engagement'],
+    facilities: ['ac', 'generator', 'parking', 'prayer', 'catering'],
+    menus: [0],
+    photos: ['hall-4', 'stage-3', 'stage-4', 'entrance-2', 'parking-1'],
+  },
+  {
+    id: 'seed-gold-crest',
+    status: 'rejected',
+    ageHours: 20 * 24,
+    decidedHoursAgo: 18 * 24,
+    rejectionReason: 'We couldn’t verify that this venue exists at the address given, and the photos match another listing. You can submit a new listing with your own photos.',
+    owner: { name: 'Kamran Butt', email: 'kamran.butt@example.pk', phone: '+923151234567' },
+    category: 'marquee',
+    name: 'Gold Crest Marquee',
+    headline: 'Marquee on Daska Road',
+    city: 'Sialkot',
+    area: 'Daska Road',
+    street: 'Daska Road',
+    hostingSince: '',
+    landmark: '',
+    halls: [{ name: 'Marquee', capacity: '600', setting: 'outdoor', lengthFt: '140', widthFt: '80', ceilingFt: '20' }],
+    events: ['wedding', 'mehndi'],
+    facilities: ['generator', 'parking'],
+    menus: [0],
+    photos: ['hall-1', 'stage-1', 'entrance-3', 'parking-2', 'hallway-1'],
+  },
+  {
+    id: 'seed-nishat-banquet',
+    status: 'approved',
+    ageHours: 16 * 24,
+    decidedHoursAgo: 15 * 24,
+    owner: { name: 'Ayesha Nadeem', email: 'ayesha.nadeem@example.pk', phone: '+923091234568' },
+    category: 'banquet_hall',
+    name: 'Nishat Banquet Hall',
+    headline: 'Two-hall banquet on Murree Road',
+    city: 'Rawalpindi',
+    area: 'Satellite Town',
+    street: 'Murree Road, Block C',
+    hostingSince: '2015',
+    landmark: 'Committee Chowk',
+    halls: [
+      { name: 'Nishat Hall', capacity: '700', setting: 'indoor', lengthFt: '150', widthFt: '85', ceilingFt: '20' },
+      { name: 'Rose Hall', capacity: '300', setting: 'indoor', lengthFt: '90', widthFt: '60', ceilingFt: '16' },
+    ],
+    events: ['wedding', 'barat', 'walima', 'engagement', 'corporate'],
+    facilities: ['ac', 'generator', 'valet', 'bridal', 'prayer', 'washrooms', 'stage', 'catering', 'sound', 'security'],
+    menus: [0, 1, 2],
+    photos: ['hall-2', 'stage-2', 'hall-3', 'entrance-4', 'parking-3', 'bridal-3', 'bathroom-2', 'hallway-2'],
+  },
+]
+
+const PHOTO_CATEGORY = { hall: 'main_hall', stage: 'stage', bridal: 'bridal_room', bathroom: 'washrooms', entrance: 'entrance', parking: 'parking', hallway: 'hallway' }
+const VENUE_WIDE = new Set(['entrance', 'parking', 'hallway'])
+
+function buildDraft(seed) {
+  const draft = emptyDraft()
+  const center = CITIES.find((c) => c.value === seed.city)
+  // Small fixed offset from the city centre, so seeded pins don't sit on the exact centre.
+  const offset = (seed.id.length % 7) * 0.004
+  const halls = seed.halls.map((spec, index) => ({
+    ...newHall(index),
+    hallId: `${seed.id}-hall-${index + 1}`,
+    ...spec,
+    standingCapacity: String(Math.round((Number(spec.capacity) * 1.3) / 50) * 50),
+    description: `${spec.name} at ${seed.name}, seating up to ${spec.capacity} guests.`,
+    floorPlan: index === 0 ? { fileId: `${seed.id}-plan-1`, fileName: 'floor-plan.webp', type: 'image/webp', size: 180000 } : null,
+    zones: index === 0 ? { stage: 1, entrance: 7, seating: 4 } : { stage: null, entrance: null, seating: null },
+    walkthrough: { mode: spec.ceilingFt ? 'generate' : 'skip', file: null, url: '' },
+  }))
+  const venueImages = seed.photos.map((asset, index) => {
+    const kind = asset.split('-')[0]
+    return {
+      imageId: `${seed.id}-img-${index + 1}`,
+      hallId: VENUE_WIDE.has(kind) ? null : halls[index % halls.length].hallId,
+      category: PHOTO_CATEGORY[kind],
+      fileName: `${asset}.jpg`,
+      size: 900000 + index * 37000,
+      type: 'image/jpeg',
+      isCover: index === 0,
+    }
+  })
+  return {
+    ...draft,
+    lastStep: 'review',
+    venue: {
+      ...draft.venue,
+      category: seed.category,
+      name: seed.name,
+      city: seed.city,
+      street: seed.street,
+      area: seed.area,
+      lat: center ? +(center.lat + offset).toFixed(5) : null,
+      lng: center ? +(center.lng - offset).toFixed(5) : null,
+      supportedEvents: seed.events,
+      facilities: seed.facilities,
+      headline: seed.headline,
+      description: `${seed.name} is a ${seed.category.replace('_', ' ')} in ${seed.area}, ${seed.city}, with ${halls.length === 1 ? 'one event space' : `${halls.length} event spaces`} for up to ${Math.max(...halls.map((h) => Number(h.capacity)))} guests. In-house team for catering, seating and lighting.`,
+      hostingSince: seed.hostingSince,
+      landmark: seed.landmark,
+      landmarkMinutes: seed.landmark ? '10' : '',
+      directions: seed.landmark ? `Take ${seed.area} towards ${seed.landmark}; the entrance is on the left with parking at the back.` : '',
+      parkingSpaces: seed.status === 'changes_requested' ? '' : '120',
+      houseRules: ['outside_photographers', 'family_seating', 'sound_curfew'],
+    },
+    halls,
+    venueImages,
+    menuPackages: seed.menus.map((index) => ({ ...newMenuPackage(MENU_TEMPLATES[index]), menuId: `${seed.id}-menu-${index + 1}` })),
+    addOns: [{ ...newAddOn('sound_system'), addOnId: `${seed.id}-addon-1`, name: 'DJ with sound system', description: 'Four hours of music', price: '25000' }],
+    bookingRules: { ...draft.bookingRules, cancellationPolicy: 'moderate' },
+  }
+}
+
+// [{ id, status, submittedAt, decidedAt, owner, draft, sources: { fileId: assetKey }, rejectionReason, changesNote }]
+export function buildSeedListings(now = Date.now()) {
+  return SEEDS.map((seed) => {
+    const draft = buildDraft(seed)
+    const sources = Object.fromEntries(seed.photos.map((asset, index) => [`${seed.id}-img-${index + 1}`, asset]))
+    sources[`${seed.id}-plan-1`] = `floorplan-${(seed.id.length % 3) + 1}`
+    return {
+      id: seed.id,
+      status: seed.status,
+      submittedAt: new Date(now - seed.ageHours * 3600000).toISOString(),
+      decidedAt: seed.decidedHoursAgo ? new Date(now - seed.decidedHoursAgo * 3600000).toISOString() : null,
+      owner: seed.owner,
+      draft,
+      sources,
+      rejectionReason: seed.rejectionReason ?? '',
+      changesNote: seed.changesNote ?? '',
+    }
+  })
+}
