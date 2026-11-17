@@ -5,7 +5,7 @@ next. Written for teammates. For rules and decisions, read `CLAUDE.md` and `docs
 here" map.
 
 **The short version:** the public website (home, explore, venue page, about, become a host) is built and looks real, but
-it all runs on mock data in the browser. There is **no backend yet**: no `server/` folder, no API, no login, and the
+it all runs on mock data in the browser. There is **no backend yet**: no `server/` folder, no API, no real login (a browser mock), and the
 database schema has never been run against a real Postgres.
 
 ---
@@ -127,6 +127,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `components/venue/AvailabilityCalendar.jsx` | Live two-month calendar (per-slot dots, legend, per-hall day panel), built on `CalendarMonth.jsx` (ARIA grid). | `VenueDetail` |
 | `pages/BookingFlow.jsx` + `features/booking/` | Booking flow `/venues/:id/book/:step`: hold timer, 5 steps, confirmation; draft, pricing, hold helpers. | `api/bookings.js` |
 | `pages/MyBookings.jsx` | `/bookings`: status badges, cancel with refund preview, dev-only owner actions. | `api/bookings.js` |
+| `pages/InvitationBuilder.jsx`, `pages/GuestInvitation.jsx` + `features/invitations/` | QR invitation builder `/bookings/:id/invite/:step` (4 card designs, live preview, QR + share) and the public guest page `/invite/:id` with RSVP. `InvitationCard` draws all 4 designs. | `api/invitations.js` |
 | `lib/booking.js` | `SLOT_HOLD_MINUTES = 10`, `MIN_GUESTS = 25`, guest-count check, slot presets. | sidebar |
 | `lib/money.js`, `lib/format.js` | Money as integer paisa (`Rs. 187,750`), dates/times in Pakistan time. | everywhere |
 | `db/schema.sql` (`time_slots`, `bookings`, ...) | The real double-booking protection lives here (exclusion constraint + one active booking per slot). | future server |
@@ -169,8 +170,8 @@ covers it. **Not started** = nothing. For the **Database** column, "Done*" means
 | # | Feature (REQ) | Frontend | Backend | Database |
 |---|---|---|---|---|
 | 0 | Project setup (Phase 0) | Partial: Vite, React, Tailwind, router, tokens; no PWA, no role layouts, no TanStack Query/Socket.io | Not started | Partial: `schema.sql` written; no migrations, Docker, seed |
-| 1 | Register / login / lockout / profile (REQ-1, 2, 4) | Not started | Not started | Done* |
-| 2 | Roles and permissions (REQ-3) | Not started (one `TODO(auth)` on the wizard) | Not started | Done* |
+| 1 | Register / login / lockout / profile (REQ-1, 2, 4) | Partial (login modal on the mock `api/auth.js`: email or mobile + password, signup, 15-min lockout, reset by code, dummy Google / Apple; no roles at signup, no inactivity timeout, no profile; srs-alignment #22) | Not started | Done* |
+| 2 | Roles and permissions (REQ-3) | Not started (`RequireAuth` guards logged-in routes; no roles, so no `RequireRole` yet) | Not started | Done* |
 | 3 | Owner creates a venue listing (REQ-5) | Partial: full 21-screen wizard, autosave, validation; submit is fake | Not started | Partial: many wizard fields have no columns yet (hall size, zones, house rules...) |
 | 4 | Menus, packages, add-ons (REQ-6) | Partial: in the wizard; venue page shows menus, not add-ons | Not started | Done* |
 | 5 | Admin approves/rejects venues (REQ-7) | Partial: `/admin` approvals + review page on mock stores | Not started | Done* |
@@ -187,7 +188,7 @@ covers it. **Not started** = nothing. For the **Database** column, "Done*" means
 | 16 | Add-ons + menu on a booking, totals (REQ-34, 35) | Partial: add-ons step, menu × guests (min guests) + hall + add-ons in paisa | Not started | Done* |
 | 17 | AI chatbot with RAG (REQ-27, 28) | Partial: chat UI only, no replies | Not started | Done* |
 | 18 | Decorators + AI decor previews (REQ-29 to 33) | Not started | Not started | Done* |
-| 19 | Invitations, WhatsApp RSVP, QR check-in (REQ-36 to 41) | Not started | Not started | Done* |
+| 19 | Invitations, WhatsApp RSVP, QR check-in (REQ-36 to 41) | Partial: invitation builder + QR + guest page + yes/no RSVP with party size + host summary (mock); no WhatsApp sending, no check-in QR | Not started | Done* |
 | 20 | Reviews (REQ-42 to 44) | Partial: reviews display on mock data; can't write one | Not started | Done* |
 | 21 | Notifications (REQ-45) | Not started | Not started | Done* |
 | 22 | Weather advisory (REQ-46) | Not started | Not started | Done* |
@@ -228,6 +229,7 @@ Extras we built that aren't in the SRS: About page, wishlist hearts, Explore map
 | `api/bookings.js` | Slots (per hall), holds, booking requests, cancels and owner decisions in **localStorage** `markiesharkie:bookings`; seeded booked slots from `bookedDates`; demo customer; `navigator.locks` instead of `FOR UPDATE` | `/api/venues/:id/slots`, `/api/venues/:id/slots/:slotId/hold`, `/api/bookings`, owner booking endpoints + Socket.io `slot:updated` |
 | `features/booking/draft.js` | Booking draft in **localStorage** `markiesharkie:booking-drafts`, hold ref per tab in **sessionStorage** | Client-only draft is fine; the hold comes from the API |
 | `pages/MyBookings.jsx` | "Owner (dev only)" accept / reject / record advance buttons | Owner dashboard (`/owner`) |
+| `api/invitations.js` | Invitations, self-registered guests and RSVPs in **localStorage** `markiesharkie:invitations`; card carried in the link's `#c=` hash; demo customer | `POST /bookings/:id/invitation`, `GET /invitations/:id/rsvp-summary`, `GET /i/:token`, `POST /i/:token/rsvp` |
 | `components/venue/BookingSidebar.jsx` | "Report this listing" goes to the admin mock store | Report endpoint |
 | `components/venue/ReviewsSection.jsx` | Mock reviews and the 6 rating categories (categories aren't in the ERD) | Reviews API + Google reviews adapter |
 | `lib/booking.js` | `SLOT_PRESETS` (Lunch/Evening) hard-coded | Real `time_slots` per venue |

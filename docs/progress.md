@@ -3,7 +3,7 @@
 Read this at the start of every session. Update it at the end of every task (changelog entry, plus Current state,
 Decisions and TODO if they changed) and commit it with the code.
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 ## Current state
 
@@ -15,10 +15,11 @@ Last updated: 2026-11-17
 - three 0.187 + @react-three/fiber 9 for the hall 3D model (`features/venues/HallModel3D.jsx`), lazy-loaded. Uses three's
   own `OrbitControls`/`EdgesGeometry` (drei removed: it added weight for two helpers)
 - Zod 4 in the client for the host wizard's per-step validation (same library the server will use)
+- qrcode (QR PNG data URLs), lz-string (invitation card in the link hash), html-to-image (card PNG, lazy-loaded)
 - oxlint for linting. No test runner set up yet. playwright-cli used for manual browser checks
 - No server, DB or PWA setup yet. All data is mock
 
-### Routes (`client/src/app/router.jsx`, all under `PublicLayout`)
+### Routes (`client/src/app/router.jsx`, all under the root `AuthProvider` route)
 
 | Path | Page | Notes |
 |---|---|---|
@@ -30,17 +31,21 @@ Last updated: 2026-11-17
 | `/venues/:id/photos` | `pages/VenuePhotos.jsx` | lazy; `?hall=` and `#photoId` select hall/photo |
 | `/host` | `pages/HostIntro.jsx` | lazy; "Become a host" landing, "Continue your listing" card when a draft exists |
 | `/host/submitted` | `pages/HostSubmitted.jsx` | lazy; "Pending verification" success screen |
-| `/bookings` | `pages/MyBookings.jsx` | lazy; My bookings with status badges, cancel, dev-only owner actions; `TODO(auth)` customer |
+| `/bookings` | `pages/MyBookings.jsx` | lazy; My bookings with status badges, cancel, dev-only owner actions; `RequireAuth` |
 
 Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 | Path | Page | Notes |
 |---|---|---|
-| `/host/new` | `app/HostResumeRedirect.jsx` | redirects to the draft's `lastStep` or `about` |
-| `/host/new/:step` | `pages/HostWizard.jsx` | listing wizard; `TODO(auth)` venue_owner guard |
-| `/venues/:id/book/:step` | `pages/BookingFlow.jsx` | booking flow (`selection`, `details`, `add-ons`, `price`, `review`, `confirmation?ref=`); `TODO(auth)` customer |
+| `/host/new` | `app/HostResumeRedirect.jsx` | redirects to the draft's `lastStep` or `about`; `RequireAuth` |
+| `/host/new/:step` | `pages/HostWizard.jsx` | listing wizard; `RequireAuth` (`TODO(auth)` venue_owner role) |
+| `/venues/:id/book/:step` | `pages/BookingFlow.jsx` | booking flow (`selection`, `details`, `add-ons`, `price`, `review`, `confirmation?ref=`); `RequireAuth` |
+| `/bookings/:id/invite/:step?` | `pages/InvitationBuilder.jsx` | QR invitation builder (`template`, `details`, `review`); Confirmed bookings only; `RequireAuth` |
+| `/invite/:id` | `pages/GuestInvitation.jsx` | public guest invitation + RSVP, no account, no chrome; card from the store or the `#c=` hash |
 | `/admin/*` | `features/admin/AdminLayout.jsx` + `pages/admin/*` | admin dashboard, lazy (`app/adminRoutes.jsx`); `TODO(auth)` RequireRole('admin') |
 
+- Login (dummy, see "Login" below): header "Log in" / avatar menu; `RequireAuth` shows a "Log in to continue" card
+  on guarded routes when signed out
 - Header nav links `/`, `/explore`, `/host` ("Become a host"), `/bookings` ("My bookings"), `/about`. Footer "List your space" and the About
   "List your venue" buttons also go to `/host`. `/owner` (dashboard) doesn't exist yet
 - Footer has a "MarkieSharkie" column: About us, How it works (`/about#how-it-works`), FAQs (`/about#faq`). Below lg the
@@ -58,7 +63,11 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - `src/lib/booking.js`: `SLOT_HOLD_MINUTES = 10`, `MIN_GUESTS = 25`, `DEFAULT_GUESTS = '50'`, `guestCountError(value, hall)`, `SLOT_PRESETS` (Lunch / Evening with start/end), `billableGuests`, `SLOT_STATUS_LABELS`, `bookingStatusView` (status -> label), `bookingReference` (`MS-XXXXXX`)
 - `src/lib/money.js` also has `paisaToAmount` (paisa -> `"187750.50"`)
 - `src/api/bookings.js`: booking mock (see "Live availability and booking flow")
-- `src/features/booking/`: flow steps, draft store, hold helpers, pricing/refund maths, calendar nav, live availability hook, .ics
+- `src/features/booking/`: flow steps, draft store, hold helpers, pricing/refund maths, calendar nav, live availability hook,
+  .ics (`eventIcs` / `downloadIcsFile` are generic, the guest page uses them too)
+- `src/api/invitations.js`: invitation / guest / RSVP mock (see "QR invitations")
+- `src/features/invitations/`: `InvitationCard` (4 designs + `InviteFonts`), `QrShare`, `useQrCode`, `RsvpSummary`,
+  `link.js` (hash encode/decode, guest URL, maps URL), `schema.js`, `draft.js`, `options.js`, `format.js`, `steps.js`
 - `src/api/venues.js`: `getVenueById(id)`, `getLandingSections()` and `searchVenues(filters)`, backed by `mockVenues.js`
   plus approved listings from `api/listings.js`; suspended venues are filtered out. `listMockCatalog()` for admin.
   `getPlatformStats()` (venue/hall/city counts, average rating) for About. Swap the bodies for `GET /api/venues/:id`,
@@ -92,6 +101,50 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `AmenityList`, `AvailabilityCalendar`, `ReviewsSection`/`ReviewCard`/`StarRow`/`Avatar`, `LocationSection`,
   `EventNotes`, `HallCard`, `MenuCard`, `BookingSidebar`, `Lightbox`, `VenueDetailSkeleton`
 - Assets: `src/assets/venues/` (landing WebP), `assets/gallery/` (29 WebP), `assets/venue-detail/`, `assets/icons/`, `assets/brand/`
+
+### Login (frontend only, mock, srs-alignment #22)
+
+- `src/api/auth.js`: mock auth (localStorage `markiesharkie:auth`, `{ version: 2, users, session, resetCodes }`).
+  Users shaped like `users` (`passwordHash` + `passwordSalt`, `failedLoginAttempts`, `lockedUntil`, `lastLoginAt`).
+  - Email or PK mobile + password: `lookupAccount`, `logInWithPassword` (5 wrong in a row -> locked 15 min, correct
+    password refused while locked, success resets), `signUp` (name, email, mobile, city, password; role `customer`;
+    duplicate email / mobile refused), `requestPasswordReset` + `resetPassword` (6-digit code, hashed, 10 min, 5 tries;
+    clears the lock; the mock returns `demoCode` because nothing is sent)
+  - Passwords: Web Crypto SHA-256 of `salt:password`, never plain text (server: argon2id). Web Crypto needs https or
+    localhost, so password login fails on a plain-http LAN address (`npm run dev -- --host`); Google / Apple still work
+  - Google / Apple: fully dummy, fixed users (Ayesha Khan, Hamza Ali)
+  - "Keep me logged in" off keeps the session in sessionStorage (`markiesharkie:auth-session`, ends with the browser)
+  - Seeded demo account: `demo@markiesharkie.pk` / `Demo@1234` (mobile `0300-1234567`, Faisalabad)
+- `src/lib/accountRules.js`: field rules shared by the modal and the mock API (`parseIdentifier`, `*Error`,
+  `passwordStrength`); plain JS so Zod stays out of the main bundle
+- `src/features/auth/`: `AuthProvider` (root route; session via `useSyncExternalStore`, the one `LoginDialog`, focus
+  after login), `authContext.js` (`useAuth`, `useRequireAuth`), `LoginDialog` (shell: native modal `<dialog>`,
+  full-screen sheet on phones, centred 560px card with 24px corners from sm, Esc / backdrop close, Tab wrap, `run` / `login` helpers that block
+  closing while a request runs and abandon it on close), `AuthFlow` (lazy, prefetched when idle: steps start ->
+  password / signup, forgot -> reset; back arrow top-left on every step after the first), `fields.jsx` (field, password with show / hide +
+  strength meter, 6-box code input with paste, checkbox, alerts), `RequireAuth`, `UserMenu`, `intents.js`,
+  `brandIcons.jsx`
+- Modal layout (Airbnb-style reference, our tokens): logo mark (tent, `LogoMark` in `components/ui/Logo.jsx`), "Log in
+  or sign up", the trigger's prompt (small, muted; `intents.js` `prompt`), one "Phone number or email" field with a
+  floating label (a mobile is shown as `+92 300 1234567` once the field is left), maroon gradient Continue
+  (`primary` -> `primary-bright`), "or", Google and Apple as 72px square icon buttons (aria-labels "Continue with
+  ..."), "New to MarkieSharkie? Sign up". Nothing else on the first screen. Known account -> "Welcome back"
+  password step; unknown -> "Create your account" with the email / mobile prefilled and "No account with this email
+  yet". No tabs Errors on blur, focus to the
+  first error on submit, Enter submits, loading state on every submit, correct `autocomplete` on every field (hidden
+  `username` next to passwords)
+- Buttons follow brand guidelines: Google white, `#747775` border, `#1F1F1F` Roboto Medium (Roboto 500 added to the
+  font link); Apple black with white system font. Tokens `google-*`, `apple`, `font-google`, `font-apple`, `shadow-modal`
+- Triggers (`useRequireAuth()(intent, action)`, resumed after login, dropped if the modal closes):
+  - "Check availability" (`BookingSidebar`): the slot check stays public (a taken slot shows alternatives without
+    login); a free slot asks to log in, then holds it and opens the flow with date / hall / guests / menu kept
+  - "Let’s get started" / "Continue" on `/host`: heading "Become a host", subtitle "Log in to list your venue", then `/host/new/...`
+  - Header "My bookings" while signed out: stays on the page, then `/bookings` (new-tab clicks pass through to the guard)
+- Bookings belong to the signed-in user: `api/bookings.js` `customerId()` replaces `DEMO_CUSTOMER` (holds, requests,
+  list, get, cancel; `UNAUTHENTICATED` when signed out). The booking draft prefills `hostName` from the account
+- Every login method (Google, Apple, password, signup) finishes through `login()` in `LoginDialog`, so all resume the
+  trigger the same way
+- Back / forward during a sign-in abandons it (no silent login on another page); a login in another tab closes the modal
 
 ### Landing page (`/`)
 
@@ -249,6 +302,51 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   console errors. Note: `page.clock.install()` is context-wide and breaks motion animations for the rest of that
   context, so run clock tests in a separate context
 
+### QR invitations (`/bookings/:id/invite/:step`, `/invite/:id`)
+
+- REQ-36 to 39, SSD4/SSD5. Frontend only, on the mock `api/invitations.js` (localStorage `markiesharkie:invitations`:
+  `invitations`, `guests`, `rsvps` rows in camelCase). Decisions in srs-alignment #21: RSVP is yes / no + party size,
+  one open link, guests register themselves when they reply, proposed `[Design]` columns (template, event type, host
+  names, reply-by, contact phone, `rsvps.party_size`)
+- Entry: `/bookings` shows "Generate QR invitation" on **Confirmed** bookings only (then "Invitation & QR"). The builder
+  shows "Invitations open once the booking is confirmed" for any other status, and `saveInvitation` refuses too
+- Builder: booking-flow shell (logo, Draft saved, Questions?, Save & exit; 3-segment progress, Back / Next, URL per
+  step, guard to the first invalid step, slide + focus to h1). Draft per booking in localStorage
+  `markiesharkie:invitation-drafts`, prefilled from the saved invitation, else the booking (event name, type, host
+  name, phone; reply-by = a week before the event)
+  - Choose a design: 4 large radio cards, each a full preview with the host's own details: Classic maroon & gold,
+    Floral pastel, Modern minimal, Mehndi festive (Urdu Bismillah + event type in Noto Nastaliq Urdu)
+  - Event details: read-only "From your booking" (venue, hall, date, time, address, Google Maps link); event name,
+    event type chips (Wedding, Walima, Mehndi, Barat, Engagement, Birthday, Corporate, Other), host family names,
+    message (optional, 300), reply-by (from today, before the event day), contact phone (PK mobile). Zod per step.
+    Live preview sticky beside the form at lg+, behind a "Show card preview" toggle below lg; updates per keystroke
+  - Review & share: card + "Generate invitation" -> QR, download QR PNG, download card with QR (html-to-image, lazy
+    loaded), copy link, WhatsApp (`wa.me` share link), Web Share (when supported). Editing later shows "Update
+    invitation" (same id, new QR). Dev-only note on localhost explains `npm run dev -- --host`
+- Card (`InvitationCard`): sized in container units (`cqi`), so thumbnails, preview, download and guest page share one
+  component; small lines never go under 11px. Every font stack falls back to Noto Nastaliq Urdu and typed text has
+  `dir="auto"`, so Urdu names and messages work in every design. Fonts (Cormorant Garamond, Great Vibes, Noto
+  Nastaliq Urdu) load only on invitation pages with `crossOrigin` (html-to-image needs readable CSS; the site font
+  `<link>` in `index.html` got `crossorigin` for the same reason)
+- Link: `/invite/:id#c=<lz-string card>` (~540 chars, QR level M), so it opens on any device without our
+  localStorage. The hash is untrusted: known keys only, typed and capped, maps URL rebuilt from numbers. The stored
+  copy wins when this browser has one. `TODO(server)` short link, `TODO(lan)` uses `window.location.origin`
+- Guest page: full-screen card in the chosen design with an open animation (rise + unfold; opacity only with reduced
+  motion), Open in Google Maps, Add to calendar (.ics), Call the host, reply-by date. RSVP: Attending (people coming,
+  1 to 20) or Can't make it, name, mobile. This device keeps the guest's `invite_token`, so the reply shows after a
+  reload and can be changed until the reply-by day. "RSVP closed" after the deadline (or on/after the event day).
+  Broken link -> "We couldn't open this invitation"
+- Host view on `/bookings`: Attending replies, guests coming (of hall capacity), Can't make it, all replies (name,
+  phone, response, people, when) in a disclosure; red warning when guests coming exceed the hall capacity, amber note
+  when they exceed the booked guest count
+- Tested with playwright-cli at 375x812 and 1512x900 (`client/.playwright-cli/invitation-flow.js`): button only on
+  the Confirmed booking, template and details validation (focus to the first invalid field, reply-by on the event
+  day refused), prefill, per-keystroke preview (incl. Urdu), mobile preview toggle, generate, QR + card PNG
+  downloads, copy link (clipboard), WhatsApp href, guest link in a **fresh browser context** (empty storage, no site
+  header), maps link, .ics, RSVP validation, attending x3, reload keeps it, change to no, reduced motion (no
+  transform), RSVP closed via a past deadline, broken link, host counts + list + capacity warning (601 of 350), no
+  horizontal scroll on any page, no console errors
+
 ### Admin dashboard (`/admin`)
 
 - No Figma; ui-ux-pro-max "data-dense dashboard" style (Stripe/Linear-like) on the maroon tokens, Inter + DM Sans.
@@ -360,6 +458,8 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   lives in the booking flow's Price step)
 - Slots are per hall (asked 2026-11-17, srs-alignment #19); the schema change waits for the server work
 - Booking statuses stay the REQ-21 enum; UI labels only (asked 2026-11-17, srs-alignment #20)
+- Invitations (asked 2026-11-17, srs-alignment #21): RSVP yes / no + party size (no Maybe); one open link per
+  invitation, guests register themselves on reply; the invitation QR is only the link (check-in QR is separate)
 - Booking flow hold: a refresh keeps it, leaving the flow releases it, closing the tab lets it expire (10 min)
 - Today is bookable; "past" means before today in Pakistan time
 - Guests: min 25, default 50, max = selected hall capacity
@@ -394,9 +494,50 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   - Never create a real `.env` (only `.env.example`)
   - Verify UI with playwright-cli at 375 and 1512 (plus other sizes when asked), then build
   - Run react-reviewer on bigger React changes
+- Login (asked 2026-11-18): fully dummy Google / Apple modal for now (srs-alignment #22); pages only talk to
+  `useAuth` / `useRequireAuth` so the real auth can replace `api/auth.js`
 
 ## Changelog (newest first)
 
+- 2026-11-18: Login modal restyled to the team's reference layout: 560px card / full-screen on phones, logo mark,
+  "Log in or sign up" + per-trigger prompt, floating-label phone or email field, gradient Continue, "or", square
+  Google / Apple icon buttons, "New to MarkieSharkie? Sign up"; tabs removed, back arrow + close on later steps.
+  Fixed: an empty password's blur error pushed "Keep me logged in" down mid-click (empty password / city now
+  only error on submit). Tests updated (`auth-email-flow.js` 62 checks, `auth-flow.js` 38) and pass at 375 and 1512
+- 2026-11-18: Email / mobile + password login and signup in the same modal (mock `api/auth.js`). Google / Apple on
+  top, "or", email or mobile -> password step (known) or signup (unknown); Log in / Sign up tabs. Signup: name, email,
+  PK mobile, city, password with strength meter + show / hide, confirm, terms. Login: show / hide, Keep me logged in,
+  Forgot password -> 6-digit code (paste, resend timer) -> new password. Lockout 5 tries / 15 min. SHA-256 + salt in
+  the mock. Seeded `demo@markiesharkie.pk` / `Demo@1234`. Asked and decided (srs-alignment #22): OTP code reset (not a
+  link), friendly messages (deviation), city added + role customer, email or mobile login. Forms lazy-loaded
+  (`AuthFlow` chunk ~26 kB). Test script `client/.playwright-cli/auth-email-flow.js` (59 checks at 375 and 1512).
+  react-reviewer fixes: a failed form chunk shows Try again / Reload inside the modal (no app crash); lockout and
+  code-attempt counters update inside one store write (no undercount from parallel guesses); this tab's session wins
+  and a not-remembered login leaves the shared one alone; Google / Apple won't take over a password account with the
+  same email and check suspension; the API returns a public user (no hash / salt); 30 s server-side resend cooldown;
+  tabs / Change / Forgot locked while a request runs; field errors in an always-mounted live region; backdrop close
+  needs the press to start on the backdrop; OTP paste fills from box 1, typing over a digit keeps the new one;
+  LOCKED alert has a Reset your password button; email field focused on open
+- 2026-11-18: Dummy login modal (Google / Apple, no real OAuth), frontend only. `api/auth.js` mock session,
+  `features/auth/` (AuthProvider at the router root, `useAuth` / `useRequireAuth`, `LoginDialog` bottom sheet /
+  centred modal, `RequireAuth`, `UserMenu`). Triggers resume after login: Check availability -> booking flow with the
+  selection kept, Become a host -> `/host/new/about`, My bookings -> `/bookings`. Header "Log in" / avatar menu.
+  `RequireAuth` on `/bookings`, booking flow, invitation builder, `/host/new/*`. `DEMO_CUSTOMER` replaced by the
+  signed-in user. srs-alignment #22 (REQ-1/REQ-2 email + password still needed). react-reviewer fixes: abandoned
+  sign-in on back / forward, focus after login, cross-tab login closes the modal, modified clicks on My bookings,
+  stable context value. Mobile header gap tightened (Log in pill is wider than the avatar). Test script
+  `client/.playwright-cli/auth-flow.js` (38 checks at 375 and 1512); `invitation-flow.js` now logs in before seeding
+- 2026-11-17: QR invitations, frontend only (REQ-36 to 39, SSD4/SSD5). "Generate QR invitation" on Confirmed bookings,
+  3-step builder `/bookings/:id/invite/:step` (4 designs with live previews, details prefilled from the booking with
+  a sticky / toggled live preview, review & generate), QR + card PNG + copy + WhatsApp + Web Share, public guest page
+  `/invite/:id` (card from the `#c=` hash, open animation, maps, .ics, yes / no RSVP with party size, RSVP closed),
+  host RSVP summary with capacity warning on `/bookings`. Mock `api/invitations.js` shaped like `invitations` /
+  `guests` / `rsvps`. New deps: qrcode, lz-string, html-to-image. Asked and decided: RSVP stays yes / no + party size,
+  one open link with self-registering guests (srs-alignment #21). `features/booking/ics.js` split into a generic
+  `eventIcs`; admin "Reset demo data" also clears invitations. react-reviewer fixes: hash ids must be UUIDs, control
+  characters stripped, real dates and slot times required, huge hashes refused, .ics escapes CR and the UID (no
+  property injection from a crafted link); "too long for a QR code" message instead of an endless skeleton; Enter in
+  the read-only link field no longer submits the builder; focus moves to the saved reply / "Change my reply"
 - 2026-11-17: Live availability + booking flow, frontend only, on a mock `api/bookings.js` shaped like `time_slots` /
   `bookings`. Calendar rewrite (PKT today, no past months, past days disabled, legend, per-slot dots, per-hall day
   panel, ARIA grid + arrow keys) shared by the page and a new booking-panel date picker; live updates across tabs.
@@ -479,6 +620,17 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 ### Gaps and stubs
 
 - No server, DB, auth or real API yet. Everything is mock data
+- Login is a browser mock (srs-alignment #22): accounts, hashes, lockouts and reset codes live in this browser's
+  localStorage. No 30-min inactivity timeout (REQ-2), no profile page (REQ-4), Google / Apple are simulated; no roles (everyone is `customer`, so `/host/new` isn't venue_owner-only and `/admin` has no RequireRole);
+  Terms / Privacy are plain text (no pages). Log out doesn't clear this browser's booking drafts or release a live
+  hold. Real OAuth needs: the resume action persisted across the redirect (`{ intent, returnTo }`), a session
+  `loading` state (RequireAuth would flash), a timeout + distinct errors (popup closed / blocked / network), and the
+  access token in memory + refresh token in an httpOnly cookie (not localStorage)
+- Auth TODO(server): argon2id + `timingSafeEqual`, atomic `failed_login_attempts` UPDATE and `FOR UPDATE` on the reset
+  code, rate limits on `/auth/lookup`, `/auth/login`, `/auth/password/forgot`. Android Backspace in an empty code box
+  may not move back (needs `beforeinput`). The saved password-manager username is whatever was typed (email or mobile)
+- Bookings made before login existed (customer `demo-customer`) no longer show on `/bookings`; Reset demo data or
+  clear `markiesharkie:bookings`
 - `sendMessage` is a stub (no RAG backend, no assistant replies)
 - Booking engine is a browser mock (`api/bookings.js`): holds, requests, cancels and owner decisions live in this
   browser's localStorage. `navigator.locks` only serialises tabs of one browser; the real guard is the server
@@ -496,6 +648,13 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - Explore's date filter still uses `venue.bookedDates`, not the per-hall slot store
 - Booking drafts are shared by every tab of one venue (holds are per tab): if two tabs book the same venue, the tab
   that sends its request first clears the other's draft, and that tab returns to the venue page
+- Invitations (srs-alignment #21): the mock store is per browser, so a guest's reply only reaches the host when both use
+  the same browser (the demo). Needs `POST /i/:token/rsvp`. Proposed columns (`invitations.template`, `event_type`,
+  `host_names`, `rsvp_by`, `contact_phone`, `rsvps.party_size`) aren't in `db/schema.sql` yet. Not built: host-added
+  guest list with per-guest `/i/:token` links + WhatsApp Business delivery status and "No reply" count (REQ-37),
+  per-guest check-in QR + attendant scanning (REQ-40/41, SSD6), offline caching of the guest page (PWA), notifying
+  the host on a new reply. Anyone with the link who knows a guest's phone number can change that guest's reply
+  (per-guest tokens fix this). Changing the invitation changes the QR (the card is in the hash)
 - Oxlint doesn't flag undeclared identifiers in this config (a missing import only showed up in review); consider
   enabling `no-undef`
 - "Report this listing": saved to the admin mock store, but there is no `listing_reports` table yet (proposed:
@@ -553,6 +712,7 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - After closing the chat with Esc, the compact launcher stays expanded (keyboard focus) until focus moves
 - Google Maps embed renders blank in headless screenshots. Its `src` is verified, not the visual
 - Lightbox backdrop is 95% opaque
+- At 320px the landing search bar overflows by ~16px (it did before the login work; the header fits)
 
 ### Next steps (suggested)
 
