@@ -2,7 +2,8 @@ import { bookingReference, bookingStatusView } from '../../lib/booking.js'
 
 // "Add to calendar": a one-event .ics file (RFC 5545) for a booking. Slot times are Pakistan time (UTC+5, no DST),
 // written in UTC so every calendar app places them correctly.
-const escape = (text) => String(text).replace(/\\/g, '\\\\').replace(/[,;]/g, (c) => `\\${c}`).replace(/\n/g, '\\n')
+// Line breaks (CR, LF or both) become a literal \n, so text can never start a new property.
+const escape = (text) => String(text).replace(/\\/g, '\\\\').replace(/[,;]/g, (c) => `\\${c}`).replace(/\r\n?|\n/g, '\\n')
 const pad = (n) => String(n).padStart(2, '0')
 
 function utcStamp(date, time) {
@@ -12,7 +13,8 @@ function utcStamp(date, time) {
   return `${at.getUTCFullYear()}${pad(at.getUTCMonth() + 1)}${pad(at.getUTCDate())}T${pad(at.getUTCHours())}${pad(at.getUTCMinutes())}00Z`
 }
 
-export function bookingIcs(booking) {
+// One VEVENT calendar. date is a yyyy-mm-dd day key, start / end are "HH:MM" Pakistan time.
+export function eventIcs({ uid, date, start, end, summary, location, description }) {
   const now = new Date()
   const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`
   const lines = [
@@ -21,24 +23,40 @@ export function bookingIcs(booking) {
     'PRODID:-//MarkieSharkie//Bookings//EN',
     'CALSCALE:GREGORIAN',
     'BEGIN:VEVENT',
-    `UID:${booking.bookingId}@markiesharkie`,
+    `UID:${escape(uid)}@markiesharkie`,
     `DTSTAMP:${stamp}`,
-    `DTSTART:${utcStamp(booking.date, booking.startTime)}`,
-    `DTEND:${utcStamp(booking.date, booking.endTime)}`,
-    `SUMMARY:${escape(`${booking.eventName} at ${booking.venueName}`)}`,
-    `LOCATION:${escape(`${booking.hallName}, ${booking.venueName}, ${booking.venueCity}`)}`,
-    `DESCRIPTION:${escape(`Booking ${bookingReference(booking.bookingId)} (${bookingStatusView(booking).label}). ${booking.guestCount} guests.`)}`,
+    `DTSTART:${utcStamp(date, start)}`,
+    `DTEND:${utcStamp(date, end)}`,
+    `SUMMARY:${escape(summary)}`,
+    `LOCATION:${escape(location)}`,
+    `DESCRIPTION:${escape(description)}`,
     'END:VEVENT',
     'END:VCALENDAR',
   ]
   return `${lines.join('\r\n')}\r\n`
 }
 
+export function bookingIcs(booking) {
+  return eventIcs({
+    uid: booking.bookingId,
+    date: booking.date,
+    start: booking.startTime,
+    end: booking.endTime,
+    summary: `${booking.eventName} at ${booking.venueName}`,
+    location: `${booking.hallName}, ${booking.venueName}, ${booking.venueCity}`,
+    description: `Booking ${bookingReference(booking.bookingId)} (${bookingStatusView(booking).label}). ${booking.guestCount} guests.`,
+  })
+}
+
 export function downloadIcs(booking) {
-  const url = URL.createObjectURL(new Blob([bookingIcs(booking)], { type: 'text/calendar;charset=utf-8' }))
+  downloadIcsFile(bookingIcs(booking), `markiesharkie-${bookingReference(booking.bookingId).toLowerCase()}.ics`)
+}
+
+export function downloadIcsFile(text, filename) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/calendar;charset=utf-8' }))
   const link = document.createElement('a')
   link.href = url
-  link.download = `markiesharkie-${bookingReference(booking.bookingId).toLowerCase()}.ics`
+  link.download = filename
   document.body.append(link)
   link.click()
   link.remove()

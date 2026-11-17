@@ -1,4 +1,5 @@
 import { resetBookings } from './bookings.js'
+import { resetInvitations } from './invitations.js'
 import { createMockStore, latency } from './mockStore.js'
 import {
   getListingRecord,
@@ -740,6 +741,7 @@ export async function searchAdmin(q) {
 export function resetDemoData() {
   resetListings()
   resetBookings()
+  resetInvitations()
   store.reset()
 }
 

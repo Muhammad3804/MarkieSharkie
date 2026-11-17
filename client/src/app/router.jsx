@@ -1,6 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom'
 import PublicLayout from './layouts/PublicLayout.jsx'
-import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, MyBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
+import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
 import Landing from '../pages/Landing.jsx'
 import SearchRedirect from './SearchRedirect.jsx'
 import HostResumeRedirect from './HostResumeRedirect.jsx'
@@ -24,6 +24,10 @@ export const router = createBrowserRouter([
   },
   // Booking flow, own full-screen shell like the host wizard. TODO(auth): customer only, see pages/BookingFlow.jsx.
   { path: '/venues/:id/book/:step', element: <BookingFlowRoute /> },
+  // QR invitation builder, own shell. Confirmed bookings only (REQ-36). TODO(auth): customer only.
+  { path: '/bookings/:id/invite/:step?', element: <InvitationBuilderRoute /> },
+  // Guest invitation: public, no account, no site chrome (REQ-38).
+  { path: '/invite/:id', element: <GuestInvitationRoute /> },
   // The listing wizard has its own full-screen shell (no site header, footer or chat).
   // TODO(auth): venue_owner only, see pages/HostWizard.jsx.
   { path: '/host/new', element: <HostResumeRedirect /> },

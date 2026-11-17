@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookingError, cancelBooking, devOwnerAction, listMyBookings } from '../api/bookings.js'
 import { subscribeMockStores } from '../api/mockStore.js'
+import { listMyInvitationSummaries } from '../api/invitations.js'
+import RsvpSummary from '../features/invitations/RsvpSummary.jsx'
 import StatusBadge from '../features/booking/StatusBadge.jsx'
 import { downloadIcs } from '../features/booking/ics.js'
 import { policyInfo, refundFor } from '../features/booking/pricing.js'
@@ -18,7 +20,7 @@ const isUpcoming = (booking) => ACTIVE.includes(booking.status)
 const canCancel = (booking, today) => isUpcoming(booking) && daysBetween(today, booking.date) > 0
 
 export default function MyBookings() {
-  const [state, setState] = useState({ status: 'loading', bookings: [] })
+  const [state, setState] = useState({ status: 'loading', bookings: [], invites: {} })
   const [version, setVersion] = useState(0)
   const [cancelling, setCancelling] = useState(null)
   const [notice, setNotice] = useState('')
@@ -30,11 +32,11 @@ export default function MyBookings() {
   useEffect(() => subscribeMockStores(reload), [reload])
   useEffect(() => {
     let cancelled = false
-    listMyBookings()
-      .then((bookings) => !cancelled && setState({ status: 'ready', bookings }))
+    Promise.all([listMyBookings(), listMyInvitationSummaries()])
+      .then(([bookings, invites]) => !cancelled && setState({ status: 'ready', bookings, invites }))
       .catch((error) => {
         console.error('[bookings] list failed', error)
-        if (!cancelled) setState((current) => (current.status === 'ready' ? current : { status: 'error', bookings: [] }))
+        if (!cancelled) setState((current) => (current.status === 'ready' ? current : { status: 'error', bookings: [], invites: {} }))
       })
     return () => {
       cancelled = true
@@ -81,8 +83,8 @@ export default function MyBookings() {
       )}
       {state.status === 'ready' && state.bookings.length > 0 && (
         <>
-          <BookingList title="Upcoming" bookings={upcoming} today={today} onCancel={setCancelling} onNotice={setNotice} empty="No upcoming bookings." />
-          <BookingList title="Past and cancelled" bookings={past} today={today} onCancel={setCancelling} onNotice={setNotice} empty="Nothing here yet." />
+          <BookingList title="Upcoming" bookings={upcoming} invites={state.invites} today={today} onCancel={setCancelling} onNotice={setNotice} empty="No upcoming bookings." />
+          <BookingList title="Past and cancelled" bookings={past} invites={state.invites} today={today} onCancel={setCancelling} onNotice={setNotice} empty="Nothing here yet." />
         </>
       )}
 
@@ -102,7 +104,7 @@ export default function MyBookings() {
   )
 }
 
-function BookingList({ title, bookings, today, onCancel, onNotice, empty }) {
+function BookingList({ title, bookings, invites, today, onCancel, onNotice, empty }) {
   const id = useId()
   return (
     <section aria-labelledby={id} className="mt-10">
@@ -114,7 +116,7 @@ function BookingList({ title, bookings, today, onCancel, onNotice, empty }) {
       ) : (
         <ul className="mt-4 grid gap-4">
           {bookings.map((booking) => (
-            <BookingCard key={booking.bookingId} booking={booking} today={today} onCancel={onCancel} onNotice={onNotice} />
+            <BookingCard key={booking.bookingId} booking={booking} invite={invites[booking.bookingId]} today={today} onCancel={onCancel} onNotice={onNotice} />
           ))}
         </ul>
       )}
@@ -122,7 +124,7 @@ function BookingList({ title, bookings, today, onCancel, onNotice, empty }) {
   )
 }
 
-function BookingCard({ booking, today, onCancel, onNotice }) {
+function BookingCard({ booking, invite, today, onCancel, onNotice }) {
   const slot = slotPreset(booking.slot)
   const reference = bookingReference(booking.bookingId)
   return (
@@ -160,10 +162,18 @@ function BookingCard({ booking, today, onCancel, onNotice }) {
         </div>
       </dl>
       <StatusNote booking={booking} />
+      {invite && <RsvpSummary summary={invite} booking={booking} />}
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
         <span className="mr-auto text-[13px] text-muted-warm">
           Ref <span className="font-semibold tabular-nums text-ink">{reference}</span>
         </span>
+        {/* REQ-36: invitations only for a Confirmed booking. */}
+        {booking.status === 'confirmed' && (
+          <Link to={`/bookings/${booking.bookingId}/invite${invite ? '/review' : ''}`} className={invite ? secondaryButton : primaryButton}>
+            {invite ? 'Invitation & QR' : 'Generate QR invitation'}
+            <span className="sr-only"> for {reference}</span>
+          </Link>
+        )}
         {isUpcoming(booking) && (
           <button type="button" onClick={() => downloadIcs(booking)} className={secondaryButton}>
             Add to calendar
@@ -190,6 +200,9 @@ function StatusNote({ booking }) {
   if (booking.status === 'cancelled') return <p className="mt-3 text-[14px] text-muted-warm">Reason: {booking.cancellationReason}</p>
   return text ? <p className="mt-3 text-[14px] text-muted-warm">{text}</p> : null
 }
+
+const primaryButton =
+  'inline-flex min-h-11 cursor-pointer items-center rounded-xl bg-primary px-4 text-[14px] font-semibold text-white shadow-[0_8px_20px_-10px_rgba(122,23,49,0.6)] transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
 
 const secondaryButton =
   'inline-flex min-h-11 cursor-pointer items-center rounded-xl border border-line px-4 text-[14px] font-semibold text-ink-strong transition-colors hover:border-ink-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
