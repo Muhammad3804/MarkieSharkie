@@ -1,4 +1,5 @@
 import { createMockStore, latency } from './mockStore.js'
+import { getSessionUser } from './auth.js'
 import { getVenueById } from './venues.js'
 import { priceBreakdown } from '../features/booking/pricing.js'
 import { MAX_ADD_ON_QUANTITY } from '../features/booking/options.js'
@@ -19,9 +20,7 @@ import { normalizePkMobile } from '../lib/phone.js'
 // - `holdToken` stands in for "this customer's session": each tab gets its own, so two tabs behave like two
 //   customers. The server uses `held_by` (the signed-in customer) instead.
 // - navigator.locks serialises writes across tabs, the browser's stand-in for SELECT ... FOR UPDATE.
-// TODO(auth): every call acts as DEMO_CUSTOMER until JWT auth exists.
-
-export const DEMO_CUSTOMER = { userId: 'demo-customer', name: 'Demo customer' }
+// - The customer is the mock signed-in user (api/auth.js). TODO(server): req.user from the JWT; 401 when missing.
 const HOLD_MS = SLOT_HOLD_MINUTES * 60 * 1000
 
 const store = createMockStore('markiesharkie:bookings', {
@@ -30,7 +29,7 @@ const store = createMockStore('markiesharkie:bookings', {
 })
 
 export class BookingError extends Error {
-  // code: SLOT_UNAVAILABLE | HOLD_EXPIRED | PAST_DATE | VALIDATION | NOT_FOUND | INVALID_TRANSITION
+  // code: SLOT_UNAVAILABLE | HOLD_EXPIRED | PAST_DATE | VALIDATION | NOT_FOUND | INVALID_TRANSITION | UNAUTHENTICATED
   constructor(code, message, details) {
     super(message)
     this.name = 'BookingError'
@@ -40,6 +39,12 @@ export class BookingError extends Error {
 }
 
 const withLock = (task) => (typeof navigator !== 'undefined' && navigator.locks?.request ? navigator.locks.request('markiesharkie:bookings', task) : task())
+function customerId() {
+  const user = getSessionUser()
+  if (!user) throw new BookingError('UNAUTHENTICATED', 'Log in to continue.')
+  return user.userId
+}
+
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`)
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -147,6 +152,7 @@ export async function checkSlot({ venueId, hallId, date, slot }) {
 // Refuses a slot that is held (by anyone, this tab included unless it passes its own token) or booked.
 export async function holdSlot({ venueId, hallId, date, slot, holdToken = null }) {
   await latency(200)
+  const me = customerId()
   const venue = await loadVenue(venueId)
   findHall(venue, hallId)
   if (date < todayKey()) throw new BookingError('PAST_DATE', 'That date has passed. Pick a date from today on.')
@@ -157,7 +163,7 @@ export async function holdSlot({ venueId, hallId, date, slot, holdToken = null }
     if (row.status !== 'available' && !ownHold) {
       throw new BookingError('SLOT_UNAVAILABLE', row.status === 'held' ? 'Someone else is booking this slot right now.' : 'This slot is already booked.', alternativesFor(state, venue, hallId, date, slot))
     }
-    const held = { ...row, status: 'held', heldBy: DEMO_CUSTOMER.userId, heldUntil: new Date(Date.now() + HOLD_MS).toISOString(), holdToken: ownHold ? holdToken : uuid() }
+    const held = { ...row, status: 'held', heldBy: me, heldUntil: new Date(Date.now() + HOLD_MS).toISOString(), holdToken: ownHold ? holdToken : uuid() }
     store.update((current) => ({ ...current, slots: { ...current.slots, [held.slotId]: held } }))
     return { slotId: held.slotId, holdToken: held.holdToken, heldUntil: held.heldUntil }
   })
@@ -194,6 +200,7 @@ function settle(booking, today = todayKey()) {
 // POST /api/bookings -> the new booking (status 'requested'). The hold must still be ours.
 export async function requestBooking(input) {
   await latency(350)
+  const me = customerId()
   const venue = await loadVenue(input.venueId)
   const hall = findHall(venue, input.hallId)
   const menu = venue.menuPackages.find((m) => m.menuId === input.menuId) ?? null
@@ -229,7 +236,7 @@ export async function requestBooking(input) {
     const booking = {
       bookingId: uuid(),
       slotId,
-      customerId: DEMO_CUSTOMER.userId,
+      customerId: me,
       venueId: venue.id,
       hallId: hall.hallId,
       menuPackageId: menu?.menuId ?? null,
@@ -276,9 +283,10 @@ export async function requestBooking(input) {
 export async function listMyBookings() {
   await latency()
   const today = todayKey()
+  const me = customerId()
   return store
     .get()
-    .bookings.filter((b) => b.customerId === DEMO_CUSTOMER.userId)
+    .bookings.filter((b) => b.customerId === me)
     .map((b) => settle(b, today))
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 }
@@ -286,7 +294,7 @@ export async function listMyBookings() {
 // GET /api/bookings/:id -> booking, or null when it isn't this customer's.
 export async function getBooking(bookingId) {
   await latency(150)
-  const booking = store.get().bookings.find((b) => b.bookingId === bookingId && b.customerId === DEMO_CUSTOMER.userId)
+  const booking = store.get().bookings.find((b) => b.bookingId === bookingId && b.customerId === customerId())
   return booking ? settle(booking) : null
 }
 
@@ -314,7 +322,7 @@ export async function cancelBooking(bookingId, reason) {
   await latency(300)
   const text = String(reason ?? '').trim()
   if (text.length < 5) throw new BookingError('VALIDATION', 'Tell the venue why you’re cancelling (at least 5 characters).')
-  const booking = store.get().bookings.find((b) => b.bookingId === bookingId && b.customerId === DEMO_CUSTOMER.userId)
+  const booking = store.get().bookings.find((b) => b.bookingId === bookingId && b.customerId === customerId())
   if (!booking) throw new BookingError('NOT_FOUND', 'Booking not found.')
   if (daysBetween(todayKey(), booking.date) <= 0) throw new BookingError('INVALID_TRANSITION', 'Bookings can only be cancelled before the event date.')
   return transition(bookingId, ['requested', 'held', 'confirmed'], { status: 'cancelled', cancellationReason: text })

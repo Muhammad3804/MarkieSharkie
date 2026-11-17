@@ -13,7 +13,7 @@ import { formatEventDate, todayKey } from '../lib/format.js'
 import { formatAmount, formatPaisa, toPaisa } from '../lib/money.js'
 
 // /bookings: the customer's bookings with live status (REQ-21) and cancel with a reason (REQ-22).
-// TODO(auth): customer only; this moves into the /app dashboard once accounts exist. Until the owner dashboard is
+// Logged-in only (RequireAuth); moves into the /app dashboard with role dashboards. Until the owner dashboard is
 // built, development builds show the owner's accept / reject / record-advance actions on each booking.
 const ACTIVE = ['requested', 'held', 'confirmed']
 const isUpcoming = (booking) => ACTIVE.includes(booking.status)

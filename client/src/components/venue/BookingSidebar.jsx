@@ -16,6 +16,7 @@ import shieldCheckIcon from '../../assets/icons/venue/shield-check.svg'
 import headphonesIcon from '../../assets/icons/venue/headphones.svg'
 import flagIcon from '../../assets/icons/venue/flag.svg'
 import ReportListingDialog from './ReportListingDialog.jsx'
+import { useRequireAuth } from '../../features/auth/authContext.js'
 
 const fieldBox =
   'relative flex items-center justify-between px-3.5 py-2.5 focus-within:bg-surface has-[select:focus-visible]:outline-2 has-[select:focus-visible]:-outline-offset-2 has-[select:focus-visible]:outline-primary'
@@ -45,10 +46,12 @@ const takenMessage = (status, hall, slot, date) =>
 
 // Booking card (Figma 44:1141), compacted so the whole panel fits a 720px-tall screen without scrolling.
 // One live total near the button: menu × guests + hall hire (integer paisa; add-ons come later in the flow).
-// "Check availability" checks that exact hall slot: free -> places a 10-minute hold (REQ-18) and opens the booking
-// flow; taken -> says so inline and offers the nearest free dates and other free halls (EUC-14 2.1).
+// "Check availability" checks that exact hall slot: free -> asks to log in if needed, places a 10-minute hold
+// (REQ-18) and opens the booking flow; taken -> says so inline and offers the nearest free dates and other free
+// halls (EUC-14 2.1).
 export default function BookingSidebar({ venue, booking, onChange, availability }) {
   const navigate = useNavigate()
+  const requireAuth = useRequireAuth()
   // The message is tied to the selection it was written for, so it disappears once anything changes.
   const [status, setStatus] = useState({ key: '', kind: '', message: '', alternatives: null })
   const [checking, setChecking] = useState(false)
@@ -82,6 +85,34 @@ export default function BookingSidebar({ venue, booking, onChange, availability 
     [onChange, closePicker],
   )
 
+  function showFailure(error) {
+    if (error instanceof BookingError && error.code === 'SLOT_UNAVAILABLE') {
+      setStatus({ key: statusKey, kind: 'taken', message: `${error.message} Try another date or hall.`, alternatives: error.details })
+    } else {
+      console.error('[bookings] check availability failed', error)
+      setStatus({ key: statusKey, kind: 'error', message: error instanceof BookingError ? error.message : 'We couldn’t check this slot. Check your connection and try again.' })
+    }
+  }
+
+  // Holding a slot needs an account (holds are per customer). Runs right away when logged in, or after the
+  // login modal with this same selection (the modal blocks the panel, so it can't change in between).
+  async function holdAndContinue(selection) {
+    setChecking(true)
+    try {
+      await startHold(venue.id, selection)
+      const draft = loadBookingDraft(venue.id) ?? newBookingDraft(venue)
+      // A different slot means new terms to agree to.
+      const sameSlot = draft.hallId === selection.hallId && draft.date === selection.date && draft.slot === selection.slot
+      saveBookingDraft(venue.id, { ...draft, ...selection, guests: booking.guests, menuId: menu.menuId, agreed: sameSlot && draft.agreed, lastStep: 'selection' })
+      navigate(`/venues/${venue.id}/book/selection`)
+    } catch (error) {
+      showFailure(error)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  // The check itself is public: a taken slot shows alternatives without asking anyone to log in.
   async function checkAvailability() {
     if (checking) return
     if (guestError) {
@@ -102,19 +133,9 @@ export default function BookingSidebar({ venue, booking, onChange, availability 
         setStatus({ key: statusKey, kind: 'taken', message: takenMessage(result.status, hall, slot, booking.date), alternatives: result.alternatives })
         return
       }
-      await startHold(venue.id, selection)
-      const draft = loadBookingDraft(venue.id) ?? newBookingDraft(venue)
-      // A different slot means new terms to agree to.
-      const sameSlot = draft.hallId === selection.hallId && draft.date === selection.date && draft.slot === selection.slot
-      saveBookingDraft(venue.id, { ...draft, ...selection, guests: booking.guests, menuId: menu.menuId, agreed: sameSlot && draft.agreed, lastStep: 'selection' })
-      navigate(`/venues/${venue.id}/book/selection`)
+      await requireAuth('availability', () => holdAndContinue(selection))
     } catch (error) {
-      if (error instanceof BookingError && error.code === 'SLOT_UNAVAILABLE') {
-        setStatus({ key: statusKey, kind: 'taken', message: `${error.message} Try another date or hall.`, alternatives: error.details })
-      } else {
-        console.error('[bookings] check availability failed', error)
-        setStatus({ key: statusKey, kind: 'error', message: error instanceof BookingError ? error.message : 'We couldn’t check this slot. Check your connection and try again.' })
-      }
+      showFailure(error)
     } finally {
       setChecking(false)
     }

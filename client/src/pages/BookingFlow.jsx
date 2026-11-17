@@ -21,8 +21,7 @@ import { slotPreset } from '../lib/booking.js'
 // "Your selection" places a 10-minute hold (REQ-18) with a countdown on every step; when it runs out the slot is
 // released and a modal offers to hold it again. Leaving the flow releases the hold (docs/booking-engine.md
 // "Customer leaves"); a refresh keeps it.
-// TODO(auth): customers only. A guest should sign in (REQ-1) and come back here with the draft kept; the API
-// calls in api/bookings.js act as a demo customer until then.
+// Logged-in only (RequireAuth in app/router.jsx); the API calls in api/bookings.js act as the signed-in mock user.
 const STEP_VIEWS = {
   selection: SelectionStep,
   details: DetailsStep,

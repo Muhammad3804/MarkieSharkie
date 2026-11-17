@@ -19,8 +19,8 @@ import ReviewStep from '../features/host/steps/ReviewStep.jsx'
 
 // "Become a host" listing wizard: /host/new/:step. One question per screen, autosaved to this device after every
 // change. The URL holds the step, so refresh and the browser's back button work.
-// TODO(auth): wrap this route in a venue_owner guard (RequireRole) once auth exists; a guest should be sent to
-// sign up as a Venue Owner first (REQ-1, CLAUDE.md rule 6), keeping the draft.
+// Logged-in only (RequireAuth in app/router.jsx). TODO(auth): a venue_owner guard (RequireRole) once accounts have
+// roles (REQ-1, CLAUDE.md rule 6), keeping the draft.
 const STEP_VIEWS = {
   about: () => <PhaseIntro phase={1} />,
   'venue-type': VenueTypeStep,

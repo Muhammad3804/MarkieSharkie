@@ -23,7 +23,7 @@ import { normalizePkMobile } from '../lib/phone.js'
 // /bookings/:id/invite/:step: QR invitation builder (REQ-36), one topic per screen like the booking flow:
 // pick a design -> details (prefilled from the booking, live preview) -> review & generate (QR + share).
 // Only for a Confirmed booking. Frontend only, on the mock api/invitations.js.
-// TODO(auth): customer only, and only for their own booking (the mock acts as the demo customer).
+// Logged-in only (RequireAuth); getBooking only returns the signed-in user's own bookings.
 
 export default function InvitationBuilder() {
   const { id, step } = useParams()

@@ -1,0 +1,70 @@
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useLocation } from 'react-router-dom'
+import { getSessionUser, signOut } from '../../api/auth.js'
+import { subscribeMockStores } from '../../api/mockStore.js'
+import { AuthContext } from './authContext.js'
+import LoginDialog from './LoginDialog.jsx'
+
+// The element that opened the modal is usually gone after logging in (the Log in button became the avatar, a
+// guard card became the page, a menu closed), so native focus restore lands on <body>. Move focus to the account
+// button, or to the page heading once a lazy route has rendered.
+function focusAfterLogin() {
+  let tries = 0
+  const place = () => {
+    // Still on something real (the trigger survived)? Leave it. A control inside the closed dialog doesn't count.
+    const current = document.activeElement
+    if (current && current !== document.body && !current.closest('dialog:not([open])')) return
+    const target = document.getElementById('account-button') ?? document.querySelector('main h1, h1')
+    if (target) {
+      if (target.tagName === 'H1' && !target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1')
+      target.focus({ preventScroll: true })
+    } else if (++tries < 10) setTimeout(place, 100)
+  }
+  requestAnimationFrame(place)
+}
+
+// Holds the session and the one login modal. Mounted at the router root (app/router.jsx) so every page and the
+// header share it. The session lives in the auth mock store, so a log in or out in another tab shows up here too.
+export default function AuthProvider({ children }) {
+  const user = useSyncExternalStore(subscribeMockStores, getSessionUser, () => null)
+  const { pathname } = useLocation()
+  // { id, intent, pathname } while the modal is open (id restarts the modal at its first step). It only counts as open on the page it was opened from, so
+  // back / forward closes it and the pending action (which belonged to the old page) is dropped on close.
+  // Logging in from another tab also closes it (nothing to resume there).
+  const [login, setLogin] = useState(null)
+  const pending = useRef(null)
+  const open = login !== null && login.pathname === pathname && !user
+  // Read the path through a ref so openLogin (and the context value) stay stable across navigations.
+  const path = useRef(pathname)
+  useEffect(() => {
+    path.current = pathname
+  }, [pathname])
+
+  const openLogin = useCallback((intent = 'default', action = null) => {
+    pending.current = action
+    setLogin({ id: Date.now(), intent, pathname: path.current })
+  }, [])
+  const closeLogin = useCallback(() => {
+    pending.current = null
+    setLogin(null)
+  }, [])
+  const completeLogin = useCallback((signedIn) => {
+    const action = pending.current
+    pending.current = null
+    setLogin(null)
+    try {
+      action?.(signedIn)
+    } finally {
+      focusAfterLogin()
+    }
+  }, [])
+  const logout = useCallback(() => signOut(), [])
+
+  const value = useMemo(() => ({ user, openLogin, logout }), [user, openLogin, logout])
+  return (
+    <AuthContext value={value}>
+      {children}
+      <LoginDialog open={open} openKey={login?.id} intent={login?.intent} onClose={closeLogin} onSignedIn={completeLogin} />
+    </AuthContext>
+  )
+}

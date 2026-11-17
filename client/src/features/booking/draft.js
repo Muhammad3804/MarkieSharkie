@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { DEFAULT_GUESTS } from '../../lib/booking.js'
+import { getSessionUser } from '../../api/auth.js'
 
 // Booking flow draft, one per venue, autosaved to localStorage after every change (refresh-safe, survives
 // Save & exit). Shaped like the POST /api/bookings body plus UI-only fields (eventName, hostName, hostPhone,
@@ -18,7 +19,7 @@ export function newBookingDraft(venue, selection = {}) {
     menuId: venue.menuPackages[0]?.menuId ?? '',
     eventType: '',
     eventName: '',
-    hostName: '',
+    hostName: getSessionUser()?.name ?? '', // prefilled from the account, editable (the host may be someone else)
     hostPhone: '',
     specialRequests: '',
     addOns: {}, // { [addOnId]: quantity }

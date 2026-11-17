@@ -17,7 +17,7 @@ import { todayKey } from '../lib/format.js'
 //   rsvps.party_size. The rsvp_response enum stays yes / no (REQ-38).
 // - In the mock, a guest's reply is saved in the guest's own browser. Replies only reach the host when both use
 //   the same browser profile (the demo). TODO(server): POST /i/:token/rsvp makes them shared.
-// TODO(auth): host calls act as the demo customer (api/bookings.js), like the rest of the booking mock.
+// Host calls act as the signed-in mock user through api/bookings.js (its own bookings only).
 
 const store = createMockStore('markiesharkie:invitations', {
   seed: () => ({ version: 1, invitations: [], guests: [], rsvps: [] }),

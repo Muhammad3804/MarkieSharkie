@@ -8,6 +8,7 @@ import { PHASE_IMAGES } from '../features/host/phaseImages.js'
 import { clearPhotos } from '../features/host/photoStore.js'
 import { resetDraftStore } from '../features/host/draftStore.js'
 import { timeAgo } from '../lib/format.js'
+import { useRequireAuth } from '../features/auth/authContext.js'
 import heroImage from '../assets/gallery/hall-4.webp'
 
 // /host: "Become a host" landing. Explains the three phases and starts the wizard, or resumes a saved draft.
@@ -15,6 +16,9 @@ export default function HostIntro() {
   const navigate = useNavigate()
   const [draft, setDraft] = useState(() => loadDraft())
   const resumable = hasProgress(draft) ? draft : null
+  const requireAuth = useRequireAuth()
+  // Listing needs an account: log in first (subtitle "Log in to list your venue"), then open the wizard.
+  const startListing = (step = 'about') => requireAuth('host', () => navigate(`/host/new/${step}`))
 
   function startOver() {
     if (!window.confirm('Delete your saved listing and start again? This can’t be undone.')) return
@@ -40,9 +44,9 @@ export default function HostIntro() {
           </p>
 
           {resumable ? (
-            <ContinueCard draft={resumable} onContinue={() => navigate(`/host/new/${resumable.lastStep}`)} onStartOver={startOver} />
+            <ContinueCard draft={resumable} onContinue={() => startListing(resumable.lastStep)} onStartOver={startOver} />
           ) : (
-            <Button to="/host/new/about" className="mt-8 min-h-14 px-8 text-[17px]">
+            <Button onClick={() => startListing()} className="mt-8 min-h-14 px-8 text-[17px]">
               Let’s get started
             </Button>
           )}
@@ -73,7 +77,7 @@ export default function HostIntro() {
             from your customers; you record advances and balances yourself.
           </p>
           {!resumable && (
-            <Button to="/host/new/about" className="mt-8 min-h-14 px-8 text-[17px]">
+            <Button onClick={() => startListing()} className="mt-8 min-h-14 px-8 text-[17px]">
               Let’s get started
             </Button>
           )}
