@@ -33,7 +33,7 @@ Source: SRS Figure 6 (ERD). All 36 ERD tables and every ERD column are present. 
 
 Added by SRS text: `password_reset_codes`, `refresh_tokens`, `admin_audit_log`.
 
-Team design additions (`-- [Design]`, not in the ERD or SRS, see `docs/srs-alignment.md` #17): `halls` (`hall_id`, `venue_id`, `name`, `capacity`, `created_at`) and `bookings.hall_id` (nullable; NULL = whole venue). `venues.capacity` stays as the largest capacity.
+Team design additions (`-- [Design]`, not in the ERD or SRS, see `docs/srs-alignment.md` #17): `halls` (`hall_id`, `venue_id`, `name`, `capacity`, `created_at`) and `bookings.hall_id` (nullable; NULL = whole venue). `venues.capacity` stays as the largest capacity. Also `[Design]` (#18): `approval_status` value `changes_requested` and `venues.changes_note` (admin asks the owner for fixes; resubmit sets `pending` again).
 
 Columns: ERD camelCase → snake_case (`heldUntil` → `held_until`, `menuPackageId` → `menu_package_id`). Exceptions: `MenuPackage.menuId` stays `menu_id`, `Booking.menuPackageId` → `menu_package_id` (FK to `menu_packages.menu_id`).
 
@@ -48,7 +48,7 @@ Columns: ERD camelCase → snake_case (`heldUntil` → `held_until`, `menuPackag
 | role | customer, venue_owner, decorator, admin | REQ-3 |
 | venue_type | indoor, outdoor, semi_outdoor | REQ-5 |
 | event_type | wedding, mehndi, barat, walima, engagement, birthday, corporate, conference, religious, other | chosen |
-| approval_status | pending, approved, rejected | REQ-7 |
+| approval_status | pending, approved, rejected, changes_requested | REQ-7 (`changes_requested` is a [Design] addition, srs-alignment #18) |
 | slot_status | available, held, booked, blocked | REQ-16 |
 | booking_status | requested, held, confirmed, completed, cancelled | REQ-21 |
 | booking_source | online, offline | REQ-23 |

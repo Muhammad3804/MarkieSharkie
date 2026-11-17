@@ -31,7 +31,7 @@ CREATE TYPE role                AS ENUM ('customer', 'venue_owner', 'decorator',
 CREATE TYPE venue_type          AS ENUM ('indoor', 'outdoor', 'semi_outdoor');                         -- REQ-5
 CREATE TYPE event_type          AS ENUM ('wedding', 'mehndi', 'barat', 'walima', 'engagement',
                                          'birthday', 'corporate', 'conference', 'religious', 'other');
-CREATE TYPE approval_status     AS ENUM ('pending', 'approved', 'rejected');                            -- REQ-7
+CREATE TYPE approval_status     AS ENUM ('pending', 'approved', 'rejected', 'changes_requested');       -- REQ-7 (+ [Design] changes_requested, srs-alignment #18)
 CREATE TYPE slot_status         AS ENUM ('available', 'held', 'booked', 'blocked');                     -- REQ-16
 CREATE TYPE booking_status      AS ENUM ('requested', 'held', 'confirmed', 'completed', 'cancelled');   -- REQ-21
 CREATE TYPE booking_source      AS ENUM ('online', 'offline');                                          -- REQ-23
@@ -167,6 +167,7 @@ CREATE TABLE venues (
   approval_status       approval_status NOT NULL DEFAULT 'pending',
   description_embedding vector(1536),                                        -- REQ-15, REQ-27
   rejection_reason      text,                                                -- [SRS] REQ-7 reject with a reason
+  changes_note          text,                                                -- [Design] what to fix when approval_status = 'changes_requested' (srs-alignment #18)
   is_active             boolean         NOT NULL DEFAULT true,               -- [SRS] REQ-5 deactivate
   created_at            timestamptz     NOT NULL DEFAULT now(),
   updated_at            timestamptz     NOT NULL DEFAULT now()
