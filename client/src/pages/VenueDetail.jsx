@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useVenue } from '../features/venues/useVenue.js'
 import { useCenteredSticky } from '../features/venues/useCenteredSticky.js'
@@ -20,6 +20,9 @@ import MenuCard from '../components/venue/MenuCard.jsx'
 import BookingSidebar from '../components/venue/BookingSidebar.jsx'
 import VenueDetailSkeleton from '../components/venue/VenueDetailSkeleton.jsx'
 import { DEFAULT_GUESTS } from '../lib/booking.js'
+import { todayKey } from '../lib/format.js'
+import { loadBookingDraft } from '../features/booking/draft.js'
+import { useSlotAvailability } from '../features/booking/useSlotAvailability.js'
 import { formatAmount } from '../lib/money.js'
 
 // Venue detail page (Figma frames 44:992 Overview, 65:692 Halls, 71:2 Menu, 73:2 Availability, 69:63 Reviews).
@@ -56,16 +59,10 @@ function VenueDetailView({ venue }) {
   const requested = searchParams.get('tab')
   const tab = VENUE_TABS.some((t) => t.id === requested) ? requested : 'overview'
 
-  const [booking, setBooking] = useState(() => ({
-    date: '',
-    slot: 'evening',
-    guests: DEFAULT_GUESTS,
-    hallId: venue.halls[0]?.hallId ?? '',
-    // Package 1 by default so a live price shows on load.
-    menuId: venue.menuPackages[0]?.menuId ?? '',
-  }))
+  // Prefilled from this venue's booking draft, so "Edit" in the booking flow comes back with the same choices.
+  const [booking, setBooking] = useState(() => initialBooking(venue))
   const updateBooking = useCallback((changes) => setBooking((current) => ({ ...current, ...changes })), [])
-  const selectDate = useCallback((date) => updateBooking({ date }), [updateBooking])
+  const availability = useSlotAvailability(venue)
 
   // Switch tab without dropping other query params; optionally scroll back up to the tab bar.
   const tabsRef = useRef(null)
@@ -85,29 +82,10 @@ function VenueDetailView({ venue }) {
     [setSearchParams],
   )
 
-  // "Select a date" in the sidebar jumps to the calendar, switching to the Availability tab when needed.
   const calendarRef = useRef(null)
-  const scrollAfterTabChange = useRef(false)
-  function scrollToCalendar() {
-    const calendarEl = calendarRef.current
-    if (!calendarEl) return
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    calendarEl.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
-    calendarEl.querySelector('td button:not([disabled])')?.focus({ preventScroll: true })
-  }
-  function pickDate() {
-    if (tab === 'overview' || tab === 'availability') return scrollToCalendar()
-    scrollAfterTabChange.current = true
-    showTab('availability')
-  }
-  useEffect(() => {
-    if (!scrollAfterTabChange.current) return
-    scrollAfterTabChange.current = false
-    scrollToCalendar()
-  }, [tab])
 
   const calendar = (title) => (
-    <AvailabilityCalendar ref={calendarRef} title={title} bookedDates={venue.bookedDates} selectedDate={booking.date} onSelect={selectDate} />
+    <AvailabilityCalendar ref={calendarRef} title={title} venue={venue} availability={availability} booking={booking} onChange={updateBooking} />
   )
   const tabLabel = VENUE_TABS.find((t) => t.id === tab).label
   const stickyRef = useCenteredSticky()
@@ -204,12 +182,26 @@ function VenueDetailView({ venue }) {
             The side padding/negative margin leaves room for the card shadow when it scrolls. Normal flow on mobile. */}
         <aside aria-label="Book this venue">
           <div ref={stickyRef} className="lg:sticky lg:-mx-5 lg:my-6 lg:px-5 lg:pb-1">
-            <BookingSidebar venue={venue} booking={booking} onChange={updateBooking} onPickDate={pickDate} />
+            <BookingSidebar venue={venue} booking={booking} onChange={updateBooking} availability={availability} />
           </div>
         </aside>
       </div>
     </div>
   )
+}
+
+function initialBooking(venue) {
+  const draft = loadBookingDraft(venue.id)
+  const hallOk = draft && venue.halls.some((h) => h.hallId === draft.hallId)
+  const menuOk = draft && venue.menuPackages.some((m) => m.menuId === draft.menuId)
+  return {
+    date: draft?.date && draft.date >= todayKey() ? draft.date : '',
+    slot: draft?.slot ?? 'evening',
+    guests: draft?.guests ?? DEFAULT_GUESTS,
+    hallId: hallOk ? draft.hallId : (venue.halls[0]?.hallId ?? ''),
+    // Package 1 by default so a live price shows on load.
+    menuId: menuOk ? draft.menuId : (venue.menuPackages[0]?.menuId ?? ''),
+  }
 }
 
 function TabIntro({ title, body }) {

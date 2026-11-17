@@ -9,6 +9,8 @@ const About = lazy(() => import('../pages/About.jsx'))
 const HostIntro = lazy(() => import('../pages/HostIntro.jsx'))
 const HostWizard = lazy(() => import('../pages/HostWizard.jsx'))
 const HostSubmitted = lazy(() => import('../pages/HostSubmitted.jsx'))
+const BookingFlow = lazy(() => import('../pages/BookingFlow.jsx'))
+const MyBookings = lazy(() => import('../pages/MyBookings.jsx'))
 
 export default function VenueDetailRoute() {
   return (
@@ -62,6 +64,22 @@ export function HostSubmittedRoute() {
   return (
     <Suspense fallback={<div aria-busy="true" aria-label="Loading page" className="min-h-[60vh]" />}>
       <HostSubmitted />
+    </Suspense>
+  )
+}
+
+export function BookingFlowRoute() {
+  return (
+    <Suspense fallback={<div aria-busy="true" aria-label="Loading your booking" className="min-h-dvh" />}>
+      <BookingFlow />
+    </Suspense>
+  )
+}
+
+export function MyBookingsRoute() {
+  return (
+    <Suspense fallback={<div aria-busy="true" aria-label="Loading your bookings" className="min-h-[60vh]" />}>
+      <MyBookings />
     </Suspense>
   )
 }

@@ -9,6 +9,7 @@ const links = [
   { to: '/', label: 'Home' },
   { to: '/explore', label: 'Explore' },
   { to: '/host', label: 'Become a host' },
+  { to: '/bookings', label: 'My bookings' },
   { to: '/about', label: 'About' },
 ]
 

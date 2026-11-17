@@ -30,3 +30,11 @@ export function timeAgo(iso, now = Date.now()) {
 export function formatPKR(amount) {
   return `Rs. ${pkr.format(Number(amount))}`
 }
+
+const pakistanDay = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Karachi' })
+
+// Today's yyyy-mm-dd day key in Pakistan time, whatever the device's time zone (the calendar and the booking
+// rules use it, so "past" means past in Pakistan).
+export function todayKey(now = new Date()) {
+  return pakistanDay.format(now)
+}

@@ -60,7 +60,7 @@ export default function Settings() {
           <p className="mt-3 text-[13px] text-muted-warm">Demo account. Sign-in, password changes and creating other admins arrive with accounts (REQ-1 to REQ-3).</p>
         </Card>
         <Card title="Demo data">
-          <p className="text-[14px] leading-relaxed text-ink">Listings, decisions, users, reports and the audit log are stored in this browser only until the server exists. Resetting brings back the seeded examples and removes listings submitted from this browser.</p>
+          <p className="text-[14px] leading-relaxed text-ink">Listings, decisions, users, reports, customer bookings and the audit log are stored in this browser only until the server exists. Resetting brings back the seeded examples and removes listings submitted from this browser.</p>
           <Button variant="danger-outline" icon="rotate-ccw" className="mt-4" onClick={() => setConfirm(true)}>Reset demo data</Button>
         </Card>
       </div>
@@ -68,7 +68,7 @@ export default function Settings() {
         open={confirm}
         tone="danger"
         title="Reset all demo data?"
-        body="Every listing submitted from this browser, every admin decision and the audit log are deleted, and the seeded examples come back. This can’t be undone."
+        body="Every listing submitted from this browser, every admin decision, every booking and the audit log are deleted, and the seeded examples come back. This can’t be undone."
         confirmLabel="Reset demo data"
         onClose={() => setConfirm(false)}
         onConfirm={async () => {

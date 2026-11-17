@@ -271,6 +271,7 @@ export function listingToVenue(record, urls) {
       floorPlanType: record.fileTypes?.[detail.floorPlanFileId] === 'application/pdf' ? 'pdf' : 'image',
       zones: detail.zones ?? {},
       walkthrough: detail.walkthrough ?? { mode: 'skip', url: '' },
+      hallCharge: '0.00', // the wizard has no hall hire field; the menu price covers the hall
     }
   })
 
@@ -340,7 +341,7 @@ export function listingToVenue(record, urls) {
       venueId: id,
       items: menu.items.map((item, index) => ({ itemId: `${menu.menuId}-item-${index + 1}`, ...item })),
     })),
-    addOns: record.payload.addOns,
+    addOns: record.payload.addOns.map((addOn, index) => ({ addOnId: `${id}-addon-${index + 1}`, venueId: id, ...addOn })),
     reviews: [],
     ratingCounts: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
     bookedDates: [],
@@ -358,6 +359,12 @@ export function listingToVenue(record, urls) {
           description: x.bridalSuite.description || 'A private preparation room for the bridal party.',
         }
       : null,
+    bookingTerms: {
+      advancePercent: numberOrNull(x.bookingRules?.advancePercent) ?? 0,
+      cancellationPolicy: x.bookingRules?.cancellationPolicy || 'strict',
+      customTiers: x.bookingRules?.customPolicy?.tiers ?? [],
+      houseRules,
+    },
     ratingCategories: [],
     host: { name: `${v.name} team`, replyMinutes: null, isTopHost: false, yearsHosting: since ? Math.max(1, new Date().getFullYear() - since) : null },
     parkingSpaces: numberOrNull(x.parkingSpaces) ?? 0,

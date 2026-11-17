@@ -1,7 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { formatEventDate } from '../../lib/format.js'
 import { formatPaisa, toPaisa } from '../../lib/money.js'
-import { MIN_GUESTS, SLOT_HOLD_MINUTES, SLOT_PRESETS, guestCountError } from '../../lib/booking.js'
+import { MIN_GUESTS, SLOT_HOLD_MINUTES, SLOT_PRESETS, SLOT_STATUS_LABELS, guestCountError, slotPreset } from '../../lib/booking.js'
+import { BookingError, checkSlot } from '../../api/bookings.js'
+import { priceBreakdown } from '../../features/booking/pricing.js'
+import { startHold } from '../../features/booking/hold.js'
+import { loadBookingDraft, newBookingDraft, saveBookingDraft } from '../../features/booking/draft.js'
+import DatePickerPopover from './DatePickerPopover.jsx'
 import usersIcon from '../../assets/icons/venue/users.svg'
 import calendarDaysIcon from '../../assets/icons/venue/calendar-days.svg'
 import clockIcon from '../../assets/icons/venue/clock.svg'
@@ -34,63 +40,142 @@ function SelectField({ id, label, value, display, onChange, options, icon = chev
   )
 }
 
+const takenMessage = (status, hall, slot, date) =>
+  `${hall.name} is ${status === 'held' ? 'on hold for another customer' : status === 'blocked' ? 'unavailable' : 'already booked'} for ${slot.label.toLowerCase()} on ${formatEventDate(date)}.`
+
 // Booking card (Figma 44:1141), compacted so the whole panel fits a 720px-tall screen without scrolling.
-// One live total near the button: guests × the selected menu's per-guest price.
-// UI only: the hold/booking flow needs the booking API (docs/booking-engine.md), so "Check availability"
-// explains that instead of pretending to hold a slot.
-export default function BookingSidebar({ venue, booking, onChange, onPickDate }) {
-  // The message is tied to the date + slot it was written for, so it disappears once either changes.
-  const [status, setStatus] = useState({ key: '', message: '' })
+// One live total near the button: menu × guests + hall hire (integer paisa; add-ons come later in the flow).
+// "Check availability" checks that exact hall slot: free -> places a 10-minute hold (REQ-18) and opens the booking
+// flow; taken -> says so inline and offers the nearest free dates and other free halls (EUC-14 2.1).
+export default function BookingSidebar({ venue, booking, onChange, availability }) {
+  const navigate = useNavigate()
+  // The message is tied to the selection it was written for, so it disappears once anything changes.
+  const [status, setStatus] = useState({ key: '', kind: '', message: '', alternatives: null })
+  const [checking, setChecking] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [reported, setReported] = useState(false)
   const [reporting, setReporting] = useState(false)
+  const dateRef = useRef(null)
   // The guest limit comes from the selected hall, so changing hall revalidates the count automatically.
   const hall = venue.halls.find((h) => h.hallId === booking.hallId) ?? venue.halls[0]
   const menu = venue.menuPackages.find((m) => m.menuId === booking.menuId) ?? venue.menuPackages[0] ?? { menuId: '', name: 'No menu', pricePerHead: '0.00' }
-  const slot = SLOT_PRESETS.find((s) => s.value === booking.slot)
-  const statusKey = `${booking.date}|${booking.slot}|${booking.guests}|${hall.hallId}`
-  const statusMessage = status.key === statusKey ? status.message : ''
+  const slot = slotPreset(booking.slot)
+  const statusKey = `${booking.date}|${booking.slot}|${booking.guests}|${hall.hallId}|${menu.menuId}`
+  const shown = status.key === statusKey ? status : null
   const guestError = guestCountError(booking.guests, hall)
   const guests = guestError ? null : Number(booking.guests)
+  const slotState = (hallId, value) => (booking.date ? availability.slotStatus(hallId, booking.date, value) : 'available')
+  const taken = (state) => state !== 'available' && state !== 'unknown'
 
   // Integer paisa only (no float math on money).
-  const total = useMemo(() => (guests === null ? null : toPaisa(menu.pricePerHead) * guests), [menu.pricePerHead, guests])
+  const price = useMemo(() => (guests === null ? null : priceBreakdown(venue, { hallId: hall.hallId, guests, menuId: menu.menuId })), [venue, hall.hallId, guests, menu.menuId])
 
-  function checkAvailability() {
+  const closePicker = useCallback(({ restoreFocus }) => {
+    setPickerOpen(false)
+    if (restoreFocus) dateRef.current?.focus()
+  }, [])
+  const pickDate = useCallback(
+    (date) => {
+      onChange({ date })
+      closePicker({ restoreFocus: true })
+    },
+    [onChange, closePicker],
+  )
+
+  async function checkAvailability() {
+    if (checking) return
     if (guestError) {
-      setStatus({ key: statusKey, message: 'Fix the guest count first.' })
+      setStatus({ key: statusKey, kind: 'error', message: 'Fix the guest count first.' })
       document.getElementById('booking-guests')?.focus()
       return
     }
     if (!booking.date) {
-      setStatus({ key: statusKey, message: 'Pick an event date first.' })
-      onPickDate()
+      setStatus({ key: statusKey, kind: 'error', message: 'Pick an event date first.' })
+      setPickerOpen(true)
       return
     }
-    setStatus({
-      key: statusKey,
-      message: `Live availability for ${formatEventDate(booking.date)} (${slot.label}) comes from the booking service, which isn’t connected yet.`,
-    })
+    setChecking(true)
+    const selection = { hallId: hall.hallId, date: booking.date, slot: booking.slot }
+    try {
+      const result = await checkSlot({ venueId: venue.id, ...selection })
+      if (!result.available) {
+        setStatus({ key: statusKey, kind: 'taken', message: takenMessage(result.status, hall, slot, booking.date), alternatives: result.alternatives })
+        return
+      }
+      await startHold(venue.id, selection)
+      const draft = loadBookingDraft(venue.id) ?? newBookingDraft(venue)
+      // A different slot means new terms to agree to.
+      const sameSlot = draft.hallId === selection.hallId && draft.date === selection.date && draft.slot === selection.slot
+      saveBookingDraft(venue.id, { ...draft, ...selection, guests: booking.guests, menuId: menu.menuId, agreed: sameSlot && draft.agreed, lastStep: 'selection' })
+      navigate(`/venues/${venue.id}/book/selection`)
+    } catch (error) {
+      if (error instanceof BookingError && error.code === 'SLOT_UNAVAILABLE') {
+        setStatus({ key: statusKey, kind: 'taken', message: `${error.message} Try another date or hall.`, alternatives: error.details })
+      } else {
+        console.error('[bookings] check availability failed', error)
+        setStatus({ key: statusKey, kind: 'error', message: error instanceof BookingError ? error.message : 'We couldn’t check this slot. Check your connection and try again.' })
+      }
+    } finally {
+      setChecking(false)
+    }
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 rounded-[18px] border border-line bg-white p-5 shadow-booking">
         <h2 className="sr-only">Book {venue.name}</h2>
-        <div className="overflow-hidden rounded-[12px] border border-outline-strong">
+        <div className="relative rounded-[12px] border border-outline-strong">
           <div className="grid grid-cols-2 border-b border-line">
-            <button type="button" onClick={onPickDate} className={`${fieldBox} border-r border-line text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary`}>
+            <button
+              ref={dateRef}
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={pickerOpen}
+              onClick={() => setPickerOpen((open) => !open)}
+              className={`${fieldBox} cursor-pointer rounded-tl-[12px] border-r border-line text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary`}
+            >
               <span className="flex flex-col gap-1">
                 <span className={fieldLabel}>Event date</span>
                 <span className={fieldValue}>{booking.date ? formatEventDate(booking.date) : 'Select a date'}</span>
               </span>
               <img src={calendarDaysIcon} alt="" width="17" height="17" />
             </button>
-            <SelectField id="booking-slot" label="Start time" value={booking.slot} display={slot.label} icon={clockIcon} onChange={(value) => onChange({ slot: value })} options={SLOT_PRESETS.map((s) => ({ value: s.value, label: `${s.label} (${s.time})` }))} />
+            <SelectField
+              id="booking-slot"
+              label="Start time"
+              value={booking.slot}
+              display={taken(slotState(hall.hallId, booking.slot)) ? `${slot.label} · ${SLOT_STATUS_LABELS[slotState(hall.hallId, booking.slot)]}` : slot.label}
+              icon={clockIcon}
+              onChange={(value) => onChange({ slot: value })}
+              options={SLOT_PRESETS.map((s) => {
+                const state = slotState(hall.hallId, s.value)
+                return { value: s.value, label: `${s.label} (${s.time})${taken(state) ? ` · ${SLOT_STATUS_LABELS[state]}` : ''}` }
+              })}
+            />
           </div>
+          {pickerOpen && (
+            <DatePickerPopover
+              availability={availability}
+              selectedKey={booking.date}
+              anchorRef={dateRef}
+              onClose={closePicker}
+              onSelect={pickDate}
+            />
+          )}
           <div className="border-b border-line">
-            <SelectField id="booking-hall" label="Hall" value={hall.hallId} display={`${hall.name} · up to ${hall.capacity.toLocaleString('en-US')} guests`} onChange={(value) => onChange({ hallId: value })} options={venue.halls.map((h) => ({ value: h.hallId, label: `${h.name} (up to ${h.capacity.toLocaleString('en-US')} guests)` }))} />
+            <SelectField
+              id="booking-hall"
+              label="Hall"
+              value={hall.hallId}
+              display={`${hall.name} · up to ${hall.capacity.toLocaleString('en-US')} guests`}
+              onChange={(value) => onChange({ hallId: value })}
+              options={venue.halls.map((h) => {
+                const state = slotState(h.hallId, booking.slot)
+                return { value: h.hallId, label: `${h.name} (up to ${h.capacity.toLocaleString('en-US')} guests)${taken(state) ? ` · ${SLOT_STATUS_LABELS[state]}` : ''}` }
+              })}
+            />
           </div>
-          <div className={`border-b border-line ${guestError ? 'bg-[#fdf2f2]' : ''}`}>
+          <div className={`border-b border-line ${guestError ? 'bg-danger-bg' : ''}`}>
             <div className={`${fieldBox} has-[input:focus-visible]:outline-2 has-[input:focus-visible]:-outline-offset-2 has-[input:focus-visible]:outline-primary`}>
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <label htmlFor="booking-guests" className={fieldLabel}>Guest count</label>
@@ -112,7 +197,7 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
               </div>
               <img src={usersIcon} alt="" width="17" height="17" className="shrink-0" />
             </div>
-            <p id="booking-guests-hint" aria-live="polite" className={`-mt-1 px-3.5 pb-2 text-[11px] ${guestError ? 'font-medium text-[#b42318]' : 'text-muted-warm'}`}>
+            <p id="booking-guests-hint" aria-live="polite" className={`-mt-1 px-3.5 pb-2 text-[11px] ${guestError ? 'font-medium text-danger' : 'text-muted-warm'}`}>
               {guestError ?? `${MIN_GUESTS} to ${hall.capacity.toLocaleString('en-US')} guests in ${hall.name}`}
             </p>
           </div>
@@ -124,18 +209,29 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
           Your slot is held for {SLOT_HOLD_MINUTES} minutes while you confirm
         </p>
 
-        <p className="flex flex-wrap items-baseline justify-between gap-x-3 border-t border-line pt-3">
-          <span className="text-[13px] text-muted-warm">{guests === null ? 'Enter a guest count' : `Total for ${guests.toLocaleString('en-US')} guests · ${menu.name}`}</span>
-          <span id="booking-price" className="font-heading text-[22px] font-semibold tabular-nums text-ink-strong">{total === null ? 'Rs. –' : formatPaisa(total, 'Rs.')}</span>
-        </p>
+        <div className="flex flex-col gap-0.5 border-t border-line pt-3">
+          <p className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="text-[13px] text-muted-warm">{price === null ? 'Enter a guest count' : `${price.guests.toLocaleString('en-US')} guests · ${menu.name} + hall`}</span>
+            <span id="booking-price" className="font-heading text-[22px] font-semibold tabular-nums text-ink-strong">{price === null ? 'Rs. –' : formatPaisa(price.totalPaisa, 'Rs.')}</span>
+          </p>
+          {price && price.billable > price.guests && <p className="text-[11px] text-muted-warm">{menu.name} is charged for at least {price.billable.toLocaleString('en-US')} guests.</p>}
+        </div>
 
         <div className="flex flex-col gap-2">
-          <button type="button" onClick={checkAvailability} className="flex h-12 items-center justify-center rounded-[12px] bg-primary text-[15px] font-semibold text-white hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-            Check availability
+          <button
+            type="button"
+            onClick={checkAvailability}
+            aria-disabled={checking || undefined}
+            className={`flex h-12 cursor-pointer items-center justify-center gap-2 rounded-[12px] bg-primary text-[15px] font-semibold text-white hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${checking ? 'cursor-wait opacity-80' : ''}`}
+          >
+            {checking && <span aria-hidden="true" className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent motion-reduce:animate-none" />}
+            {checking ? 'Checking…' : 'Check availability'}
           </button>
           <p className="text-center text-xs text-muted-warm">Marketplace services included</p>
-          <p role="status" className="text-center text-[12px] text-muted-warm empty:hidden">{statusMessage}</p>
-          <p className="text-center text-[12px] text-muted-warm">No payment is required to send an inquiry</p>
+          <div role="status" aria-live="polite">
+            {shown && <StatusMessage status={shown} hall={hall} onChange={onChange} />}
+          </div>
+          <p className="text-center text-[12px] text-muted-warm">No payment is required to request a booking</p>
         </div>
       </div>
 
@@ -157,6 +253,46 @@ export default function BookingSidebar({ venue, booking, onChange, onPickDate })
         <p role="status" className="text-[12px] text-muted-warm empty:hidden">{reported ? 'Thanks. Our team will look into it.' : ''}</p>
       </div>
       <ReportListingDialog venue={venue} open={reporting} onClose={() => setReporting(false)} onSent={() => setReported(true)} />
+    </div>
+  )
+}
+
+const chip =
+  'min-h-9 cursor-pointer rounded-full border border-outline-strong bg-white px-3 text-[12px] font-medium text-ink-strong transition-colors hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+
+// Inline result under the button. When the slot is taken: the nearest free dates (same hall + time) and the other
+// halls free at that time, as one-tap chips.
+function StatusMessage({ status, hall, onChange }) {
+  if (status.kind !== 'taken') return <p className="text-center text-[12px] font-medium text-danger">{status.message}</p>
+  const { dates = [], halls = [] } = status.alternatives ?? {}
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-danger/20 bg-danger-bg px-3 py-2.5 text-left">
+      <p className="text-[12px] font-medium text-danger">{status.message}</p>
+      {dates.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[11px] font-semibold uppercase text-muted-warm">Nearest free dates in {hall.name}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {dates.map((date) => (
+              <button key={date} type="button" className={chip} onClick={() => onChange({ date })}>
+                {formatEventDate(date)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {halls.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[11px] font-semibold uppercase text-muted-warm">Free at the same time</p>
+          <div className="flex flex-wrap gap-1.5">
+            {halls.map((other) => (
+              <button key={other.hallId} type="button" className={chip} onClick={() => onChange({ hallId: other.hallId })}>
+                {other.name} · {other.capacity.toLocaleString('en-US')} guests
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {dates.length === 0 && halls.length === 0 && <p className="text-[12px] text-muted-warm">No free dates nearby. Try another month on the calendar.</p>}
     </div>
   )
 }

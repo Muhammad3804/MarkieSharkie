@@ -13,3 +13,8 @@ export function formatPaisa(paisa, prefix = 'Rs') {
 }
 
 export const formatAmount = (amount, prefix) => formatPaisa(toPaisa(amount), prefix)
+
+// 18775050 -> "187750.50", the decimal string the API sends and stores (numeric(12,2)).
+export function paisaToAmount(paisa) {
+  return `${Math.trunc(paisa / 100)}.${String(Math.abs(paisa % 100)).padStart(2, '0')}`
+}

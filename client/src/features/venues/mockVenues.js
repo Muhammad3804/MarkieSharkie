@@ -1045,7 +1045,25 @@ function buildVenue(card, allCards) {
   const headline = AMENITIES.slice(0, 6).filter((a) => amenityRand() < (a.key === 'catering' ? 0.7 : 0.8))
   const facilities = [...headline, ...pickSome(rand, AMENITIES.slice(6), between(rand, 4, 8))].map((a) => a.key)
 
-  return {
+  // Booking terms, add-ons and hall hire (own seed again). Shaped like the wizard's answers (listingToVenue in
+  // api/listings.js builds the same fields from a submitted listing).
+  const bookingRand = seededRandom(`${card.id}:booking`)
+  const cancellationPolicy = pick(bookingRand, ['flexible', 'moderate', 'strict', 'custom'])
+  const bookingTerms = {
+    advancePercent: pick(bookingRand, [20, 25, 30, 50]),
+    cancellationPolicy,
+    customTiers: cancellationPolicy === 'custom' ? [{ fromDays: '60', toDays: '', refundPercent: '100' }, { fromDays: '14', toDays: '60', refundPercent: '50' }, { fromDays: '0', toDays: '14', refundPercent: '0' }] : [],
+    houseRules: [], // set below from the event notes
+  }
+  const addOns = [
+    bookingRand() < 0.85 && { type: 'sound_system', name: 'DJ with sound system', description: 'Line array speakers, two wireless mics and a DJ for the full slot.', price: `${between(bookingRand, 30, 60, 5) * 1000}.00` },
+    bookingRand() < 0.7 && { type: 'smd', name: 'SMD screen (10 × 6 ft)', description: 'Outdoor-grade LED screen with live camera feed.', price: `${between(bookingRand, 15, 30, 5) * 1000}.00` },
+  ]
+    .filter(Boolean)
+    .map((addOn, index) => ({ addOnId: `${card.id}-addon-${index + 1}`, venueId: card.id, ...addOn, isAvailable: true }))
+  const hallCharges = halls.map((hall) => `${Math.round((hall.capacity * between(bookingRand, 80, 160)) / 5000) * 5000}.00`)
+
+  const venue = {
     ...card,
     // venues
     tagline: style.tagline,
@@ -1072,14 +1090,19 @@ function buildVenue(card, allCards) {
     reviews,
     ratingCounts: ratingCounts(card.rating, card.reviewCount),
     bookedDates: [...bookedDates].sort(),
-    // UI-only, not in the SRS/ERD (see note above)
-    halls,
+    addOns, // add_ons
+    // UI-only, not in the SRS/ERD (see note above). hallCharge: flat hire per slot, no column yet.
+    halls: halls.map((hall, index) => ({ ...hall, hallCharge: hallCharges[index] })),
+    bookingTerms,
     bridalSuite,
     ratingCategories,
     host: { name: `${card.name} events team`, replyMinutes: between(rand, 10, 45, 5), isTopHost: card.rating >= 4.8, yearsHosting: between(rand, 3, 15) },
     parkingSpaces: between(rand, 40, 200, 10),
     eventNotes: { timing: [`Day events from ${pick(rand, ['11:00 AM', '12:00 PM'])}`, `Evening events until ${pick(rand, ['10:30 PM', '11:00 PM', '11:30 PM'])}`], policies: pick(rand, POLICIES) },
   }
+  // House rules are the same lines the page shows under "Event notes".
+  venue.bookingTerms.houseRules = venue.eventNotes.policies
+  return venue
 }
 
 const allCards = landingSections.flatMap((section) => section.venues)
