@@ -115,4 +115,4 @@ npx playwright test
 - Casual, direct, concise. Tables over walls of text.
 - Push back honestly if a request is a bad idea or conflicts with the SRS.
 - Build real working code, not placeholders. If something is stubbed (e.g. an external API without a key), say so clearly and make it swappable.
-- Before finishing a task: run the tests and the linter, and say what you ran and what passed.
+- Before finishing a task: run the tests and the linter, and say what you ran and what passed..
