@@ -1,0 +1,20 @@
+services:
+  db:
+    container_name: markiesharkie-db
+    build:
+      context: .
+      dockerfile: db/docker/Dockerfile
+    # postgis/postgis is amd64 only; on Apple Silicon this runs under Rosetta.
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      # Runs 01-init.sql on first start only (empty data volume).
+      - ./db/docker/init:/docker-entrypoint-initdb.d:ro
+      - markiesharkie-pgdata:/var/lib/postgresql/data
+
+volumes:
+  markiesharkie-pgdata:
