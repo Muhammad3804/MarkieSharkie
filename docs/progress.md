@@ -3,9 +3,57 @@
 Read this at the start of every session. Update it at the end of every task (changelog entry, plus Current state,
 Decisions and TODO if they changed) and commit it with the code.
 
-Last updated: 2026-11-18
+Last updated: 2026-11-21
 
 ## Current state
+
+### Server (`server/`, added 2026-11-21)
+
+- Node 20, ES modules, Express 4.22, `pg` 8 (raw SQL, `$n` params only), node-pg-migrate 9 (SQL migrations), Zod 4,
+  dotenv 18 (loads the repo-root `.env`; shell vars win), helmet, cors, cookie-parser, express-rate-limit 8, argon2
+  0.44.0 (pinned), jsonwebtoken 9, pino 10 + pino-http 11. Dev: Vitest 4, Supertest 7, ESLint 10 (flat config with a
+  `no-restricted-syntax` rule against interpolated / concatenated SQL in `.query()`), Prettier 3 (no semicolons,
+  single quotes, 120 cols, same as the client), `yaml` (OpenAPI test). npm `overrides` pins node-pg-migrate's `glob` to
+  ^14.0.6 (fixes 3 moderate advisories; `npm audit` = 0)
+- Layout: `src/{app.js, server.js, config/, db/, lib/, middleware/, modules/auth, modules/users}`, `migrations/`,
+  `scripts/`, `tests/`, `openapi.yaml`. `src/lib/` (AppError, logger, validators, pg error mapping) is the one folder
+  not in the brief's list; architecture.md updated
+- `config/env.js`: Zod-parsed env, exits with a list of problems. `JWT_ACCESS_SECRET` >= 32 chars and not a
+  placeholder (`change-me`...). Vars: `NODE_ENV, PORT, CLIENT_ORIGIN, DATABASE_URL, TEST_DATABASE_URL,
+  JWT_ACCESS_SECRET, ACCESS_TOKEN_TTL_MINUTES=15, REFRESH_TOKEN_TTL_DAYS=7, SESSION_INACTIVITY_MINUTES=30,
+  LOGIN_MAX_ATTEMPTS=5, LOGIN_LOCK_MINUTES=15, SLOT_HOLD_MINUTES=10, TRUST_PROXY=false, LOG_LEVEL=info`.
+  `NODE_ENV=test` switches the pool to `TEST_DATABASE_URL` and refuses if it is the same DB as `DATABASE_URL`
+- `db/pool.js` (one Pool; `date` columns stay `YYYY-MM-DD` strings, numeric stays a string), `db/withTransaction.js`
+- Middleware: `errorHandler` (AppError -> `{ error: { code, message, details? } }`; body-parser errors -> 400
+  `INVALID_JSON` / 413; anything else -> 500 `INTERNAL_ERROR`, no stack or SQL), `notFound`, `validate({ body, params,
+  query })` (strict schemas, per-field details), `authenticate`, `requireRole`, `rateLimit`
+- Hardening: helmet, CORS only `CLIENT_ORIGIN` with credentials, JSON 1 MB, cookie-parser, `trust proxy` from env,
+  rate limits register 10/h, login 20/15 min, refresh 60/15 min per IP. Request logs: method, path (no query), status,
+  request id; no headers, cookies or bodies; pino `redact` for password / token / phone keys; pg `detail` stripped
+- Routes (all in `server/openapi.yaml`):
+
+| Route | Who | SRS |
+|---|---|---|
+| `GET /api/health` | public | `SELECT 1` -> `{ status: 'ok', db: 'up' }` |
+| `POST /api/auth/register` | public, rate limited | EUC-01, REQ-1 |
+| `POST /api/auth/login` | public, rate limited | EUC-02 1-6, REQ-2, REQ-3 |
+| `POST /api/auth/refresh` | refresh cookie, rate limited | REQ-2 |
+| `POST /api/auth/logout` | refresh cookie (optional) | EUC-02 7, UC-03 |
+| `GET /api/me` | any role | EUC-03 2, REQ-4 |
+| `PATCH /api/me` | customer, venue_owner, decorator | EUC-03 3-7 |
+| `GET /api/me/searches`, `GET /api/me/bookings` | customer | EUC-03 2, REQ-4 |
+
+- Sessions: access JWT HS256 15 min `{ sub, role }` + iss `markiesharkie-api` / aud `markiesharkie-client`; refresh
+  token 32 random bytes base64url, SHA-256 in `refresh_tokens`, cookie `ms_refresh` (httpOnly, SameSite=Strict,
+  Path=/api/auth, Secure in production). Login response `{ accessToken, user, homePath }`; refresh returns the same
+- Phone: accepts `03XX-XXXXXXX`, `03XXXXXXXXX`, `+92 3XX XXXXXXX`, `+923XXXXXXXXX` (spaces / dashes anywhere),
+  stores `+923XXXXXXXXX`. Field rules shared by register, PATCH /me and create-admin in `src/lib/validators.js`
+- Scripts: `migrate`, `migrate:test`, `migrate:create`, `db:check`, `create-admin` (interactive, hidden password;
+  also accepts piped input)
+- Tests: 12 files (182 tests) in `server/tests/` against `markiesharkie_test` (global setup guards + migrates; `TRUNCATE ...
+  CASCADE` before each test; files run one at a time). Test names carry the SRS ids
+- Windows notes: run npm from PowerShell or a normal terminal. Git Bash without `ComSpec` set can't run npm scripts
+  or argon2's install script
 
 ### Stack (client only so far)
 
@@ -452,7 +500,24 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - Data goes through `src/api/*`. Pages and hooks never import `mockVenues.js` directly
 - DB `halls` table (`[Design]`, srs-alignment #17): `hall_id, venue_id, name, capacity, created_at`, nullable
   `bookings.hall_id` with composite FK to the same venue. Slots stay per venue (one active booking per venue slot)
-- No migrations exist yet: schema changes before the first migration go into `db/schema.sql` only
+- Migrations (2026-11-21): `server/migrations/001_initial-schema.sql` is a byte-identical copy of `db/schema.sql` and
+  is applied. Every schema change from now on = new numbered SQL migration + `schema.sql` + `docs/database.md`.
+  Forward-only, no down migrations
+- Server auth (asked 2026-11-21):
+  - No `/auth/lookup`; one generic 401 `INVALID_CREDENTIALS` for unknown user / deleted user / wrong password, with a
+    dummy argon2 verify for unknown users (srs-alignment #23, supersedes #22(d) on the server)
+  - `GET /me` for all roles, `PATCH /me` only for customer / venue_owner / decorator (srs-alignment #24)
+  - Login by email or PK mobile (REQ-2 over EUC-02 step 3, srs-alignment #25)
+  - Refresh tokens rotate on every refresh and keep the session's original 7-day expiry; strict reuse detection
+    (a rotated token revokes all of the user's sessions); the client must single-flight refreshes across tabs
+    (srs-alignment #26)
+  - Login order: find user -> lock check (423) -> verify password -> suspended check (403)
+  - argon2id via `argon2` **pinned to 0.44.0**: 0.45.2's Windows prebuilt binary crashes on load (access violation)
+  - Registration does not log in (EUC-01 step 7, `next: '/login'`)
+  - Role tables updated in the same transaction as `users`; the role for `req.user` is read from the DB on every
+    request, never from the token or body
+  - Tests use TRUNCATE ... CASCADE between tests (Part A brief); seed script out of scope; no CI, no coverage threshold
+  - OpenAPI 3.1 in `server/openapi.yaml`, no Swagger UI; a test fails if a mounted route or an error code is missing
 - Photos: WebP only, lazy below the fold, width/height set
 - Booking panel: no internal scroll, no price breakdown, one live total. Sticky behaviour is final (the breakdown
   lives in the booking flow's Price step)
@@ -498,6 +563,24 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `useAuth` / `useRequireAuth` so the real auth can replace `api/auth.js`
 
 ## Changelog (newest first)
+
+- 2026-11-21: **Server Phase 0 + Phase 1 (UC-01 to UC-04, EUC-01 to 03, REQ-1 to 4, NFR-4).** New `server/`:
+  Zod env validation (refuses `change-me` / short JWT secrets), pg pool + `withTransaction`, AppError + error handler,
+  validate / authenticate / requireRole / rate limits, helmet + strict CORS, redacting logs, `GET /api/health`.
+  Migration 001 = byte-identical `db/schema.sql`, applied to the dev and test DBs (first real run of the schema;
+  42 tables incl. `pgmigrations`, `spatial_ref_sys`). Auth: register (3 roles, discriminated union, users + role
+  row in one transaction, 409 EMAIL_TAKEN / PHONE_TAKEN incl. 23505 mapping), login by email or PK mobile (generic
+  401 + dummy argon2 verify, atomic 5-strikes / 15-min lockout, suspended 403 only after the password), refresh
+  rotation with reuse detection + 30-min inactivity, idempotent logout. Profile: `GET/PATCH /api/me` per role,
+  `/me/searches`, `/me/bookings` (paginated). `npm run create-admin` CLI (hidden password, piped input works).
+  `server/openapi.yaml` (3.1) + a test that every route / error code is documented. Decisions asked and logged as
+  srs-alignment #23 to #26 (no `/auth/lookup`, PATCH /me not for admins, email-or-phone login, strict reuse
+  detection). argon2 pinned to 0.44.0 (0.45.2 crashes on Windows); `glob` override for node-pg-migrate (`npm audit`
+  0). Ran: `npm test` 12 files / 182 tests passed (323 s), `npm run lint` 0 problems, `npm run format:check` clean,
+  `npm run migrate` twice (second run "already up to date"), `npm run db:check`, a manual smoke test of every route on
+  the real server and the create-admin CLI (valid, bad phone, mismatch, duplicate); smoke rows deleted afterwards.
+  Docs: CLAUDE.md / README Commands, `.env.example`, `.gitignore`, build-plan, database, api-and-security,
+  architecture, project-map, srs-alignment, plus `instructions.md` (what was built, what's left, how to run)
 
 - 2026-11-18: Login modal restyled to the team's reference layout: 560px card / full-screen on phones, logo mark,
   "Log in or sign up" + per-trigger prompt, floating-label phone or email field, gradient Continue, "or", square
@@ -619,15 +702,30 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ### Gaps and stubs
 
-- No server, DB, auth or real API yet. Everything is mock data
+- Server has auth + profile only (2026-11-21). The client is not wired to it yet: every page still uses the browser
+  mocks in `client/src/api/*`
+- Auth server, not built yet (out of scope 2026-11-21): password reset by OTP (REQ-2, `password_reset_codes` exists),
+  change password, change email, account deletion with anonymisation (NFR-8, REQ-47), admin user management
+  (suspend / unblock / remove / create admin, with `admin_audit_log`), ownership helpers (come with venues/bookings)
+- Auth client TODO: swap `api/auth.js` for the API; replace the email-first "Welcome back / No account" step with one
+  phone-or-email + password step (srs-alignment #23); role picker + owner / decorator fields at signup; keep the access
+  token in memory and **single-flight refreshes across tabs** (srs-alignment #26); refresh while the user is active
+  (inactivity is measured from the last refresh); drop the token on logout; profile page (`/me`)
+- Deployment: the refresh cookie is SameSite=Strict, so the PWA and the API must be on the same site in production
+  (e.g. `app.<domain>` + `api.<domain>`, or the API behind a rewrite on the PWA's domain). Set `TRUST_PROXY=1` behind
+  one proxy so rate limits see real client IPs
+- Test suite is slow locally (~6 min): `TRUNCATE ... CASCADE` over the whole schema costs ~2.4 s per test on Docker
+  Desktop for Windows (a DELETE-based reset measured ~45 ms). Kept TRUNCATE per the Phase 0 brief; revisit if it hurts
+- Seed script (build-plan Phase 0) not written
 - Login is a browser mock (srs-alignment #22): accounts, hashes, lockouts and reset codes live in this browser's
   localStorage. No 30-min inactivity timeout (REQ-2), no profile page (REQ-4), Google / Apple are simulated; no roles (everyone is `customer`, so `/host/new` isn't venue_owner-only and `/admin` has no RequireRole);
   Terms / Privacy are plain text (no pages). Log out doesn't clear this browser's booking drafts or release a live
   hold. Real OAuth needs: the resume action persisted across the redirect (`{ intent, returnTo }`), a session
   `loading` state (RequireAuth would flash), a timeout + distinct errors (popup closed / blocked / network), and the
   access token in memory + refresh token in an httpOnly cookie (not localStorage)
-- Auth TODO(server): argon2id + `timingSafeEqual`, atomic `failed_login_attempts` UPDATE and `FOR UPDATE` on the reset
-  code, rate limits on `/auth/lookup`, `/auth/login`, `/auth/password/forgot`. Android Backspace in an empty code box
+- Auth TODO(server): done 2026-11-21: argon2id, atomic `failed_login_attempts` UPDATE, rate limits on login /
+  register / refresh. Still open with OTP reset: `FOR UPDATE` on the reset code, rate limit on
+  `/auth/password/forgot`; `/auth/lookup` dropped (srs-alignment #23). Android Backspace in an empty code box
   may not move back (needs `beforeinput`). The saved password-manager username is whatever was typed (email or mobile)
 - Bookings made before login existed (customer `demo-customer`) no longer show on `/bookings`; Reset demo data or
   clear `markiesharkie:bookings`
@@ -716,7 +814,8 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ### Next steps (suggested)
 
-- Scaffold `server/` (Express, `pg`, node-pg-migrate, Zod, AppError) per docs/architecture.md and docs/build-plan.md
+- ~~Scaffold `server/`~~ done 2026-11-21 (Phase 0 + Phase 1 auth/profile API). Next on the server: seed script, OTP
+  password reset, then the venues module (Phase 2) with ownership checks
 - Decide whether halls should be independently bookable (per-hall slots)
 - Venue search API (`GET /api/venues`) matching `searchVenues()` filters, plus search history
 - Booking engine on the server (slots per hall, holds with `SELECT ... FOR UPDATE`, quotations) with Vitest tests;

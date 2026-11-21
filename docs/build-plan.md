@@ -5,16 +5,16 @@ Build in this order. Each phase ends with working, tested features that can be d
 Protect the core differentiators first: booking engine (hold + no double booking + live calendar), RAG chatbot, 3D walkthrough, WhatsApp RSVP + QR check-in, trust (reviews + image verification). If time runs short, cut in this order: AI decor preview → decorator marketplace depth → Google reviews sync.
 
 ## Phase 0: Setup
-- [ ] Monorepo layout from `docs/architecture.md`, ESLint + Prettier, `.env.example`, `.gitignore`
-- [ ] Postgres with pgvector + PostGIS locally (Docker compose), first migration = `db/schema.sql`
-- [ ] Express skeleton: config validation, pg pool, `withTransaction`, error handler, health route, Vitest + Supertest against a test DB
+- [ ] Monorepo layout from `docs/architecture.md`, ESLint + Prettier, `.env.example`, `.gitignore` (server side done 2026-11-21: `server/` layout, ESLint + Prettier, env vars, `.gitignore`; the client still uses oxlint and there is no root workspace)
+- [x] Postgres with pgvector + PostGIS locally (Docker compose), first migration = `db/schema.sql`
+- [x] Express skeleton: config validation, pg pool, `withTransaction`, error handler, health route, Vitest + Supertest against a test DB
 - [ ] Vite + React + Tailwind + PWA plugin, router with role layouts, design tokens
 - [ ] Seed script: demo user per role, ~20 venues, slots for 60 days
 
 ## Phase 1: Auth and users (REQ-1 to REQ-4, EUC-01 to 03)
-- [ ] Register (role-specific fields), login (email or phone), lockout, refresh/logout, inactivity timeout, OTP reset
-- [ ] RBAC middleware + ownership helpers, suspended-user block
-- [ ] Profile page per role
+- [ ] Register (role-specific fields), login (email or phone), lockout, refresh/logout, inactivity timeout, OTP reset (API done 2026-11-21 for all but OTP reset)
+- [ ] RBAC middleware + ownership helpers, suspended-user block (`authenticate`, `requireRole` and the suspended/deleted block done 2026-11-21; ownership helpers come with the venue/booking modules)
+- [ ] Profile page per role (API done 2026-11-21: `GET/PATCH /api/me`, `/api/me/searches`, `/api/me/bookings`; the client page is not built)
 
 ## Phase 2: Venues (REQ-5 to REQ-11, EUC-04 to 08)
 - [ ] Owner venue CRUD, approval workflow, admin approve/reject with reason

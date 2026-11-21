@@ -1,0 +1,906 @@
+openapi: 3.1.0
+info:
+  title: MarkieSharkie API
+  version: 0.1.0
+  summary: Marquee and event-venue booking platform for Pakistan (FYP, FAST NUCES CFD).
+  description: |
+    REST API for the MarkieSharkie PWA. Every route here is checked against the Express app by
+    `server/tests/openapi.test.js`, so this file and the code can't drift apart (NFR-6).
+
+    **Conventions** (docs/api-and-security.md)
+    - JSON in and out, camelCase. Money is a decimal string (`"350000.00"`), never a number. Timestamps are ISO-8601 UTC.
+    - Errors always look like `{ "error": { "code": "...", "message": "...", "details": ... } }`. `message` is
+      user-facing and says how to fix the problem (NFR-3). For `VALIDATION_ERROR`, `details` is a list of
+      `{ field, message }` (a field may appear more than once); `field` is a dotted path such as
+      `preferences.guestCount`, or `body` / `query` for errors about the whole object.
+    - Pagination: `?page=1&pageSize=20` -> `{ data, page, pageSize, total }` (pageSize max 100).
+    - Unknown body or query keys are rejected with 400.
+
+    **Sessions** (REQ-2, NFR-4)
+    - `POST /auth/login` returns a short-lived **access token** (JWT HS256, 15 min, `{ sub, role }`) and sets the
+      **refresh token** as cookie `ms_refresh` (httpOnly, SameSite=Strict, Path=/api/auth, Secure in production).
+    - Keep the access token **in memory only** and send it as `Authorization: Bearer <token>`.
+    - When it expires (401 `UNAUTHENTICATED`), call `POST /auth/refresh` (the browser sends the cookie). Every refresh
+      **rotates** the cookie. A session ends after 30 minutes without a refresh (REQ-2 inactivity) or 7 days at most.
+    - **Allow only one refresh at a time across all tabs** (for example a shared in-flight promise plus the Web Locks
+      API). Refresh tokens are single-use: presenting one that was already rotated is treated as theft and ends
+      **every** session of that user (srs-alignment #26).
+    - Inactivity is measured from the last refresh, so refresh while the user is active, not only after a 401.
+    - SameSite=Strict means the API and the PWA must be served from the same site in production
+      (e.g. `app.example.pk` + `api.example.pk`, or the API behind a rewrite on the PWA's domain).
+  contact:
+    name: MarkieSharkie team
+servers:
+  - url: http://localhost:4000/api
+    description: Local development
+tags:
+  - name: Health
+  - name: Auth
+    description: UC-01 Register, UC-02 Log In, UC-03 Log Out (EUC-01, EUC-02)
+  - name: Profile
+    description: UC-04 Manage Profile (EUC-03)
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness + database check
+      description: Runs `SELECT 1` against PostgreSQL.
+      responses:
+        '200':
+          description: API and database are up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, db]
+                properties:
+                  status: { const: ok }
+                  db: { const: up }
+              example: { status: ok, db: up }
+        '503':
+          description: The database is unreachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, db]
+                properties:
+                  status: { const: error }
+                  db: { const: down }
+              example: { status: error, db: down }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Register an account (UC-01, EUC-01)
+      description: |
+        EUC-01 steps 3-7, REQ-1. Creates the `users` row and the matching role row (`customers`, `venue_owners` or
+        `decorators`) in one transaction. Email and mobile must both be unused. **Does not log the user in**:
+        the response tells the client to go to the login page (EUC-01 step 7).
+
+        Public registration only allows `customer`, `venue_owner` and `decorator`. Admins are created by
+        `npm run create-admin` (REQ-1); no API route creates an admin.
+
+        Rate limited: 10 per hour per IP.
+      x-srs: [EUC-01, UC-01, REQ-1, REQ-3, NFR-3, NFR-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+            examples:
+              customer:
+                value:
+                  role: customer
+                  name: Ayesha Khan
+                  email: ayesha@example.pk
+                  phone: 0300-1234567
+                  password: Shadi2025
+                  city: Faisalabad
+                  preferences: { preferredCity: Faisalabad, eventTypes: [walima], guestCount: 300, budgetMax: '350000' }
+              venueOwner:
+                value:
+                  role: venue_owner
+                  name: Hamza Ali
+                  email: hamza@royalpalm.pk
+                  phone: +92 321 7654321
+                  password: Marquee99
+                  city: Lahore
+                  businessName: Royal Palm Marquee
+                  contactNumber: 0321-7654321
+              decorator:
+                value:
+                  role: decorator
+                  name: Sana Iqbal
+                  email: sana@decor.pk
+                  phone: '03451112223'
+                  password: Floral2025
+                  city: Islamabad
+                  businessName: Sana Stage Decor
+                  bio: Floral stages and lighting for mehndi and barat.
+                  serviceCity: Rawalpindi
+      responses:
+        '201':
+          description: Account created. Send the user to `next` (the login page).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+              example:
+                user:
+                  {
+                    id: 6f1c2b8e-2f43-4c6e-9a61-0d4a4c2b9e11,
+                    name: Ayesha Khan,
+                    email: ayesha@example.pk,
+                    role: customer,
+                  }
+                next: /login
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409':
+          description: |
+            `EMAIL_TAKEN` or `PHONE_TAKEN` (REQ-1). `details` lists every taken field. If both are taken the code is
+            `EMAIL_TAKEN`. Also returned when two registrations race (database unique constraint).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                emailTaken:
+                  value:
+                    error:
+                      code: EMAIL_TAKEN
+                      message: This email is already registered. Log in or use another email.
+                      details:
+                        [{ field: email, message: This email is already registered. Log in or use another email. }]
+                phoneTaken:
+                  value:
+                    error:
+                      code: PHONE_TAKEN
+                      message: This mobile number is already registered. Log in or use another number.
+                      details:
+                        [
+                          {
+                            field: phone,
+                            message: This mobile number is already registered. Log in or use another number.,
+                          },
+                        ]
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Log in with email or mobile (UC-02, EUC-02 steps 1-6)
+      description: |
+        REQ-2: log in with email **or** Pakistani mobile + password and open the role's home page.
+
+        - Unknown user and wrong password return the **same** 401 (no account probing). Deleted accounts behave like
+          unknown ones.
+        - 5 wrong passwords in a row lock the account for 15 minutes: the 5th attempt and every attempt during the
+          lock (even with the right password) get 423 with `details.minutesRemaining`. A lock that has expired resets
+          the counter; a successful login resets it too.
+        - A suspended account (EUC-02 4.2) gets 403, but only after the password is verified.
+
+        On success, sets the `ms_refresh` cookie and returns the access token. Rate limited: 20 per 15 min per IP.
+      x-srs: [EUC-02, UC-02, REQ-2, REQ-3, SYS-04, NFR-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            examples:
+              email: { value: { identifier: ayesha@example.pk, password: Shadi2025 } }
+              mobile: { value: { identifier: 0300-1234567, password: Shadi2025 } }
+      responses:
+        '200':
+          description: Logged in (EUC-02 steps 5-6). `homePath` is the role's dashboard.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetRefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: '`INVALID_CREDENTIALS` (EUC-02 4.1). The user can try again.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                { error: { code: INVALID_CREDENTIALS, message: Email/phone or password is incorrect. Try again. } }
+        '403': { $ref: '#/components/responses/AccountSuspended' }
+        '423':
+          description: '`ACCOUNT_LOCKED` (REQ-2). `details.minutesRemaining` says when to try again.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      error:
+                        type: object
+                        properties:
+                          details:
+                            type: object
+                            required: [minutesRemaining]
+                            properties:
+                              minutesRemaining: { type: integer, minimum: 1 }
+              example:
+                error:
+                  code: ACCOUNT_LOCKED
+                  message: Too many wrong attempts. Your account is locked for 15 more minutes. Try again after that.
+                  details: { minutesRemaining: 15 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      summary: Get a new access token (rotates the refresh cookie)
+      description: |
+        REQ-2 session renewal. Uses only the `ms_refresh` cookie (send no body, or `{}`).
+
+        The presented token is locked, revoked and replaced in one transaction; the new cookie keeps the session's
+        original 7-day expiry. Rejected with 401 `SESSION_EXPIRED` (and the cookie cleared) when the cookie is missing,
+        unknown, revoked, expired, or unused for more than 30 minutes (REQ-2 inactivity), or the account was deleted.
+        A suspended account gets 403 `ACCOUNT_SUSPENDED`.
+
+        **Reuse detection:** a token that was already rotated or logged out ends every session of that user. Clients
+        must therefore never run two refreshes at once (see the top of this document). Rate limited: 60 per 15 min.
+      x-srs: [REQ-2, REQ-3, NFR-4]
+      security:
+        - refreshCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '200':
+          description: New access token and a new `ms_refresh` cookie.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetRefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: '`SESSION_EXPIRED`. The cookie is cleared; send the user to log in again.'
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/ClearRefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: { code: SESSION_EXPIRED, message: Your session has expired. Log in again. } }
+        '403':
+          description: '`ACCOUNT_SUSPENDED`. All sessions of the user are revoked and the cookie is cleared.'
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/ClearRefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Log out (UC-03, EUC-02 step 7)
+      description: |
+        Revokes the refresh token from the cookie and clears the cookie. Idempotent: no cookie, an unknown token or a
+        second logout still return 204.
+
+        **The client must also drop its in-memory access token.** Access tokens are short-lived (15 minutes) and are
+        not revoked on the server; after logout the refresh token can no longer renew them.
+      x-srs: [EUC-02, UC-03, REQ-2]
+      security:
+        - refreshCookie: []
+        - {}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '204':
+          description: Logged out.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/ClearRefreshCookie' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me:
+    get:
+      tags: [Profile]
+      operationId: getMe
+      summary: My profile (UC-04, EUC-03 step 2)
+      description: |
+        The logged-in user's base fields plus their role's part: customer `preferences`; venue owner `businessName`,
+        `contactNumber`; decorator `businessName`, `bio`, `serviceCity`; admin nothing extra. Any role.
+        The user always comes from the access token; there is no way to read someone else's profile.
+      x-srs: [EUC-03, UC-04, REQ-4, REQ-3]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The current profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/AccountSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Profile]
+      operationId: updateMe
+      summary: Edit my profile (UC-04, EUC-03 steps 3-7)
+      description: |
+        Customer, venue owner and decorator only (EUC-03 actors; admins get 403, srs-alignment #24).
+        Send at least one field. Allowed fields depend on the role; anything else (including `email`, `role`,
+        `password`, `isActive`, `id`) is rejected with 400. Same validation rules as registration. Users and role
+        rows are updated in one transaction: if any field is invalid, **nothing is saved** (EUC-03 5.1). A customer's
+        `preferences` replaces the stored preferences object as a whole. Returns the updated profile (step 7).
+      x-srs: [EUC-03, UC-04, REQ-4, REQ-1, NFR-3]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/UpdateCustomer'
+                - $ref: '#/components/schemas/UpdateVenueOwner'
+                - $ref: '#/components/schemas/UpdateDecorator'
+              description: Chosen by the caller's role (from the access token), not by a field in the body.
+            examples:
+              customer: { value: { city: Lahore, preferences: { eventTypes: [mehndi, walima], guestCount: 450 } } }
+              venueOwner: { value: { businessName: Shalimar Gardens, contactNumber: 0333-4445556 } }
+              decorator: { value: { bio: Mehndi stages and lighting., serviceCity: Sialkot } }
+      responses:
+        '200':
+          description: Saved. The updated profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user: { $ref: '#/components/schemas/Profile' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '409':
+          description: '`PHONE_TAKEN`: the new mobile number belongs to another account.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error:
+                  code: PHONE_TAKEN
+                  message: This mobile number is already registered. Log in or use another number.
+                  details:
+                    [{ field: phone, message: This mobile number is already registered. Log in or use another number. }]
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/searches:
+    get:
+      tags: [Profile]
+      operationId: listMySearches
+      summary: My past searches (customer, EUC-03 step 2)
+      description: The customer's `search_history`, newest first. Empty until venue search exists (Phase 3).
+      x-srs: [EUC-03, UC-04, REQ-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of searches.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SearchHistoryItem' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/bookings:
+    get:
+      tags: [Profile]
+      operationId: listMyBookings
+      summary: My bookings (customer, EUC-03 step 2)
+      description: |
+        Bookings where the customer is the logged-in user, newest event date first, with venue and hall names.
+        Empty until the booking engine exists (Phase 4).
+      x-srs: [EUC-03, UC-04, REQ-4, REQ-21]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of bookings.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/BookingSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from login or refresh. HS256, 15 minutes, claims `sub` (user id), `role`, `iss`, `aud`.
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: ms_refresh
+      description: httpOnly, SameSite=Strict, Path=/api/auth, Secure in production. Set by login and refresh.
+
+  headers:
+    SetRefreshCookie:
+      description: '`ms_refresh=<token>; Path=/api/auth; Expires=<session expiry>; HttpOnly; SameSite=Strict` (+ `Secure` in production).'
+      schema: { type: string }
+    ClearRefreshCookie:
+      description: '`ms_refresh=; Path=/api/auth; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict`.'
+      schema: { type: string }
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100000, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationError:
+      description: '`VALIDATION_ERROR`: one or more fields are invalid or not allowed. Nothing was saved.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Some fields need fixing. Check the highlighted fields and try again.
+              details:
+                - { field: phone, message: Enter a Pakistani mobile number like 0300-1234567 }
+                - { field: password, message: Include at least one digit. }
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`: missing, invalid or expired access token, or the account no longer exists. Refresh, then retry.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { code: UNAUTHENTICATED, message: Your session has ended. Log in again to continue. } }
+    AccountSuspended:
+      description: '`ACCOUNT_SUSPENDED`: an administrator suspended this account (EUC-02 4.2, REQ-3).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              {
+                code: ACCOUNT_SUSPENDED,
+                message: Your account has been suspended by an administrator. Contact support.,
+              }
+    ForbiddenOrSuspended:
+      description: '`FORBIDDEN` (this role cannot use the route, REQ-3 / SYS-04) or `ACCOUNT_SUSPENDED`.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            forbidden: { value: { error: { code: FORBIDDEN, message: "Your account type can't use this feature." } } }
+            suspended:
+              value:
+                error:
+                  {
+                    code: ACCOUNT_SUSPENDED,
+                    message: Your account has been suspended by an administrator. Contact support.,
+                  }
+    RateLimited:
+      description: '`RATE_LIMITED`: too many requests from this IP. `RateLimit` / `RateLimit-Policy` headers say when to retry.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            {
+              error:
+                { code: RATE_LIMITED, message: Too many attempts from this device. Wait a few minutes and try again. },
+            }
+    PayloadTooLarge:
+      description: '`PAYLOAD_TOO_LARGE`: JSON bodies are limited to 1 MB. Malformed JSON gives 400 `INVALID_JSON`.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: '`INTERNAL_ERROR`: an unexpected server error. No internal details are included.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            {
+              error: { code: INTERNAL_ERROR, message: Something went wrong on our side. Please try again in a moment. },
+            }
+
+  schemas:
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - INVALID_JSON
+        - BAD_REQUEST
+        - EMAIL_TAKEN
+        - PHONE_TAKEN
+        - INVALID_CREDENTIALS
+        - ACCOUNT_LOCKED
+        - ACCOUNT_SUSPENDED
+        - SESSION_EXPIRED
+        - UNAUTHENTICATED
+        - FORBIDDEN
+        - NOT_FOUND
+        - PAYLOAD_TOO_LARGE
+        - RATE_LIMITED
+        - INTERNAL_ERROR
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message: { type: string, description: User-facing; says how to fix the problem (NFR-3). }
+            details:
+              { description: 'Depends on the code: a FieldError list, or an object such as { minutesRemaining }.' }
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field: { type: string, examples: [phone, preferences.guestCount, body] }
+        message: { type: string }
+    ValidationErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: { const: VALIDATION_ERROR }
+            message: { type: string }
+            details:
+              type: array
+              items: { $ref: '#/components/schemas/FieldError' }
+
+    Role:
+      type: string
+      enum: [customer, venue_owner, decorator, admin]
+    EventType:
+      type: string
+      enum: [wedding, mehndi, barat, walima, engagement, birthday, corporate, conference, religious, other]
+    PkMobileInput:
+      type: string
+      maxLength: 30
+      description: 'Pakistani mobile in any of: `03XX-XXXXXXX`, `03XXXXXXXXX`, `+92 3XX XXXXXXX`, `+923XXXXXXXXX` (spaces and dashes allowed). Stored and returned as `+923XXXXXXXXX`.'
+      examples: [0300-1234567, '+92 300 1234567']
+    PkMobile:
+      type: string
+      pattern: '^\+923[0-9]{9}$'
+      examples: ['+923001234567']
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+      description: Trimmed and stored lowercase.
+    Password:
+      type: string
+      minLength: 8
+      maxLength: 128
+      description: At least one letter and one digit (REQ-1).
+      writeOnly: true
+    Name: { type: string, minLength: 2, maxLength: 100, description: Trimmed. }
+    City: { type: string, minLength: 2, maxLength: 100, description: Trimmed. }
+    BusinessName: { type: string, minLength: 2, maxLength: 150 }
+    Bio: { type: string, minLength: 1, maxLength: 500, description: Decorator's short description (REQ-1). }
+    Money:
+      type: string
+      pattern: '^\d{1,10}(\.\d{1,2})?$'
+      description: PKR as a decimal string. Returned with two decimals.
+      examples: ['350000.00']
+    Preferences:
+      type: object
+      additionalProperties: false
+      description: REQ-4 personalisation preferences (customers.preferences).
+      properties:
+        preferredCity: { $ref: '#/components/schemas/City' }
+        eventTypes:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/EventType' }
+        guestCount: { type: integer, minimum: 1, maximum: 10000 }
+        budgetMax: { $ref: '#/components/schemas/Money' }
+
+    AccountFields:
+      type: object
+      required: [name, email, phone, password, city]
+      properties:
+        name: { $ref: '#/components/schemas/Name' }
+        email: { $ref: '#/components/schemas/Email' }
+        phone: { $ref: '#/components/schemas/PkMobileInput' }
+        password: { $ref: '#/components/schemas/Password' }
+        city: { $ref: '#/components/schemas/City' }
+    RegisterCustomer:
+      allOf:
+        - $ref: '#/components/schemas/AccountFields'
+        - type: object
+          required: [role]
+          properties:
+            role: { const: customer }
+            preferences: { $ref: '#/components/schemas/Preferences' }
+      unevaluatedProperties: false
+    RegisterVenueOwner:
+      allOf:
+        - $ref: '#/components/schemas/AccountFields'
+        - type: object
+          required: [role, businessName, contactNumber]
+          properties:
+            role: { const: venue_owner }
+            businessName: { $ref: '#/components/schemas/BusinessName' }
+            contactNumber: { $ref: '#/components/schemas/PkMobileInput' }
+      unevaluatedProperties: false
+    RegisterDecorator:
+      allOf:
+        - $ref: '#/components/schemas/AccountFields'
+        - type: object
+          required: [role, businessName, bio]
+          properties:
+            role: { const: decorator }
+            businessName: { $ref: '#/components/schemas/BusinessName' }
+            bio: { $ref: '#/components/schemas/Bio' }
+            serviceCity:
+              allOf: [{ $ref: '#/components/schemas/City' }]
+              description: Where the decorator works (decorators.city). Defaults to `city`.
+      unevaluatedProperties: false
+    RegisterRequest:
+      oneOf:
+        - $ref: '#/components/schemas/RegisterCustomer'
+        - $ref: '#/components/schemas/RegisterVenueOwner'
+        - $ref: '#/components/schemas/RegisterDecorator'
+      discriminator:
+        propertyName: role
+        mapping:
+          customer: '#/components/schemas/RegisterCustomer'
+          venue_owner: '#/components/schemas/RegisterVenueOwner'
+          decorator: '#/components/schemas/RegisterDecorator'
+    RegisterResponse:
+      type: object
+      required: [user, next]
+      properties:
+        user:
+          type: object
+          required: [id, name, email, role]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            email: { type: string }
+            role: { $ref: '#/components/schemas/Role' }
+        next: { const: /login, description: EUC-01 step 7 - go to the login page. }
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          maxLength: 254
+          description: Email, or a Pakistani mobile in any accepted format (REQ-2).
+        password: { type: string, minLength: 1, maxLength: 128, writeOnly: true }
+    EmptyBody:
+      type: object
+      additionalProperties: false
+      maxProperties: 0
+    SessionUser:
+      type: object
+      required: [id, name, email, phone, role, city]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string }
+        phone: { $ref: '#/components/schemas/PkMobile' }
+        role: { $ref: '#/components/schemas/Role' }
+        city: { type: string }
+    SessionResponse:
+      type: object
+      required: [accessToken, user, homePath]
+      properties:
+        accessToken: { type: string, description: JWT. Keep in memory only. }
+        user: { $ref: '#/components/schemas/SessionUser' }
+        homePath:
+          type: string
+          enum: [/app, /owner, /decorator, /admin]
+          description: customer /app, venue_owner /owner, decorator /decorator, admin /admin (EUC-02 step 6).
+      example:
+        accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          {
+            id: 6f1c2b8e-2f43-4c6e-9a61-0d4a4c2b9e11,
+            name: Ayesha Khan,
+            email: ayesha@example.pk,
+            phone: '+923001234567',
+            role: customer,
+            city: Faisalabad,
+          }
+        homePath: /app
+
+    ProfileBase:
+      type: object
+      required: [id, name, email, phone, role, city, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string }
+        phone: { $ref: '#/components/schemas/PkMobile' }
+        role: { $ref: '#/components/schemas/Role' }
+        city: { type: string }
+        createdAt: { type: string, format: date-time }
+    Profile:
+      oneOf:
+        - allOf:
+            - $ref: '#/components/schemas/ProfileBase'
+            - type: object
+              required: [preferences]
+              properties:
+                role: { const: customer }
+                preferences: { $ref: '#/components/schemas/Preferences' }
+        - allOf:
+            - $ref: '#/components/schemas/ProfileBase'
+            - type: object
+              required: [businessName, contactNumber]
+              properties:
+                role: { const: venue_owner }
+                businessName: { type: string }
+                contactNumber: { $ref: '#/components/schemas/PkMobile' }
+        - allOf:
+            - $ref: '#/components/schemas/ProfileBase'
+            - type: object
+              required: [businessName, bio, serviceCity]
+              properties:
+                role: { const: decorator }
+                businessName: { type: string }
+                bio: { type: string }
+                serviceCity: { type: string }
+        - allOf:
+            - $ref: '#/components/schemas/ProfileBase'
+            - type: object
+              properties:
+                role: { const: admin }
+
+    UpdateCommon:
+      type: object
+      properties:
+        name: { $ref: '#/components/schemas/Name' }
+        phone: { $ref: '#/components/schemas/PkMobileInput' }
+        city: { $ref: '#/components/schemas/City' }
+    UpdateCustomer:
+      allOf:
+        - $ref: '#/components/schemas/UpdateCommon'
+        - type: object
+          properties:
+            preferences: { $ref: '#/components/schemas/Preferences' }
+      minProperties: 1
+      unevaluatedProperties: false
+    UpdateVenueOwner:
+      allOf:
+        - $ref: '#/components/schemas/UpdateCommon'
+        - type: object
+          properties:
+            businessName: { $ref: '#/components/schemas/BusinessName' }
+            contactNumber: { $ref: '#/components/schemas/PkMobileInput' }
+      minProperties: 1
+      unevaluatedProperties: false
+    UpdateDecorator:
+      allOf:
+        - $ref: '#/components/schemas/UpdateCommon'
+        - type: object
+          properties:
+            businessName: { $ref: '#/components/schemas/BusinessName' }
+            bio: { $ref: '#/components/schemas/Bio' }
+            serviceCity: { $ref: '#/components/schemas/City' }
+      minProperties: 1
+      unevaluatedProperties: false
+
+    PageMeta:
+      type: object
+      required: [page, pageSize, total]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+    SearchHistoryItem:
+      type: object
+      required: [id, queryText, filters, resultsCount, searchedAt]
+      properties:
+        id: { type: string, format: uuid }
+        queryText: { type: [string, 'null'] }
+        filters: { type: object, description: 'location, eventType, date, guests, budget (search_history.filters)' }
+        resultsCount: { type: integer, minimum: 0 }
+        searchedAt: { type: string, format: date-time }
+    BookingStatus:
+      type: string
+      enum: [requested, held, confirmed, completed, cancelled]
+    BookingSummary:
+      type: object
+      required: [id, status, source, eventType, guestCount, totalAmount, advanceAmount, createdAt, venue, hall, slot]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        source: { type: string, enum: [online, offline] }
+        eventType: { $ref: '#/components/schemas/EventType' }
+        guestCount: { type: integer, minimum: 1 }
+        totalAmount: { $ref: '#/components/schemas/Money' }
+        advanceAmount: { $ref: '#/components/schemas/Money' }
+        createdAt: { type: string, format: date-time }
+        venue:
+          type: object
+          required: [id, name, city]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            city: { type: string }
+        hall:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [id, name]
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+          description: null = the whole venue.
+        slot:
+          type: object
+          required: [id, date, startTime, endTime]
+          properties:
+            id: { type: string, format: uuid }
+            date: { type: string, format: date, examples: ['2027-01-15'] }
+            startTime: { type: string, examples: ['19:00:00'] }
+            endTime: { type: string, examples: ['23:00:00'] }

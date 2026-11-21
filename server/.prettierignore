@@ -1,0 +1,5 @@
+node_modules
+coverage
+package-lock.json
+# Migration 001 must stay a byte-identical copy of db/schema.sql (tests/infra.test.js checks it).
+migrations
