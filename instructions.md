@@ -194,4 +194,4 @@ Schema changes already decided but not made yet: per-hall slots (#19) and invita
   production (e.g. `app.<domain>` and `api.<domain>`). Set `TRUST_PROXY=1` behind a proxy.
 - **Slow tests on Windows:** each test resets the DB with `TRUNCATE ... CASCADE` (~2.4 s on Docker Desktop). A
   `DELETE`-based reset would take ~45 ms; say the word if you want to switch.
-- **Not committed yet** when this file was written; nothing has been pushed.
+- **Committed** on branch `feat/server-auth` (not pushed, no PR). Merge or open a PR when the team has reviewed it.
