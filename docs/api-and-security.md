@@ -7,6 +7,7 @@
 - Pagination: `?page=1&pageSize=20` → `{ data, page, pageSize, total }`.
 - Errors: `{ error: { code: 'SLOT_UNAVAILABLE', message: 'This slot was just taken. Pick another time.', details? } }`. Messages are user-facing and say how to fix the problem (NFR-3).
 - Status codes: 400 validation, 401 not logged in, 403 wrong role/ownership, 404, 409 state conflict (slot taken, invalid transition), 422 business rule (amount > balance), 423 account locked, 429 rate limit, 502/503 external service down.
+- Error codes in use (full list: `ErrorCode` in `server/openapi.yaml`, checked by a test): `VALIDATION_ERROR` (details = `[{ field, message }]`), `INVALID_JSON`, `BAD_REQUEST`, `EMAIL_TAKEN`, `PHONE_TAKEN`, `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED` (details = `{ minutesRemaining }`), `ACCOUNT_SUSPENDED`, `SESSION_EXPIRED`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `PAYLOAD_TOO_LARGE`, `RATE_LIMITED`, `INTERNAL_ERROR`.
 - Document every route in `server/openapi.yaml` (NFR-6). Update it in the same change as the route.
 
 ## Route map (by role)
@@ -14,7 +15,9 @@
 | Area | Routes | Who |
 |---|---|---|
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/forgot`, `/auth/password/reset` | public |
-| Me | `GET/PATCH /me`, `GET /me/searches`, `GET /me/bookings` | any user |
+| Me | `GET /me` | any user |
+| Me | `PATCH /me` | customer, venue_owner, decorator (EUC-03 actors, srs-alignment #24) |
+| Me | `GET /me/searches`, `GET /me/bookings` | customer (REQ-4) |
 | Venues (public) | `GET /venues` (search), `GET /venues/:id`, `GET /venues/:id/slots?from&to`, `GET /venues/:id/reviews`, `POST /venues/compare` | public / customer |
 | Recommendations | `GET /recommendations` | customer |
 | Owner venues | `POST /owner/venues`, `PATCH /owner/venues/:id`, `POST /owner/venues/:id/deactivate`, images, walkthroughs, stage-photos, menus, add-ons, slots (create/block/unblock) | venue_owner (own venues) |

@@ -108,6 +108,9 @@ Rules enforced in services (need data from several tables): review only after `c
 ## Migrations and seeds
 
 - `db/schema.sql` = full current schema (for reading and fresh setup).
-- `server/migrations/` (node-pg-migrate, SQL files) = how the live DB gets there. The first migration is a copy of `schema.sql`. Every later change = new migration + update `schema.sql` + update this doc.
-- No migration exists yet (no `server/`), so changes made before the first migration (e.g. `halls`, `bookings.hall_id`) go straight into `schema.sql` and ship in that first migration. Separate migrations start after it.
+- `server/migrations/` (node-pg-migrate 9, SQL files) = how the live DB gets there. `npm run migrate` (dev) and `npm run migrate:test` (test) apply pending files in numeric order and record them in the `pgmigrations` table; the test suite migrates the test DB itself before running.
+- **`001_initial-schema.sql` is the baseline: a byte-identical copy of `schema.sql` as of 2026-11-21** (`server/tests/infra.test.js` checks this; Prettier ignores `migrations/`). It was first applied to real PostgreSQL 16 + pgvector 0.8.0 + PostGIS 3.5.2 on 2026-11-21 and loads cleanly (42 tables incl. `pgmigrations` and PostGIS's `spatial_ref_sys`).
+- From now on every schema change = a new migration `NNN_<name>.sql` (`npm run migrate:create -- <name>`, starts with `-- Up Migration`) + the same change in `schema.sql` + this doc (CLAUDE.md rule 10). Never edit an applied migration. Migration 001 stays frozen, so once 002 exists the byte-identical check compares 001 with the schema as it was; update that test then.
+- Migrations are **forward-only** (no down migrations): to undo, write a new migration. Locally you can start over with `docker compose down -v`.
+- Still pending from srs-alignment (they ship as their own migrations with their phases): #19 per-hall slots (`time_slots.hall_id`), #21 invitation `[Design]` columns and `rsvps.party_size`.
 - `db/seeds/`: 15-20 real local marquees (with permission) + 50-100 synthetic venues around Faisalabad, Lahore, Islamabad, Karachi; one demo user per role; slots for the next 60 days. Seeds must be idempotent.

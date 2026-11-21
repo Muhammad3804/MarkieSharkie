@@ -5,8 +5,9 @@ next. Written for teammates. For rules and decisions, read `CLAUDE.md` and `docs
 here" map.
 
 **The short version:** the public website (home, explore, venue page, about, become a host) is built and looks real, but
-it all runs on mock data in the browser. There is **no backend yet**: no `server/` folder, no API, no real login (a browser mock), and the
-database schema has never been run against a real Postgres.
+it all runs on mock data in the browser. **Update 2026-11-21:** `server/` now exists with the Phase 0 skeleton and the
+Phase 1 auth + profile API (register, login, refresh, logout, `/me`), and the schema runs in Docker Postgres through
+migration 001. The client is not wired to the API yet, so the site still uses its browser mocks (including login).
 
 ---
 
@@ -17,7 +18,8 @@ MarkieSharkie/
 ├── CLAUDE.md                 Rules for the project (stack, conventions, non-negotiables). Read this first.
 ├── README.md                 Same intro as CLAUDE.md, for GitHub.
 ├── .env.example              Every environment variable the server and client will need (no real values).
-├── .gitignore                Only ignores .playwright-cli/ (see "Heads-up" at the end).
+├── .gitignore                Ignores .env, node_modules/, coverage/ and .playwright-cli/.
+├── docker-compose.yml        Local Postgres 16 + pgvector + PostGIS (service `db`, image built from db/docker/).
 ├── .mcp.json                 Connects Claude Code to Figma (the design file).
 │
 ├── docs/                     Project knowledge. Source of truth after the SRS.
@@ -35,9 +37,11 @@ MarkieSharkie/
 │   └── project-map.md        This file.
 │
 ├── db/
-│   └── schema.sql            The whole database (40 tables) from the ERD + SRS additions. Not yet migrated or run.
+│   ├── docker/               Dockerfile + first-start init (creates markie_app, both DBs, the 5 extensions).
+│   └── schema.sql            The whole database (40 tables) from the ERD + SRS additions. Applied as migration 001.
 │
-├── server/                   DOES NOT EXIST YET. Planned: Express + Socket.io + pg (see architecture.md).
+├── server/                   Express + pg API (see architecture.md). So far: config, db, middleware, modules/auth,
+│                             modules/users, migrations/, scripts/, tests/, openapi.yaml. No Socket.io yet.
 │
 ├── client/                   The React website (Vite + Tailwind 4 + React Router 7).
 │   ├── index.html            Page shell, Google Fonts (Inter, DM Sans, Arimo).
@@ -165,13 +169,14 @@ None of these files exist yet.
 
 **How to read it:** **Done** = works for real. **Partial** = UI built but on mock data / UI only, or schema only partly
 covers it. **Not started** = nothing. For the **Database** column, "Done*" means the tables are written in
-`db/schema.sql` but the schema has **never been run** (no migrations, no Docker, no seed). "—" = not needed.
+`db/schema.sql` and created by migration 001 in the Docker Postgres, but no feature code uses them yet (no seed).
+"—" = not needed. Rows 0-2 were updated on 2026-11-21; the other rows and the scores below are still as of 2026-11-17.
 
 | # | Feature (REQ) | Frontend | Backend | Database |
 |---|---|---|---|---|
-| 0 | Project setup (Phase 0) | Partial: Vite, React, Tailwind, router, tokens; no PWA, no role layouts, no TanStack Query/Socket.io | Not started | Partial: `schema.sql` written; no migrations, Docker, seed |
-| 1 | Register / login / lockout / profile (REQ-1, 2, 4) | Partial (login modal on the mock `api/auth.js`: email or mobile + password, signup, 15-min lockout, reset by code, dummy Google / Apple; no roles at signup, no inactivity timeout, no profile; srs-alignment #22) | Not started | Done* |
-| 2 | Roles and permissions (REQ-3) | Not started (`RequireAuth` guards logged-in routes; no roles, so no `RequireRole` yet) | Not started | Done* |
+| 0 | Project setup (Phase 0) | Partial: Vite, React, Tailwind, router, tokens; no PWA, no role layouts, no TanStack Query/Socket.io | Done for Phase 0: Express skeleton, env validation, pool, `withTransaction`, errors, health, hardening, Vitest + Supertest | Done: Docker Postgres, migration 001 applied; no seed |
+| 1 | Register / login / lockout / profile (REQ-1, 2, 4) | Partial (login modal on the mock `api/auth.js`: email or mobile + password, signup, 15-min lockout, reset by code, dummy Google / Apple; no roles at signup, no inactivity timeout, no profile; srs-alignment #22) | Done except OTP reset: register (all 3 roles), login by email/phone, lockout, refresh + 30-min inactivity, logout, `GET/PATCH /me`, searches, bookings | Done* |
+| 2 | Roles and permissions (REQ-3) | Not started (`RequireAuth` guards logged-in routes; no roles, so no `RequireRole` yet) | Partial: `authenticate` + `requireRole`, suspended/deleted blocked on every request; ownership checks come with later modules | Done* |
 | 3 | Owner creates a venue listing (REQ-5) | Partial: full 21-screen wizard, autosave, validation; submit is fake | Not started | Partial: many wizard fields have no columns yet (hall size, zones, house rules...) |
 | 4 | Menus, packages, add-ons (REQ-6) | Partial: in the wizard; venue page shows menus, not add-ons | Not started | Done* |
 | 5 | Admin approves/rejects venues (REQ-7) | Partial: `/admin` approvals + review page on mock stores | Not started | Done* |
@@ -200,11 +205,11 @@ covers it. **Not started** = nothing. For the **Database** column, "Done*" means
 | | Score | What it means |
 |---|---|---|
 | **Frontend** | **≈ 24%** (12 Partial, 0 Done) | The public, customer-facing pages and the host wizard are built. Everything behind a login (dashboards, booking, payments, admin) isn't. Nothing is "Done" because nothing talks to a real server yet. |
-| **Backend** | **0%** | No server code exists. |
-| **Database** | Designed, not running | All 40 tables are written; none has been created in a real database or tested. |
+| **Backend** | Phase 0 + Phase 1 auth/profile API (2026-11-21) | Skeleton, auth, RBAC middleware and profile routes with tests; no venue, booking or other modules yet. |
+| **Database** | Running (2026-11-21) | All 40 tables created by migration 001 in Docker Postgres; only the auth/profile tables are used so far. |
 
-Against `docs/build-plan.md`: **no checkbox can be ticked yet.** Phase 0 is about a third done (client scaffold,
-`.env.example`, tokens), with Docker, migrations, Express, PWA and seed missing.
+Against `docs/build-plan.md` (2026-11-21): Phase 0 Docker + migration and the Express skeleton are ticked; the client
+PWA setup and the seed script are still open. Phase 1 server work is done apart from OTP reset and ownership helpers.
 
 Extras we built that aren't in the SRS: About page, wishlist hearts, Explore map, photo lightbox.
 
@@ -240,11 +245,11 @@ Extras we built that aren't in the SRS: About page, wishlist hearts, Explore map
 
 ## 5. Next up (in order)
 
-1. **Get the backend skeleton and a real database running (Phase 0).** Docker Postgres with pgvector + PostGIS,
+1. ✅ **Done 2026-11-21 except the seed script.** **Get the backend skeleton and a real database running (Phase 0).** Docker Postgres with pgvector + PostGIS,
    turn `db/schema.sql` into the first migration and *actually run it* (it has never been tested), Express app with the
    pg pool, `withTransaction`, error handler and a health route, Vitest + Supertest, and a seed script. Tip: reuse
    `mockVenues.js` to generate the seed, so the site looks the same once it's on real data.
-2. **Auth and roles (Phase 1, REQ-1 to 3).** Register/login with JWT + refresh tokens, lockout, `requireRole` +
+2. ✅ **Server side done 2026-11-21 (except OTP reset and ownership helpers); client side still to do.** **Auth and roles (Phase 1, REQ-1 to 3).** Register/login with JWT + refresh tokens, lockout, `requireRole` +
    ownership checks on the server; login/register pages, an auth store and a `RequireRole` guard on the client (the
    host wizard is waiting for this). Everything else depends on knowing who the user is.
 3. **Venues API, and swap the mocks (Phase 2 + 3).** `GET /venues/:id`, search and landing endpoints so
@@ -263,8 +268,9 @@ Extras we built that aren't in the SRS: About page, wishlist hearts, Explore map
 
 ## Heads-up
 
-- **`.env` isn't git-ignored.** The root `.gitignore` only lists `.playwright-cli/`, and `client/.gitignore` doesn't
-  cover the repo root. Add `.env` (and `node_modules/`) to the root `.gitignore` *before* anyone creates a real `.env`.
+- ~~`.env` isn't git-ignored.~~ Fixed: the root `.gitignore` now lists `.env`, `node_modules/` and `coverage/`.
+- `.env.example` ships `JWT_ACCESS_SECRET=change-me`; the server refuses to start until it is replaced with 32+ random
+  characters (see CLAUDE.md "Commands").
 - `client/README.md` is still the default Vite template text.
 - `HallModel3D` adds ~950 KB (Three.js), loaded only when someone opens a 3D view.
 - `VenueDetailRoute.jsx` holds the lazy wrappers for most pages, not just the venue page. Renaming it (e.g.

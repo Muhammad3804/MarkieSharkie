@@ -90,20 +90,34 @@ At the start of every session, read `docs/progress.md`. At the end of every task
 
 ## Commands
 
-> Update this section once the projects are scaffolded.
+All commands work in PowerShell and bash. First time: copy `.env.example` to `.env` (repo root) and set
+`JWT_ACCESS_SECRET` to 32+ random characters; the server refuses to start with the `change-me` placeholder.
 
 ```bash
-# database
-createdb markiesharkie && psql -d markiesharkie -f db/schema.sql
-# server
-cd server && npm install && npm run dev       # http://localhost:4000
-cd server && npm test
+# database (Docker: Postgres 16 + pgvector + PostGIS)
+docker compose up -d --wait db                 # start; first start creates markie_app, both DBs and the extensions
+docker compose down                            # stop, keep data
+docker compose down -v                         # DELETES all local data; db/docker/init runs again on next start
+# server (run inside server/)
+cd server && npm install
+npm run migrate                                # dev DB (DATABASE_URL); the schema only ever arrives through migrations
+npm run migrate:test                           # test DB (TEST_DATABASE_URL); refused if it is the dev DB
+npm run migrate:create -- <kebab-name>         # new server/migrations/NNN_<name>.sql (also update db/schema.sql + docs/database.md)
+npm run db:check                               # prints user, DB, pgvector + PostGIS versions, a vector distance
+npm run create-admin                           # first admin (interactive; REQ-1, no API route creates admins)
+npm run dev                                    # http://localhost:4000 (node --watch)
+npm start
+npm test                                       # Vitest + Supertest against the test DB only (migrates it first)
+npm run lint                                   # ESLint (incl. a rule against SQL built from values)
+npm run format:check                           # Prettier (npm run format to fix)
 # client
-cd client && npm install && npm run dev       # http://localhost:5173
+cd client && npm install && npm run dev        # http://localhost:5173
 cd client && npm run build
-# e2e
+# e2e (not set up yet)
 npx playwright test
 ```
+
+The REST API is documented in `server/openapi.yaml` (a test fails if a mounted route is missing from it).
 
 ## Environment
 
