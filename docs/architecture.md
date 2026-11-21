@@ -12,13 +12,16 @@ markiesharkie/
 │   ├── schema.sql           # full schema (ERD + [SRS] additions)
 │   └── seeds/
 ├── server/                  # Node.js + Express API + Socket.io
-│   ├── migrations/          # node-pg-migrate
+│   ├── migrations/          # node-pg-migrate SQL files (001 = db/schema.sql)
+│   ├── scripts/             # migrate, migrate:create, db:check, create-admin
+│   ├── openapi.yaml         # REST API spec (NFR-6), checked against the mounted routes by a test
 │   ├── src/
 │   │   ├── app.js           # express app (no listen) - imported by tests
 │   │   ├── server.js        # http server + socket.io + jobs
 │   │   ├── config/          # env parsing (zod), constants (SLOT_HOLD_MINUTES...)
 │   │   ├── db/              # pg Pool, withTransaction(fn) helper
-│   │   ├── middleware/      # auth, requireRole, validate, rateLimit, errorHandler
+│   │   ├── lib/             # shared helpers: AppError, logger (redaction), Zod field validators, pg error mapping
+│   │   ├── middleware/      # authenticate, requireRole, validate, rateLimit, errorHandler, notFound
 │   │   ├── realtime/        # socket.io setup, rooms, emit helpers
 │   │   ├── jobs/            # node-cron jobs (see booking-engine.md)
 │   │   ├── integrations/    # llm, embeddings, imageDetection, imageGeneration, whatsapp, googlePlaces, weather, storage
