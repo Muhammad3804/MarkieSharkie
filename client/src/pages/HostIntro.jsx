@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
-import { clearDraft, loadDraft } from '../api/host.js'
+import { clearDraft, loadDraft, syncDraftFromServer } from '../api/host.js'
 import { hasProgress } from '../features/host/draft.js'
 import { PHASES, STEPS, stepIndex } from '../features/host/steps.js'
 import { PHASE_IMAGES } from '../features/host/phaseImages.js'
@@ -15,6 +15,18 @@ import heroImage from '../assets/gallery/hall-4.webp'
 export default function HostIntro() {
   const navigate = useNavigate()
   const [draft, setDraft] = useState(() => loadDraft())
+  // The server copy wins when it is newer (another device); the wizard then opens with it.
+  useEffect(() => {
+    let live = true
+    syncDraftFromServer().then((synced) => {
+      if (!live || !synced) return
+      resetDraftStore()
+      setDraft(synced)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
   const resumable = hasProgress(draft) ? draft : null
   const requireAuth = useRequireAuth()
   // Listing needs an account: log in first (subtitle "Log in to list your venue"), then open the wizard.

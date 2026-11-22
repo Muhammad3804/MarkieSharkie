@@ -12,8 +12,9 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const spec = parse(fs.readFileSync(path.resolve(here, '../openapi.yaml'), 'utf8'))
 const METHODS = ['get', 'post', 'put', 'patch', 'delete']
 
+// OpenAPI writes path parameters as {id}, Express as :id.
 const documented = Object.entries(spec.paths).flatMap(([p, item]) =>
-  METHODS.filter((m) => item[m]).map((m) => `${m.toUpperCase()} /api${p}`),
+  METHODS.filter((m) => item[m]).map((m) => `${m.toUpperCase()} /api${p.replace(/\{(\w+)\}/g, ':$1')}`),
 )
 const mounted = testApp().locals.routes.map((r) => `${r.method} ${r.path}`)
 

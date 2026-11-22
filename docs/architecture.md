@@ -24,11 +24,12 @@ markiesharkie/
 │   │   ├── middleware/      # authenticate, requireRole, validate, rateLimit, errorHandler, notFound
 │   │   ├── realtime/        # socket.io setup, rooms, emit helpers
 │   │   ├── jobs/            # node-cron jobs (see booking-engine.md)
-│   │   ├── integrations/    # llm, embeddings, imageDetection, imageGeneration, whatsapp, googlePlaces, weather, storage
+│   │   ├── integrations/    # built: mailer, storage (local disk), imageDetection (Sightengine / fake); planned: llm, embeddings, imageGeneration, whatsapp, googlePlaces, weather
 │   │   └── modules/
 │   │       ├── auth/        # routes.js controller.js service.js repository.js schemas.js *.test.js
 │   │       ├── users/
-│   │       ├── venues/      # venues, images, walkthroughs, stage photos, menus, add-ons
+│   │       ├── venues/      # built: public landing / search / page / availability / stats, mappers, image checks
+│   │       ├── owner/       # built: drafts, uploads, submit / resubmit, my venues
 │   │       ├── search/      # search, compare, recommendations
 │   │       ├── booking/     # slots, holds, bookings, offline bookings
 │   │       ├── quotations/
@@ -39,7 +40,7 @@ markiesharkie/
 │   │       ├── reviews/
 │   │       ├── notifications/
 │   │       ├── weather/
-│   │       └── admin/       # users, approvals, moderation, disputes, audit log
+│   │       └── admin/       # built: venue queue, decisions, flagged photos, stats, audit log; planned: users, disputes
 │   └── tests/               # integration tests against a real test DB
 ├── client/                  # React + Vite + Tailwind PWA
 │   ├── public/              # manifest.webmanifest, icons
@@ -100,8 +101,12 @@ markiesharkie/
 ### Recommendations (REQ-15)
 Cosine similarity between `customers.preference_embedding` and venue embeddings, filtered to approved/active; no history → most booked / best rated in the customer's city.
 
-### Image verification (REQ-9, Figure 22)
-Upload → store file → `venue_images` `pending` → call detection API (async job) → `genuine` (publish) or `flagged` (unpublished, admin notified) → owner notified per image. API down → stays `pending`, owner told to retry.
+### Image verification (REQ-9, Figure 22), built 2026-11-22
+Upload (content-checked) → stored under a random name → on submit `venue_images` `pending` → after commit,
+`modules/venues/imageVerification.js` sends each photo to `integrations/imageDetection.js` (Sightengine `genai`, 10 s
+timeout; fake without keys) → `genuine` or `flagged` (unpublished; admin keeps or removes it in Flagged images) →
+`image_verifications` row per check; the owner sees the counts per status in "My venues". API down → stays `pending`,
+the owner can retry (`POST /owner/venues/:id/images/verify`). Notifications to the owner come with Phase 6.
 
 ### Decor preview (REQ-31 to REQ-33)
 Stage photo + style prompt → image-generation API (image-to-image / inpainting) → store N results in `decor_previews`. Retry on failure. Stretch goal if time is short.

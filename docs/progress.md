@@ -9,6 +9,14 @@ Last updated: 2026-11-22
 
 ### Server (`server/`, added 2026-11-21)
 
+- **Venues (Phase 2, 2026-11-22, branch `feat/server-venues`):** public `GET /api/venues/landing`, `/api/venues`
+  (Explore filters), `/api/venues/:id`, `/api/venues/:id/availability`, `/api/stats` (approved + active only);
+  owner `/api/owner/draft`, `/api/owner/uploads`, `/api/owner/venues[/:id]` (submit, resubmit, my venues, retry
+  image checks); admin `/api/admin/venues[...]` (queue, review, decisions, bulk), `/api/admin/images`, `/stats`,
+  `/audit`. Photos go through the AI check (Sightengine; fake without keys). Files under `server/uploads/` served at
+  `/uploads`. The home page, Explore, venue pages, Become a host and the admin approvals / venues / photos / overview /
+  audit pages use real data; admin users, disputes and reports, bookings and invitations are still browser mocks.
+
 - Node 20, ES modules, Express 4.22, `pg` 8 (raw SQL, `$n` params only), node-pg-migrate 9 (SQL migrations), Zod 4,
   dotenv 18 (loads the repo-root `.env`; shell vars win), helmet, cors, cookie-parser, express-rate-limit 8, argon2
   0.44.0 (pinned), jsonwebtoken 9, pino 10 + pino-http 11. Dev: Vitest 4, Supertest 7, ESLint 10 (flat config with a
@@ -548,6 +556,18 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `useAuth` / `useRequireAuth` so the real auth can replace `api/auth.js`
 
 ## Changelog (newest first)
+
+- 2026-11-22: **Venues API, owner listings, admin approval and AI image check (Phase 2, Part 3).** Server:
+  `modules/venues` (public landing / search / page / availability / stats), `modules/owner` (drafts, multipart
+  uploads checked by content, submit / resubmit in one transaction, my venues, retry image checks), `modules/admin`
+  (queue, review, approve / reject / request changes / suspend / unsuspend, bulk approve, flagged photos, stats,
+  audit log), `integrations/storage.js`, `integrations/imageDetection.js` (Sightengine, fake without keys),
+  `/uploads` static files, rate limits, 26 routes in `openapi.yaml`; new dependency `multer`. Client: `api/venues.js`,
+  `api/host.js`, `api/admin.js`, `api/listings.js` call the API (same function names / shapes); the wizard uploads its
+  IndexedDB files then submits; `/host/submitted` shows the live status. srs-alignment #28, #32, #33. Tests: 4 new
+  files (`venues-public`, `owner-venues`, `admin-venues`, `per-hall-slots`), 19 files / 257 tests. E2E with
+  playwright at 1512 and 375: owner submit -> hidden while pending -> admin approves -> on home, Explore and the
+  venue page; pending and rejected venues stay hidden.
 
 - 2026-11-22: **Seed + venue schema (branch `feat/server-venues`, Part 2).** Migrations 002 (per-hall slots, #19),
   003 (`suspended`, #29), 004 (wizard fields, #30), 005 (drafts + uploads, #31), mirrored in `db/schema.sql`

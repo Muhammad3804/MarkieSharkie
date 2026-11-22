@@ -116,8 +116,12 @@ function Wizard({ step, index, draft, saved }) {
       // The success page resets the in-memory draft once this wizard has unmounted.
       navigate('/host/submitted', { replace: true, state: result })
     } catch (error) {
-      console.error('[host] submit failed', error)
-      setSubmit({ status: 'error', error: 'We couldn’t submit your listing. Your draft is saved; check your connection and try again.' })
+      // SubmitError carries a message for the person (server field errors, missing files, wrong account type).
+      if (error?.name !== 'SubmitError') console.error('[host] submit failed', error)
+      setSubmit({
+        status: 'error',
+        error: error?.name === 'SubmitError' ? `${error.message} Your draft is saved.` : 'We couldn’t submit your listing. Your draft is saved; check your connection and try again.',
+      })
     }
   }
 

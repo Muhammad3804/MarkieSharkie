@@ -4,11 +4,10 @@ import Button from '../components/ui/Button.jsx'
 import { getSubmissionStatus, loadLastSubmission, reopenListingForChanges } from '../api/host.js'
 import HostIcon from '../features/host/icons.jsx'
 import { resetDraftStore } from '../features/host/draftStore.js'
-import { useStoreVersion } from '../features/admin/hooks.js'
 
 // Shown after "Submit for review". The venue is approval_status 'pending' until an admin approves it, rejects it
-// with a reason (REQ-7) or asks for changes. Photos are checked for AI images first (REQ-9). The status is read
-// live from the listings store (api/host.js), so an admin decision in another tab shows up without a refresh.
+// with a reason (REQ-7) or asks for changes. Photos are checked for AI images first (REQ-9). The status comes from
+// GET /api/owner/venues and is re-read every 20 seconds and when the tab comes back into view.
 const NEXT_STEPS = [
   { icon: 'file-check', title: 'We verify your listing', text: 'Our team checks your venue details and approves your listing, or tells you what to fix.' },
   { icon: 'camera', title: 'We check your photos', text: 'Each photo is checked for AI-generated images. You’ll see the result for every photo.' },
@@ -21,16 +20,34 @@ const STATUS_VIEW = {
   changes_requested: { icon: 'file-check', badge: 'Changes requested', tone: 'bg-info-bg text-info', title: 'A few changes are needed' },
   rejected: { icon: 'x', badge: 'Not approved', tone: 'bg-danger-bg text-danger', title: 'Your listing wasn’t approved' },
   missing: { icon: 'x', badge: 'Not found', tone: 'bg-surface text-muted-warm', title: 'We can’t find this listing' },
+  suspended: { icon: 'x', badge: 'Suspended', tone: 'bg-danger-bg text-danger', title: 'Your listing is paused' },
 }
 
 export default function HostSubmitted() {
   const { state } = useLocation()
   const navigate = useNavigate()
-  const listing = state?.name ? state : loadLastSubmission()
-  useStoreVersion() // re-read the status whenever an admin decides (this tab or another)
-  const current = listing?.venueId ? getSubmissionStatus(listing.venueId) : null
-  // A submission we remember but can no longer find (e.g. the demo data was reset).
-  const missing = Boolean(listing?.venueId) && !current
+  const [listing] = useState(() => (state?.name ? state : loadLastSubmission()))
+  // undefined while loading, null when the listing isn't in this account (e.g. another login), else the status.
+  const [current, setCurrent] = useState(undefined)
+  useEffect(() => {
+    if (!listing?.venueId) return undefined
+    let live = true
+    const load = () =>
+      getSubmissionStatus(listing.venueId)
+        .then((status) => live && setCurrent(status))
+        .catch(() => live && setCurrent((previous) => previous ?? undefined))
+    load()
+    const timer = setInterval(load, 20_000)
+    const onVisible = () => document.visibilityState === 'visible' && load()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      live = false
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [listing?.venueId])
+  // A submission we remember but can no longer find in this account.
+  const missing = Boolean(listing?.venueId) && current === null
   const approval = missing ? 'missing' : (current?.status ?? 'pending')
   const view = STATUS_VIEW[approval] ?? STATUS_VIEW.pending
   const [reopening, setReopening] = useState({ busy: false, error: '' })
@@ -62,6 +79,7 @@ export default function HostSubmitted() {
           {approval === 'rejected' && <>Our team couldn’t approve {name}. Here’s why:</>}
           {approval === 'missing' && <>{name} is no longer in our records. It may have been removed. You can list it again.</>}
           {approval === 'changes_requested' && <>Our team reviewed {name} and needs a few changes before it can go live:</>}
+          {approval === 'suspended' && <>Our team has hidden {name} from customers for now: {current.suspensionReason}</>}
           {approval === 'pending' && (
             <>
               Thanks for listing {name}

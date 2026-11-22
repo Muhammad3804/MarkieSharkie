@@ -56,8 +56,10 @@ export function configureAuth({ refresh, onUnauthorized }) {
 // apiFetch(path, { method, body, auth }) -> parsed JSON (null for 204). `auth: false` for the public auth routes:
 // no Authorization header, and a 401 from them (wrong password, expired refresh) is just an error, not a logout.
 export async function apiFetch(path, { method = 'GET', body, auth = true, retry = true, signal } = {}) {
+  // FormData (file uploads) goes as multipart: the browser sets the Content-Type with its boundary.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData
   const headers = { Accept: 'application/json' }
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`
 
   let response
@@ -66,7 +68,7 @@ export async function apiFetch(path, { method = 'GET', body, auth = true, retry 
       method,
       headers,
       credentials: 'include',
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
       signal,
     })
   } catch (error) {

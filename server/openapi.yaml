@@ -39,6 +39,12 @@ tags:
     description: UC-01 Register, UC-02 Log In, UC-03 Log Out (EUC-01, EUC-02)
   - name: Profile
     description: UC-04 Manage Profile (EUC-03)
+  - name: Venues
+    description: Public venue search and pages (only approved, active venues).
+  - name: Owner
+    description: A venue owner's listings, drafts and uploads (ownership checked on every call).
+  - name: Admin
+    description: Venue moderation, photo review, dashboard and audit log (every action audited).
 
 paths:
   /health:
@@ -572,6 +578,718 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /venues/landing:
+    get:
+      tags: [Venues]
+      operationId: getLandingSections
+      summary: Landing page rows (REQ-12, D6)
+      description: |
+        Rows built from live data: New on MarkieSharkie (approved in the last 21 days), Featured, 360 Virtual Tour,
+        Good Food, Popular in Islamabad / Faisalabad / Lahore. Only approved, active venues.
+      x-srs: [REQ-12, REQ-13]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  required: [sections],
+                  properties: { sections: { type: array, items: { $ref: '#/components/schemas/LandingSection' } } },
+                }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /venues:
+    get:
+      tags: [Venues]
+      operationId: searchVenues
+      summary: Search approved venues (REQ-12, Explore page)
+      description: |
+        Every filter is optional. `date` keeps venues with at least one available hall slot that day. A logged-in
+        customer's search is saved to their history (REQ-4). Page size 12; a page past the end returns the last page.
+      x-srs: [REQ-12, EUC-09]
+      parameters:
+        - { in: query, name: city, schema: { type: string, maxLength: 80 }, description: 'City, area or name contains' }
+        - { in: query, name: location, schema: { type: string }, description: 'Old name for city' }
+        - { in: query, name: date, schema: { type: string, format: date } }
+        - { in: query, name: guests, schema: { type: integer, minimum: 0 } }
+        - { in: query, name: eventType, schema: { $ref: '#/components/schemas/EventType' } }
+        - { in: query, name: priceMin, schema: { type: integer }, description: 'Rupees per head' }
+        - { in: query, name: priceMax, schema: { type: integer } }
+        - { in: query, name: capacity, schema: { type: string, enum: [any, up-to-500, 500-750, 750-plus] } }
+        - { in: query, name: rating, schema: { type: string, enum: ['4.6', '4.8', '4.9'] } }
+        - {
+            in: query,
+            name: setting,
+            schema: { type: string },
+            description: 'Comma list of indoor, outdoor, semi_outdoor',
+          }
+        - { in: query, name: amenities, schema: { type: string }, description: 'Comma list of facility keys' }
+        - { in: query, name: catering, schema: { type: string, enum: ['1'] } }
+        - { in: query, name: section, schema: { type: string }, description: 'A landing row id' }
+        - {
+            in: query,
+            name: sort,
+            schema: { type: string, enum: [recommended, price-asc, price-desc, rating, capacity] },
+          }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueSearchResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /venues/{id}:
+    get:
+      tags: [Venues]
+      operationId: getVenue
+      summary: Venue page (REQ-13)
+      description: |
+        Halls, photos (published only), menus, add-ons, terms, reviews, booked dates. 404 for an unknown id and for
+        every venue that is not approved and active (pending, rejected, changes requested, suspended).
+      x-srs: [REQ-13, EUC-10]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                { type: object, required: [venue], properties: { venue: { $ref: '#/components/schemas/VenueDetail' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /venues/{id}/availability:
+    get:
+      tags: [Venues]
+      operationId: getVenueAvailability
+      summary: Slots per hall (REQ-16, srs-alignment #19)
+      description: |
+        Slots between `from` and `to` (default today + 30 days, at most 92 days), grouped by hall.
+      x-srs: [REQ-16, REQ-13]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Availability' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /stats:
+    get:
+      tags: [Venues]
+      operationId: getPlatformStats
+      summary: Platform numbers for the About page
+      x-srs: [REQ-12]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      venueCount: { type: integer },
+                      cityCount: { type: integer },
+                      hallCount: { type: integer },
+                      averageRating: { type: [number, 'null'] },
+                    },
+                }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/draft:
+    get:
+      tags: [Owner]
+      operationId: getVenueDraft
+      summary: My autosaved listing draft (srs-alignment #31)
+      x-srs: [REQ-5, EUC-04]
+      security:
+        - bearerAuth: []
+      parameters:
+        - {
+            in: query,
+            name: venueId,
+            schema: { type: string, format: uuid },
+            description: 'Set when editing a submitted listing',
+          }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    { draft: { type: [object, 'null'] }, updatedAt: { type: [string, 'null'], format: date-time } },
+                }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [Owner]
+      operationId: saveVenueDraft
+      summary: Autosave the wizard draft
+      description: |
+        Stored as sent (version 2 draft, at most 256 KB). Full validation runs on submit.
+      x-srs: [REQ-5, EUC-04]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [draft],
+                properties: { venueId: { type: [string, 'null'], format: uuid }, draft: { type: object } },
+              }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { updatedAt: { type: string, format: date-time } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Owner]
+      operationId: deleteVenueDraft
+      summary: Discard the draft ("Start over")
+      x-srs: [REQ-5]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: query, name: venueId, schema: { type: string, format: uuid } }
+      responses:
+        '204':
+          description: Deleted (also when there was none).
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/uploads:
+    post:
+      tags: [Owner]
+      operationId: uploadVenueFile
+      summary: Upload a photo, floor plan or walkthrough (REQ-8, REQ-11)
+      description: |
+        multipart/form-data with `kind` and one `file`. The type is read from the file's bytes, not its name:
+        photo JPEG/PNG ≤ 5 MB; floor_plan JPEG/PNG/PDF ≤ 10 MB; walkthrough .glb ≤ 50 MB or 360° JPEG ≤ 20 MB.
+        Stored under a random name; attached to a venue when the listing is submitted. 300 uploads a day per owner.
+      x-srs: [REQ-8, REQ-11, EUC-05]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              {
+                type: object,
+                required: [kind, file],
+                properties:
+                  {
+                    kind: { type: string, enum: [photo, floor_plan, walkthrough] },
+                    file: { type: string, format: binary },
+                  },
+              }
+      responses:
+        '201':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Upload' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '413': { $ref: '#/components/responses/FileRejected' }
+        '415': { $ref: '#/components/responses/FileRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues:
+    get:
+      tags: [Owner]
+      operationId: listMyVenues
+      summary: My venues with status, admin reason and photo checks (REQ-7, REQ-9)
+      x-srs: [REQ-5, REQ-7, REQ-9]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties: { data: { type: array, items: { $ref: '#/components/schemas/OwnerVenue' } } },
+                }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Owner]
+      operationId: submitListing
+      summary: Submit a new listing for approval (REQ-5, REQ-6, EUC-04)
+      description: |
+        One transaction creates the venue (`pending`), halls, photos, menus, add-ons, terms, slot times and tiers,
+        attaches the uploads and clears the draft. Field errors use the wizard's paths (`halls.0.capacity`). Photos are
+        checked by the AI detector after the commit (REQ-9).
+      x-srs: [REQ-5, REQ-6, REQ-8, EUC-04]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingSubmission' }
+      responses:
+        '201':
+          description: Submitted, waiting for an admin.
+          content:
+            application/json:
+              schema: { type: object, properties: { venue: { $ref: '#/components/schemas/SubmittedVenue' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}:
+    get:
+      tags: [Owner]
+      operationId: getMyVenue
+      summary: One of my listings, everything entered (for editing)
+      x-srs: [REQ-5, EUC-04]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { listing: { $ref: '#/components/schemas/Listing' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [Owner]
+      operationId: resubmitListing
+      summary: Resubmit after changes were requested or it was rejected
+      description: |
+        Only from `changes_requested` or `rejected` (otherwise 409). Replaces the listing's content and sets it back to
+        `pending`. Another owner's venue is 404.
+      x-srs: [REQ-5, REQ-7]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingSubmission' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { venue: { $ref: '#/components/schemas/SubmittedVenue' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/images/verify:
+    post:
+      tags: [Owner]
+      operationId: retryImageChecks
+      summary: Check pending photos again (REQ-9 "retry later")
+      x-srs: [REQ-9]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '202':
+          description: Queued.
+          content:
+            application/json:
+              schema: { type: object, properties: { pending: { type: integer } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues:
+    get:
+      tags: [Admin]
+      operationId: adminListVenues
+      summary: Venues by status with search, filters, sort, pages (REQ-7)
+      x-srs: [REQ-7, REQ-47]
+      security:
+        - bearerAuth: []
+      parameters:
+        - {
+            in: query,
+            name: status,
+            schema: { type: string, enum: [pending, changes_requested, approved, rejected, suspended] },
+          }
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: city, schema: { type: string } }
+        - { in: query, name: type, schema: { type: string, enum: [indoor, outdoor, semi_outdoor] } }
+        - { in: query, name: submittedFrom, schema: { type: string, format: date } }
+        - { in: query, name: submittedTo, schema: { type: string, format: date } }
+        - { in: query, name: sort, schema: { type: string, enum: [oldest, newest, decided, name, capacity, rating] } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: pageSize, schema: { type: integer, maximum: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminVenueList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/approve:
+    post:
+      tags: [Admin]
+      operationId: adminBulkApprove
+      summary: Approve several listings (all or nothing)
+      x-srs: [REQ-7, NFR-4]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [ids],
+                properties: { ids: { type: array, maxItems: 50, items: { type: string, format: uuid } } },
+              }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { approved: { type: integer } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/{id}:
+    get:
+      tags: [Admin]
+      operationId: adminGetVenue
+      summary: Everything for the review page
+      description: |
+        The structured listing, the venue as customers would see it (all photos with their check result and AI score)
+        and the decision history from admin_audit_log.
+      x-srs: [REQ-7, REQ-9]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminVenueReview' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/{id}/approve:
+    post:
+      tags: [Admin]
+      operationId: adminApproveVenue
+      summary: Approve (goes public, photos published, 60 days of slots created)
+      description: |
+        Locks the venue, checks the transition (otherwise 409 `INVALID_STATUS`), and writes admin_audit_log in the same transaction.
+      x-srs: [REQ-7, REQ-9, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { type: object, properties: { checklist: { type: object, additionalProperties: { type: boolean } } } }
+      responses:
+        '204':
+          description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/{id}/reject:
+    post:
+      tags: [Admin]
+      operationId: adminRejectVenue
+      summary: Reject with a reason the owner sees (REQ-7)
+      description: |
+        Locks the venue, checks the transition (otherwise 409 `INVALID_STATUS`), and writes admin_audit_log in the same transaction.
+      x-srs: [REQ-7, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '204':
+          description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/{id}/request-changes:
+    post:
+      tags: [Admin]
+      operationId: adminRequestChanges
+      summary: Ask the owner for changes (srs-alignment #18)
+      description: |
+        Locks the venue, checks the transition (otherwise 409 `INVALID_STATUS`), and writes admin_audit_log in the same transaction.
+      x-srs: [REQ-7, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { type: object, required: [note], properties: { note: { type: string, minLength: 5, maxLength: 500 } } }
+      responses:
+        '204':
+          description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/{id}/suspend:
+    post:
+      tags: [Admin]
+      operationId: adminSuspendVenue
+      summary: Hide a live venue (srs-alignment #29)
+      description: |
+        Locks the venue, checks the transition (otherwise 409 `INVALID_STATUS`), and writes admin_audit_log in the same transaction.
+      x-srs: [REQ-47, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '204':
+          description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/{id}/unsuspend:
+    post:
+      tags: [Admin]
+      operationId: adminUnsuspendVenue
+      summary: Make a suspended venue live again
+      description: |
+        Locks the venue, checks the transition (otherwise 409 `INVALID_STATUS`), and writes admin_audit_log in the same transaction.
+      x-srs: [REQ-47, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '204':
+          description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/images:
+    get:
+      tags: [Admin]
+      operationId: adminListImages
+      summary: Photos checked by the AI detector, by status (REQ-9, REQ-10)
+      x-srs: [REQ-9, REQ-10]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [flagged, approved, rejected] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminImageList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/images/{id}/decision:
+    post:
+      tags: [Admin]
+      operationId: adminDecideImage
+      summary: Keep (publish) or remove a flagged photo (REQ-10)
+      x-srs: [REQ-10, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [decision],
+                properties: { decision: { type: string, enum: [approved, rejected] } },
+              }
+      responses:
+        '204':
+          description: Decided.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/stats:
+    get:
+      tags: [Admin]
+      operationId: adminStats
+      summary: Dashboard numbers, weekly submissions, activity
+      x-srs: [REQ-7, NFR-4]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminStats' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/audit:
+    get:
+      tags: [Admin]
+      operationId: adminAudit
+      summary: Admin audit log (NFR-4)
+      x-srs: [NFR-4, REQ-47]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: action, schema: { type: string, enum: [venue, image, user] } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: pageSize, schema: { type: integer, maximum: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -606,6 +1324,21 @@ components:
       schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
 
   responses:
+    NotFound:
+      description: '`NOT_FOUND`: unknown, not yours, or not public (the answer never says which).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidStatus:
+      description: '`INVALID_STATUS`: the listing or photo is not in a state that allows this (e.g. approving a rejected listing).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    FileRejected:
+      description: '`FILE_TOO_LARGE` (413) or `UNSUPPORTED_FILE_TYPE` (415): the message says which types and sizes are allowed.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     ResetCodeRejected:
       description: |
         `VALIDATION_ERROR` (bad email / code format / weak password), `RESET_CODE_INVALID` (wrong code; unknown email
@@ -699,6 +1432,150 @@ components:
             }
 
   schemas:
+    VenueCard:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        area: { type: string }
+        city: { type: string }
+        highlights: { type: string }
+        availableDates: { type: string }
+        rating: { type: number }
+        reviewCount: { type: integer }
+        priceFrom: { $ref: '#/components/schemas/Money' }
+        priceUnit: { type: string, const: per_person }
+        image: { type: string, format: uri }
+        lat: { type: [number, 'null'] }
+        lng: { type: [number, 'null'] }
+        capacity: { type: integer }
+        venueType: { type: string }
+    LandingSection:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        venues: { type: array, items: { $ref: '#/components/schemas/VenueCard' } }
+    VenueSearchResult:
+      type: object
+      properties:
+        venues: { type: array, items: { $ref: '#/components/schemas/VenueCard' } }
+        total: { type: integer }
+        page: { type: integer }
+        pageCount: { type: integer }
+        pageSize: { type: integer }
+        priceRange: { type: object, properties: { min: { type: integer }, max: { type: integer } } }
+        sectionTitle: { type: string }
+    VenueDetail:
+      type: object
+      description: |
+        The card fields plus tagline, address, lat/lng, venueType, supportedEvents, capacity, facilities, description,
+        images, heroImages, gallery (per hall, by section), halls (size, floor plan, zones, walkthrough), menuPackages
+        (with items), addOns, bookingTerms, bridalSuite, reviews, ratingCounts, bookedDates, host, parkingSpaces,
+        eventNotes. Same shape as the client's venue page expects.
+      additionalProperties: true
+    Availability:
+      type: object
+      properties:
+        venueId: { type: string, format: uuid }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        halls:
+          type: array
+          items:
+            type: object
+            properties:
+              hallId: { type: string, format: uuid }
+              slots:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    slotId: { type: string, format: uuid }
+                    date: { type: string, format: date }
+                    startTime: { type: string }
+                    endTime: { type: string }
+                    slotType: { type: string, enum: [lunch, dinner] }
+                    status: { type: string, enum: [available, held, booked, blocked] }
+    Upload:
+      type: object
+      properties:
+        uploadId: { type: string, format: uuid }
+        kind: { type: string, enum: [photo, floor_plan, walkthrough] }
+        url: { type: string, format: uri }
+        mimeType: { type: string }
+        size: { type: integer }
+    ListingSubmission:
+      type: object
+      description: |
+        Mirrors the wizard draft (client/src/features/host/draft.js): venue, halls (+ floorPlanUploadId, walkthrough),
+        bridalSuite, venueImages ({ uploadId, hallId, category, isCover }, 5 to 60), menuPackages (sections with dishes),
+        customMenu, addOns, bookingRules (days, lunch / dinner slots, advance %, cancellation policy + custom tiers).
+        Numbers are sent as text like the form fields. capacity, base price and venue type are computed by the server.
+      required: [venue, halls, venueImages, menuPackages, bookingRules]
+      additionalProperties: true
+    SubmittedVenue:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        approvalStatus: { type: string }
+        submittedAt: { type: string, format: date-time }
+    Listing:
+      type: object
+      description: Everything the owner entered, structured, with file URLs and each photo's check result.
+      additionalProperties: true
+    OwnerVenue:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        approvalStatus: { type: string }
+        rejectionReason: { type: [string, 'null'] }
+        changesNote: { type: [string, 'null'] }
+        suspensionReason: { type: [string, 'null'] }
+        submittedAt: { type: [string, 'null'], format: date-time }
+        reviewedAt: { type: [string, 'null'], format: date-time }
+        coverUrl: { type: [string, 'null'] }
+        photoChecks: { type: object, additionalProperties: { type: integer } }
+    AdminVenueList:
+      type: object
+      properties:
+        rows: { type: array, items: { type: object, additionalProperties: true } }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        pageCount: { type: integer }
+        counts: { type: object, additionalProperties: { type: integer } }
+        cities: { type: array, items: { type: string } }
+    AdminVenueReview:
+      type: object
+      properties:
+        listing: { $ref: '#/components/schemas/Listing' }
+        venue: { $ref: '#/components/schemas/VenueDetail' }
+        history:
+          type: array
+          items:
+            {
+              type: object,
+              properties:
+                { action: { type: string }, details: { type: object }, at: { type: string }, by: { type: string } },
+            }
+    AdminImageList:
+      type: object
+      properties:
+        images: { type: array, items: { type: object, additionalProperties: true } }
+        counts: { type: object, additionalProperties: { type: integer } }
+    AdminStats:
+      type: object
+      additionalProperties: true
+    AuditList:
+      type: object
+      properties:
+        rows: { type: array, items: { type: object, additionalProperties: true } }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        pageCount: { type: integer }
     ErrorCode:
       type: string
       enum:
@@ -717,6 +1594,11 @@ components:
         - UNAUTHENTICATED
         - FORBIDDEN
         - NOT_FOUND
+        - INVALID_STATUS
+        - UNSUPPORTED_FILE_TYPE
+        - FILE_TOO_LARGE
+        - UPLOAD_LIMIT
+        - BAD_UPLOAD
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR

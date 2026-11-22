@@ -246,7 +246,7 @@ function HallWalkthrough({ hall, index, openByDefault }) {
     if (!picked) return
     const lower = picked.name.toLowerCase()
     const kind = WALKTHROUGH_FILES.find((k) => k.extensions.some((ext) => lower.endsWith(ext)))
-    if (!kind) return setFileError(`“${picked.name}” isn’t a .glb/.gltf model or a .jpg 360° photo.`)
+    if (!kind) return setFileError(`“${picked.name}” isn’t a .glb 3D model or a .jpg 360° photo.`)
     if (picked.size > kind.maxBytes) return setFileError(`“${picked.name}” is over ${kind.maxBytes / 1024 / 1024} MB.`)
     setFileError('')
     const fileId = newId()
@@ -306,7 +306,7 @@ function HallWalkthrough({ hall, index, openByDefault }) {
             <input
               ref={input}
               type="file"
-              accept=".glb,.gltf,.jpg,.jpeg"
+              accept=".glb,.jpg,.jpeg"
               hidden
               onChange={(event) => {
                 choose(event.target.files[0])
