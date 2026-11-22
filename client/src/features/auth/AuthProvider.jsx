@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { getAuthSnapshot, onUnauthorized, restoreSession, signOut, subscribeAuth } from '../../api/auth.js'
 import { AuthContext } from './authContext.js'
 import LoginDialog from './LoginDialog.jsx'
@@ -29,6 +29,7 @@ function focusAfterLogin() {
 export default function AuthProvider({ children }) {
   const { ready, user } = useSyncExternalStore(subscribeAuth, getAuthSnapshot, getAuthSnapshot)
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   // { id, intent, pathname } while the modal is open (id restarts the modal at its first step). It only counts as open on the page it was opened from, so
   // back / forward closes it and the pending action (which belonged to the old page) is dropped on close.
   // Logging in from another tab also closes it (nothing to resume there).
@@ -58,11 +59,13 @@ export default function AuthProvider({ children }) {
     setLogin(null)
     if (signedIn?.name) setWelcome({ id: Date.now(), name: signedIn.name, role: signedIn.role, first: Boolean(signedIn.firstLogin) })
     try {
-      action?.(signedIn)
+      // A plain "Log in" (nothing to resume) takes an admin to the dashboard; a resumed action always wins.
+      if (action) action(signedIn)
+      else if (signedIn?.role === 'admin' && !path.current.startsWith('/admin')) navigate('/admin')
     } finally {
       focusAfterLogin()
     }
-  }, [])
+  }, [navigate])
   const logout = useCallback(() => signOut(), [])
 
   useEffect(() => {

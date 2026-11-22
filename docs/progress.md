@@ -557,6 +557,10 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Admin entry points.** Footer link "Admin login" (-> `/admin`, which asks an admin to log in and then
+  shows the dashboard). An admin who logs in from the header (nothing to resume) is taken to `/admin`; a resumed
+  action still wins, and other roles stay on their page. The account menu keeps "Admin dashboard" for admins.
+
 - 2026-11-22: **"Test the AI image check" panel (REQ-9 demo).** Admin > Flagged images has a card that shows which
   detector runs (live Sightengine or the fake one) and runs one photo through it with the real rules: score,
   verdict, high-confidence flag, response time. `GET /api/admin/image-detection`, `POST /api/admin/image-detection/test`

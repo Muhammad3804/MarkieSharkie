@@ -38,7 +38,9 @@ export default function SiteFooter() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[12px] text-muted-warm">
             © 2026 MarkieSharkie Marketplace · <Link to="/privacy" className="hover:text-primary">Privacy</Link> ·{' '}
-            <Link to="/terms" className="hover:text-primary">Terms</Link>
+            <Link to="/terms" className="hover:text-primary">Terms</Link> ·{' '}
+            {/* Admins have no public sign-up; /admin asks them to log in and then opens the dashboard. */}
+            <Link to="/admin" className="hover:text-primary">Admin login</Link>
           </p>
           <div className="flex items-center gap-2 text-[12px] font-medium text-ink-strong">
             <img src={globeIcon} alt="" width="15" height="15" />
