@@ -48,7 +48,7 @@ Columns: ERD camelCase → snake_case (`heldUntil` → `held_until`, `menuPackag
 | role | customer, venue_owner, decorator, admin | REQ-3 |
 | venue_type | indoor, outdoor, semi_outdoor | REQ-5 |
 | event_type | wedding, mehndi, barat, walima, engagement, birthday, corporate, conference, religious, other | chosen |
-| approval_status | pending, approved, rejected, changes_requested | REQ-7 (`changes_requested` is a [Design] addition, srs-alignment #18) |
+| approval_status | pending, approved, rejected, changes_requested, suspended | REQ-7 (`changes_requested` [Design] #18, `suspended` [Design] #29, migration 003) |
 | slot_status | available, held, booked, blocked | REQ-16 |
 | booking_status | requested, held, confirmed, completed, cancelled | REQ-21 |
 | booking_source | online, offline | REQ-23 |
@@ -73,7 +73,9 @@ Adding an enum value: `ALTER TYPE x ADD VALUE 'y';` in a migration. Never remove
 | Constraint | Protects |
 |---|---|
 | `bookings_one_active_per_slot` (partial unique on `slot_id` where not cancelled) | REQ-20 double booking |
-| `time_slots_no_overlap` (exclusion, gist) | overlapping slots for one venue |
+| `time_slots_no_overlap` (exclusion, gist, per `hall_id` since migration 002) | overlapping slots in one hall (srs-alignment #19) |
+| `time_slots_hall_same_venue` (composite FK `(venue_id, hall_id)` → `halls`) | a slot's hall belongs to its venue |
+| `venue_images_one_cover` (partial unique) | at most one cover photo per venue |
 | `time_slots_hold_fields` | `held` ⇔ `held_by` + `held_until` set |
 | `bookings_party` | online needs `customer_id`; offline needs client name + phone |
 | `bookings_cancel_reason` | REQ-22 reason required |
@@ -112,5 +114,29 @@ Rules enforced in services (need data from several tables): review only after `c
 - **`001_initial-schema.sql` is the baseline: a byte-identical copy of `schema.sql` as of 2026-11-21** (`server/tests/infra.test.js` checks this; Prettier ignores `migrations/`). It was first applied to real PostgreSQL 16 + pgvector 0.8.0 + PostGIS 3.5.2 on 2026-11-21 and loads cleanly (42 tables incl. `pgmigrations` and PostGIS's `spatial_ref_sys`).
 - From now on every schema change = a new migration `NNN_<name>.sql` (`npm run migrate:create -- <name>`, starts with `-- Up Migration`) + the same change in `schema.sql` + this doc (CLAUDE.md rule 10). Never edit an applied migration. Migration 001 stays frozen, so once 002 exists the byte-identical check compares 001 with the schema as it was; update that test then.
 - Migrations are **forward-only** (no down migrations): to undo, write a new migration. Locally you can start over with `docker compose down -v`.
-- Still pending from srs-alignment (they ship as their own migrations with their phases): #19 per-hall slots (`time_slots.hall_id`), #21 invitation `[Design]` columns and `rsvps.party_size`.
-- `db/seeds/`: 15-20 real local marquees (with permission) + 50-100 synthetic venues around Faisalabad, Lahore, Islamabad, Karachi; one demo user per role; slots for the next 60 days. Seeds must be idempotent.
+- Migration 001 is frozen by checksum (`server/tests/infra.test.js`); `db/schema.sql` includes 002+.
+- **002 time-slots-per-hall** (srs-alignment #19): `time_slots.hall_id` NOT NULL, composite FK to `halls`, overlap
+  exclusion per hall. `bookings_one_active_per_slot` unchanged (one slot row per hall makes it per hall).
+- **003 approval-status-suspended** (#29): enum value `suspended` (alone: a new value can't be used in the same
+  transaction).
+- **004 venue-listing-details** (#30): wizard fields. `venues`: category, headline, area, postal_code,
+  google_maps_url, hosting_since, landmark (+ minutes), directions, parking_spaces, house_rules, custom_menu_note,
+  advance_percent, cancellation_policy (+ note), booking_days, suspension_reason, submitted_at, reviewed_at.
+  `halls`: standing_capacity, setting, has_ac, length/width/ceiling_ft, description, floor plan (url + type), zones
+  (stage / entrance / seating cell 0-8), walkthrough mode + url, sort_order. `venue_images`: hall_id, category,
+  is_cover, sort_order, mime_type, size_bytes. `walkthrough_assets.hall_id`; `sort_order` on menus and dishes. New
+  tables `bridal_suites`, `venue_slot_templates` (lunch / dinner times), `venue_cancellation_tiers`.
+- **005 owner-drafts-and-uploads** (#31): `venue_drafts` (one autosaved wizard draft per owner and listing, jsonb
+  ≤ 256 KB) and `media_uploads` (files uploaded before the listing exists, attached on submit).
+- Still pending: #21 invitation `[Design]` columns and `rsvps.party_size` (with the invitations phase).
+- **Seed** (`npm run seed` in `server/`, code in `db/seeds/`): reads the client's mock catalogue
+  (`client/src/features/venues/mockVenues.js`) at run time, so the site looks the same on real data. 20 approved
+  venues + 3 pending, 1 rejected, 1 suspended (with halls, bridal suite, photos, menus + dishes, add-ons, slot
+  templates, custom cancellation tiers, PostGIS location); 60 days of Lunch / Dinner slots per hall for live venues,
+  the mock's booked dates booked in every hall (offline, confirmed bookings); every mock review comes from a past,
+  completed booking by one of 14 reviewer accounts (`avg_rating` = their average). Accounts: the admin from
+  `SEED_ADMIN_*`, demo customer / owner / decorator from `SEED_DEMO_PASSWORD` (each skipped with a note when unset),
+  the catalogue owner and the reviewers (random passwords, can't log in). Idempotent: fixed UUIDv5 ids +
+  `ON CONFLICT DO NOTHING`, one transaction; refuses a non-local `DATABASE_URL` without `--allow-remote`;
+  `--reset-passwords` re-applies the admin / demo passwords from `.env`. Photos: the client's WebP files are copied
+  into `server/uploads/seed/` (git-ignored, ~7 MB) and served at `/uploads/seed/`.

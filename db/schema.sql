@@ -31,7 +31,7 @@ CREATE TYPE role                AS ENUM ('customer', 'venue_owner', 'decorator',
 CREATE TYPE venue_type          AS ENUM ('indoor', 'outdoor', 'semi_outdoor');                         -- REQ-5
 CREATE TYPE event_type          AS ENUM ('wedding', 'mehndi', 'barat', 'walima', 'engagement',
                                          'birthday', 'corporate', 'conference', 'religious', 'other');
-CREATE TYPE approval_status     AS ENUM ('pending', 'approved', 'rejected', 'changes_requested');       -- REQ-7 (+ [Design] changes_requested, srs-alignment #18)
+CREATE TYPE approval_status     AS ENUM ('pending', 'approved', 'rejected', 'changes_requested', 'suspended'); -- REQ-7 (+ [Design] changes_requested #18, suspended #29)
 CREATE TYPE slot_status         AS ENUM ('available', 'held', 'booked', 'blocked');                     -- REQ-16
 CREATE TYPE booking_status      AS ENUM ('requested', 'held', 'confirmed', 'completed', 'cancelled');   -- REQ-21
 CREATE TYPE booking_source      AS ENUM ('online', 'offline');                                          -- REQ-23
@@ -170,7 +170,29 @@ CREATE TABLE venues (
   changes_note          text,                                                -- [Design] what to fix when approval_status = 'changes_requested' (srs-alignment #18)
   is_active             boolean         NOT NULL DEFAULT true,               -- [SRS] REQ-5 deactivate
   created_at            timestamptz     NOT NULL DEFAULT now(),
-  updated_at            timestamptz     NOT NULL DEFAULT now()
+  updated_at            timestamptz     NOT NULL DEFAULT now(),
+  -- [Design] srs-alignment #30 (migration 004): Become-a-host wizard fields
+  category              text CHECK (category IN ('marquee','banquet_hall','lawn','farmhouse','hotel_ballroom','rooftop')),
+  headline              text CHECK (char_length(headline) <= 60),
+  area                  text,                                                -- card subtitle ("Johar Town")
+  postal_code           text CHECK (postal_code ~ '^[0-9]{5}$'),
+  google_maps_url       text,
+  hosting_since         smallint CHECK (hosting_since BETWEEN 1947 AND 2100),
+  landmark              text,                                                -- "15 min from Clock Tower"
+  landmark_minutes      smallint CHECK (landmark_minutes BETWEEN 1 AND 180),
+  directions            text,
+  parking_spaces        int CHECK (parking_spaces >= 0),
+  house_rules           text[]          NOT NULL DEFAULT '{}',
+  custom_menu_note      text,
+  advance_percent       smallint        NOT NULL DEFAULT 25 CHECK (advance_percent BETWEEN 0 AND 100),
+  cancellation_policy   text            NOT NULL DEFAULT 'moderate'
+                        CHECK (cancellation_policy IN ('flexible','moderate','strict','custom')),
+  cancellation_note     text,
+  booking_days          text[]          NOT NULL DEFAULT '{mon,tue,wed,thu,fri,sat,sun}'
+                        CHECK (booking_days <@ ARRAY['mon','tue','wed','thu','fri','sat','sun']),
+  suspension_reason     text,                                                -- [Design] #29 admin's reason
+  submitted_at          timestamptz,                                         -- last (re)submission for review
+  reviewed_at           timestamptz                                          -- last admin decision
 );
 CREATE TRIGGER venues_updated_at BEFORE UPDATE ON venues FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE INDEX venues_owner_idx    ON venues(owner_id);
@@ -178,6 +200,8 @@ CREATE INDEX venues_search_idx   ON venues(city, approval_status, is_active, cap
 CREATE INDEX venues_location_idx ON venues USING gist(location);
 CREATE INDEX venues_events_idx   ON venues USING gin(supported_events);
 CREATE INDEX venues_embedding_idx ON venues USING hnsw (description_embedding vector_cosine_ops);
+CREATE INDEX venues_admin_queue_idx ON venues (approval_status, submitted_at);
+CREATE INDEX venues_facilities_idx  ON venues USING gin (facilities);
 
 -- [Design] Not in the ERD or SRS text (docs/srs-alignment.md #17): a marquee has one or more halls, each with
 -- its own capacity. venues.capacity (ERD) stays as the venue's largest capacity.
@@ -187,6 +211,22 @@ CREATE TABLE halls (
   name       text        NOT NULL,
   capacity   int         NOT NULL CHECK (capacity > 0),
   created_at timestamptz NOT NULL DEFAULT now(),
+  -- [Design] srs-alignment #30 (migration 004): hall details from the wizard
+  standing_capacity int CHECK (standing_capacity > 0),
+  setting           venue_type NOT NULL DEFAULT 'indoor',
+  has_ac            boolean    NOT NULL DEFAULT true,
+  length_ft         smallint CHECK (length_ft BETWEEN 10 AND 1000),
+  width_ft          smallint CHECK (width_ft BETWEEN 10 AND 1000),
+  ceiling_ft        smallint CHECK (ceiling_ft BETWEEN 8 AND 100),
+  description       text     NOT NULL DEFAULT '',
+  floor_plan_url    text,
+  floor_plan_type   text CHECK (floor_plan_type IN ('image','pdf')),
+  zone_stage        smallint CHECK (zone_stage BETWEEN 0 AND 8),           -- cell of a 3 x 3 grid, row 0 = back
+  zone_entrance     smallint CHECK (zone_entrance BETWEEN 0 AND 8),
+  zone_seating      smallint CHECK (zone_seating BETWEEN 0 AND 8),
+  walkthrough_mode  text     NOT NULL DEFAULT 'generate' CHECK (walkthrough_mode IN ('generate','upload','link','skip')),
+  walkthrough_url   text,
+  sort_order        smallint NOT NULL DEFAULT 0,
   CONSTRAINT halls_name_per_venue UNIQUE (venue_id, name),
   CONSTRAINT halls_venue_hall UNIQUE (venue_id, hall_id)   -- target of bookings_hall_same_venue; also the venue_id index
 );
@@ -198,10 +238,21 @@ CREATE TABLE venue_images (
   uploaded_at         timestamptz         NOT NULL DEFAULT now(),
   verification_status verification_status NOT NULL DEFAULT 'pending',
   is_published        boolean             NOT NULL DEFAULT false,
+  -- [Design] srs-alignment #30 (migration 004)
+  hall_id             uuid,                                                -- NULL = venue-wide photo
+  category            text                NOT NULL DEFAULT 'main_hall' CHECK (category IN
+                      ('main_hall','stage','seating','bridal_room','washrooms','entrance','exterior','parking','hallway','tour')),
+  is_cover            boolean             NOT NULL DEFAULT false,
+  sort_order          smallint            NOT NULL DEFAULT 0,
+  mime_type           text,
+  size_bytes          int CHECK (size_bytes > 0),
+  CONSTRAINT venue_images_hall_same_venue FOREIGN KEY (venue_id, hall_id)
+    REFERENCES halls (venue_id, hall_id) ON DELETE SET NULL (hall_id),
   -- REQ-9: only genuine (or admin-approved) images can be published
   CONSTRAINT venue_images_publish_rule
     CHECK (NOT is_published OR verification_status IN ('genuine', 'approved'))
 );
+CREATE UNIQUE INDEX venue_images_one_cover ON venue_images (venue_id) WHERE is_cover;
 CREATE INDEX venue_images_venue_idx ON venue_images(venue_id);
 CREATE INDEX venue_images_flagged_idx ON venue_images(verification_status) WHERE verification_status = 'flagged';
 
@@ -220,7 +271,10 @@ CREATE TABLE walkthrough_assets (
   venue_id    uuid        NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
   asset_type  asset_type  NOT NULL,
   file_url    text        NOT NULL,
-  uploaded_at timestamptz NOT NULL DEFAULT now()
+  uploaded_at timestamptz NOT NULL DEFAULT now(),
+  hall_id     uuid,                                                          -- [Design] #30 the hall it shows
+  CONSTRAINT walkthrough_assets_hall_same_venue FOREIGN KEY (venue_id, hall_id)
+    REFERENCES halls (venue_id, hall_id) ON DELETE CASCADE
 );
 CREATE INDEX walkthrough_assets_venue_idx ON walkthrough_assets(venue_id);
 
@@ -239,7 +293,8 @@ CREATE TABLE menu_packages (
   description     text           NOT NULL DEFAULT '',
   price_per_head  numeric(10, 2) NOT NULL CHECK (price_per_head >= 0),
   is_customizable boolean        NOT NULL DEFAULT false,
-  min_guests      int            NOT NULL DEFAULT 1 CHECK (min_guests > 0)
+  min_guests      int            NOT NULL DEFAULT 1 CHECK (min_guests > 0),
+  sort_order      smallint       NOT NULL DEFAULT 0                          -- [Design] #30
 );
 CREATE INDEX menu_packages_venue_idx ON menu_packages(venue_id);
 
@@ -248,7 +303,8 @@ CREATE TABLE menu_items (
   menu_id     uuid    NOT NULL REFERENCES menu_packages(menu_id) ON DELETE CASCADE,
   name        text    NOT NULL,
   category    text    NOT NULL,                                              -- e.g. starter, main, dessert, drink
-  is_optional boolean NOT NULL DEFAULT false
+  is_optional boolean NOT NULL DEFAULT false,
+  sort_order  smallint NOT NULL DEFAULT 0                                    -- [Design] #30
 );
 CREATE INDEX menu_items_menu_idx ON menu_items(menu_id);
 
@@ -263,12 +319,68 @@ CREATE TABLE add_ons (
 );
 CREATE INDEX add_ons_venue_idx ON add_ons(venue_id);
 
+-- [Design] srs-alignment #30 (migration 004): bridal suite (a preparation room, not a bookable hall).
+CREATE TABLE bridal_suites (
+  venue_id    uuid PRIMARY KEY REFERENCES venues(venue_id) ON DELETE CASCADE,
+  name        text NOT NULL,
+  capacity    int  NOT NULL CHECK (capacity BETWEEN 1 AND 200),
+  length_ft   smallint CHECK (length_ft BETWEEN 5 AND 200),
+  width_ft    smallint CHECK (width_ft BETWEEN 5 AND 200),
+  description text NOT NULL DEFAULT ''
+);
+
+-- [Design] #30: booking rules, which slots the venue offers (time_slots are generated from these).
+CREATE TABLE venue_slot_templates (
+  venue_id   uuid NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
+  slot_type  text NOT NULL CHECK (slot_type IN ('lunch','dinner')),
+  start_time time NOT NULL,
+  end_time   time NOT NULL,
+  PRIMARY KEY (venue_id, slot_type),
+  CONSTRAINT venue_slot_templates_order CHECK (end_time > start_time)
+);
+
+-- [Design] #30: custom cancellation policy rows (to_days NULL = "or more").
+CREATE TABLE venue_cancellation_tiers (
+  tier_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id       uuid NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
+  from_days      smallint NOT NULL CHECK (from_days BETWEEN 0 AND 365),
+  to_days        smallint CHECK (to_days <= 366),
+  refund_percent smallint NOT NULL CHECK (refund_percent BETWEEN 0 AND 100),
+  CONSTRAINT venue_cancellation_tiers_range CHECK (to_days IS NULL OR to_days > from_days)
+);
+CREATE INDEX venue_cancellation_tiers_venue_idx ON venue_cancellation_tiers (venue_id);
+
+-- [Design] srs-alignment #31 (migration 005): server-side wizard autosave, one draft per owner and listing.
+CREATE TABLE venue_drafts (
+  draft_id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id   uuid NOT NULL REFERENCES venue_owners(user_id) ON DELETE CASCADE,
+  venue_id   uuid REFERENCES venues(venue_id) ON DELETE CASCADE,          -- NULL = new listing
+  data       jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT venue_drafts_one_per_listing UNIQUE NULLS NOT DISTINCT (owner_id, venue_id),
+  CONSTRAINT venue_drafts_size CHECK (pg_column_size(data) <= 262144)
+);
+
+-- [Design] #31: files uploaded before the listing exists; attached to the venue on submit.
+CREATE TABLE media_uploads (
+  upload_id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id    uuid NOT NULL REFERENCES venue_owners(user_id) ON DELETE CASCADE,
+  kind        text NOT NULL CHECK (kind IN ('photo','floor_plan','walkthrough')),
+  storage_key text NOT NULL UNIQUE,
+  mime_type   text NOT NULL,
+  size_bytes  int  NOT NULL CHECK (size_bytes > 0),
+  venue_id    uuid REFERENCES venues(venue_id) ON DELETE SET NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX media_uploads_owner_idx ON media_uploads (owner_id, created_at);
+
 -- =====================================================================
 -- Time slots and bookings (double-booking prevention: REQ-20, NFR-2)
 -- =====================================================================
 CREATE TABLE time_slots (
   slot_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   venue_id   uuid        NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
+  hall_id    uuid        NOT NULL,                                           -- [Design] srs-alignment #19 (migration 002)
   date       date        NOT NULL,
   start_time time        NOT NULL,
   end_time   time        NOT NULL,
@@ -280,13 +392,15 @@ CREATE TABLE time_slots (
     (status = 'held' AND held_by IS NOT NULL AND held_until IS NOT NULL)
     OR (status <> 'held' AND held_by IS NULL AND held_until IS NULL)
   ),
-  -- Two slots of the same venue can never overlap on the same day.
+  CONSTRAINT time_slots_hall_same_venue FOREIGN KEY (venue_id, hall_id)
+    REFERENCES halls (venue_id, hall_id) ON DELETE CASCADE,
+  -- Two slots of the same hall can never overlap on the same day (srs-alignment #19: halls book independently).
   CONSTRAINT time_slots_no_overlap EXCLUDE USING gist (
-    venue_id WITH =,
+    hall_id WITH =,
     tsrange(date + start_time, date + end_time) WITH &&
   )
 );
-CREATE INDEX time_slots_venue_date_idx ON time_slots(venue_id, date);
+CREATE INDEX time_slots_venue_date_idx ON time_slots(venue_id, date, hall_id);
 CREATE INDEX time_slots_expired_holds_idx ON time_slots(held_until) WHERE status = 'held';
 
 CREATE TABLE bookings (

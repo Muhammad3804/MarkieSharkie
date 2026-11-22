@@ -39,6 +39,7 @@ All commands work in **PowerShell** (Windows) and in bash (macOS / Linux). Use a
    ```powershell
    npm run create-admin     # asks for name, email, mobile, city, password (hidden)
    npm run seed:admin       # or: create the admin from SEED_ADMIN_* in .env (safe to run again)
+   npm run seed             # demo data: venues, slots, reviews, demo accounts (SEED_DEMO_PASSWORD); safe to rerun
    ```
 
 ### Every day
@@ -166,7 +167,8 @@ Lint and Prettier: clean. A manual smoke test of every route against the real se
 
 ### Server, Phase 0 / Phase 1 leftovers
 
-- [ ] **Seed script** (`db/seeds/`): a demo user per role, ~20 venues, slots for 60 days (build-plan Phase 0)
+- [x] **Seed script** (`db/seeds/`, `npm run seed`): 25 venues from the mock catalogue, per-hall slots, past reviews,
+      admin + demo accounts from `.env` (2026-11-22)
 - [x] **Password reset by one-time code** (REQ-2), done 2026-11-22: `POST /api/auth/forgot-password`,
       `/verify-reset-code`, `/reset-password`; emailed 6-digit code (SMTP_* in `.env`; without SMTP, development
       prints the code in the server console). Reset by SMS (REQ-2 "or mobile") is still open

@@ -14,3 +14,6 @@ dist.nosync
 *.nosync
 # iCloud duplicate copies ("node_modules 2", "node_modules 3")
 node_modules *
+
+# Uploaded files and the seed photos copied by `npm run seed` (never committed)
+server/uploads/

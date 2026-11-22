@@ -549,6 +549,13 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Seed + venue schema (branch `feat/server-venues`, Part 2).** Migrations 002 (per-hall slots, #19),
+  003 (`suspended`, #29), 004 (wizard fields, #30), 005 (drafts + uploads, #31), mirrored in `db/schema.sql`
+  (verified: a fresh load of schema.sql matches the migrated test DB) and `docs/database.md`; migration 001 frozen by
+  checksum. `npm run seed` (`db/seeds/`, `server/scripts/seed.js`): 25 venues from the mock catalogue, 60 days of
+  per-hall slots, past bookings + reviews, admin / demo accounts from `.env`; idempotent, local DB only. Tests:
+  `seed.test.js` (runs it twice, counts equal), `per-hall-slots.test.js`; 16 files, 222 tests.
+
 - 2026-11-22: **Auth close-out audit (branch `feat/server-venues`, Part 1).** No code change. Lint, Prettier, 209/209
   tests, client lint + build all pass. `.env.example` covers every variable the code reads (reset-code limits are
   constants, not env); noted that `VITE_*` belong in `client/.env`. Stale TODOs fixed here and in `instructions.md`;

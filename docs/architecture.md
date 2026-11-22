@@ -10,7 +10,7 @@ markiesharkie/
 ├── docs/                    # these context docs + docs/srs/ (SRS PDF, diagrams)
 ├── db/
 │   ├── schema.sql           # full schema (ERD + [SRS] additions)
-│   └── seeds/
+│   └── seeds/               # npm run seed: catalog.js reads the client's mockVenues.js, seed.js inserts (idempotent)
 ├── server/                  # Node.js + Express API + Socket.io
 │   ├── migrations/          # node-pg-migrate SQL files (001 = db/schema.sql)
 │   ├── scripts/             # migrate, migrate:create, db:check, create-admin

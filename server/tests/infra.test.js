@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Writable } from 'node:stream'
@@ -125,10 +126,12 @@ describe('withTransaction', () => {
 })
 
 describe('migration 001', () => {
-  it('is an exact copy of db/schema.sql', () => {
-    const schema = fs.readFileSync(path.resolve(here, '../../db/schema.sql'))
+  // 001 was a byte-identical copy of db/schema.sql on 2026-11-21. Migrations are never edited once applied, so it is
+  // frozen by checksum; db/schema.sql has moved on with 002+ (each also mirrored there, CLAUDE.md rule 10).
+  it('is frozen (never edited after it was applied)', () => {
     const migration = fs.readFileSync(path.resolve(here, '../migrations/001_initial-schema.sql'))
-    expect(migration.equals(schema)).toBe(true)
+    const sha256 = crypto.createHash('sha256').update(migration).digest('hex')
+    expect(sha256).toBe('67a1cb6774a4fd12984608d0379d323303a3ef843a44902b4d2e233c9d879218')
   })
 
   it('has been applied to the test database (all ERD tables exist)', async () => {

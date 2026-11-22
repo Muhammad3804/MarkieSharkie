@@ -106,6 +106,7 @@ npm run migrate:create -- <kebab-name>         # new server/migrations/NNN_<name
 npm run db:check                               # prints user, DB, pgvector + PostGIS versions, a vector distance
 npm run create-admin                           # first admin (interactive; REQ-1, no API route creates admins)
 npm run seed:admin                             # or the first admin from SEED_ADMIN_* in .env (idempotent)
+npm run seed                                   # demo data: 25 venues, slots, reviews, demo accounts (local DB only, idempotent)
 npm run dev                                    # http://localhost:4000 (node --watch)
 npm start
 npm test                                       # Vitest + Supertest against the test DB only (migrates it first)

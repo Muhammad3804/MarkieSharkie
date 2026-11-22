@@ -9,7 +9,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
 - [x] Postgres with pgvector + PostGIS locally (Docker compose), first migration = `db/schema.sql`
 - [x] Express skeleton: config validation, pg pool, `withTransaction`, error handler, health route, Vitest + Supertest against a test DB
 - [ ] Vite + React + Tailwind + PWA plugin, router with role layouts, design tokens
-- [ ] Seed script: demo user per role, ~20 venues, slots for 60 days
+- [x] Seed script: demo user per role, ~20 venues, slots for 60 days (`npm run seed`, 2026-11-22: 25 venues from the mock catalogue, per-hall slots, past reviews)
 
 ## Phase 1: Auth and users (REQ-1 to REQ-4, EUC-01 to 03)
 - [ ] Register (role-specific fields), login (email or phone), lockout, refresh/logout, inactivity timeout, OTP reset (API done 2026-11-21 for all but OTP reset)
