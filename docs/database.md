@@ -134,6 +134,8 @@ Rules enforced in services (need data from several tables): review only after `c
   needs an admin), `menu_packages.archived_at` and `add_ons.archived_at` (replaced or removed rows kept for bookings;
   public queries filter `archived_at IS NULL`) and `bookings.menu_price_per_head` (price snapshot at booking time).
   Has a working `-- Down Migration` section (tested on the test DB).
+- **007 review-reports** (#36): `review_reports` (reason enum-like CHECK, optional note ≤ 500, `resolved_at`,
+  UNIQUE per review and reporter) and `reviews.removal_reason`; partial index on flagged reviews. Down section tested.
 - Still pending: #21 invitation `[Design]` columns and `rsvps.party_size` (with the invitations phase).
 - **Files:** `venue_images.image_url`, `halls.floor_plan_url` and `walkthrough_assets.file_url` hold the path
   `/uploads/<key>` (the API adds its origin). `media_uploads` tracks every upload and which venue it was attached to.

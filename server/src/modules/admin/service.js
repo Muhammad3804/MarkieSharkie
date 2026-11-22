@@ -252,7 +252,8 @@ export async function getStats() {
       usersByRole: { customer: n.customers, venue_owner: n.venue_owners, decorator: n.decorators },
       bookingsThisMonth: n.bookings_this_month,
       flaggedImages: n.flagged_images,
-      pendingEdits: n.pending_edits, // edits to live venues waiting for approval (srs-alignment #35)
+      pendingEdits: n.pending_edits,
+      reportedReviews: n.reported_reviews, // REQ-44 moderation queue // edits to live venues waiting for approval (srs-alignment #35)
     },
     weeks: weeks.map((w) => ({ week: w.week, submitted: w.submitted, approved: w.approved })),
     oldPending: old.map((r) => ({ id: r.venue_id, name: r.name, submittedAt: iso(r.submitted_at) })),

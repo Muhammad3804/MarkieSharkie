@@ -119,6 +119,7 @@ export const router = createBrowserRouter([
           { path: 'approvals/:id', element: <AdminPageRoute page="review" /> },
           { path: 'edits', element: <AdminPageRoute page="edits" /> },
           { path: 'edits/:id', element: <AdminPageRoute page="editReview" /> },
+          { path: 'reviews', element: <AdminPageRoute page="reviews" /> },
           { path: 'images', element: <AdminPageRoute page="images" /> },
           { path: 'venues', element: <AdminPageRoute page="venues" /> },
           { path: 'users', element: <AdminPageRoute page="users" /> },

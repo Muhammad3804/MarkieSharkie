@@ -194,7 +194,8 @@ export async function dashboardNumbers(db) {
        (SELECT count(*) FROM bookings
          WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'Asia/Karachi') AT TIME ZONE 'Asia/Karachi')::int AS bookings_this_month,
        (SELECT count(*) FROM venue_images WHERE verification_status = 'flagged')::int AS flagged_images,
-       (SELECT count(*) FROM venue_revisions WHERE status = 'pending')::int AS pending_edits`,
+       (SELECT count(*) FROM venue_revisions WHERE status = 'pending')::int AS pending_edits,
+       (SELECT count(*) FROM reviews WHERE is_flagged AND removed_at IS NULL)::int AS reported_reviews`,
   )
   return rows[0]
 }

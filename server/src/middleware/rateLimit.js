@@ -20,6 +20,8 @@ export const AUTH_RATE_LIMITS = Object.freeze({
   adminWrite: { windowMs: 15 * MINUTE, limit: 600 },
   // Each test may call the paid Sightengine API: keep it to a demo's worth.
   detectionTest: { windowMs: 60 * MINUTE, limit: 30 },
+  // REQ-44: reporting reviews (one report per user per review is also enforced by the database).
+  reviewReports: { windowMs: 60 * MINUTE, limit: 30 },
 })
 
 const RATE_LIMITED_MESSAGES = {

@@ -559,6 +559,19 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Review moderation (EUC-34, REQ-44), Part D.** Migration **007** (`review_reports`,
+  `reviews.removal_reason`), srs-alignment #36. Server module `modules/reviews/` (routes, controller, service,
+  repository, schemas): `POST /api/venues/:id/reviews/:reviewId/report` (logged in, not admin, not your own review,
+  once per user, 30 an hour per IP) and admin `GET /api/admin/reviews` (reported / hidden / all, search, pages,
+  counts), `POST /api/admin/reviews/:id/hide|restore|dismiss`, `DELETE /api/admin/reviews/:id` (reason required,
+  audited, open reports closed, `venues.avg_rating` recomputed from visible reviews). `/admin/stats` has
+  `reportedReviews`; the audit filter has "Reviews". `app.js` route list now reports a router's `/` at its prefix.
+  Tests: `tests/review-moderation.test.js` (8). Client: "Report" on every review card (asks a signed-out visitor to
+  log in first; hidden for admins) with a reason dialog (`ReportReviewDialog.jsx`, `api/reviews.js`); admin
+  "Reviews" page (`pages/admin/Reviews.jsx`) with tabs, search, pages, Hide / Keep / Restore / Delete with a required
+  reason in a confirm dialog, and toasts. Checked with playwright-cli at 375 and 1512 px on the seeded reviews (the
+  hidden review left the venue page and came back on restore).
+
 - 2026-11-22: **Owners edit live venues, menus and add-ons; deactivate (EUC-04, EUC-07, REQ-5, REQ-6), Part C.**
   Migration **006** (`venue_revisions`, `owner_activity_log`, `archived_at` on `menu_packages` / `add_ons`,
   `bookings.menu_price_per_head`). Policy in srs-alignment #35: REQ-5 fields wait in a pending revision while the live

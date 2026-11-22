@@ -535,9 +535,25 @@ CREATE TABLE reviews (
   is_flagged  boolean     NOT NULL DEFAULT false,
   created_at  timestamptz NOT NULL DEFAULT now(),
   removed_at  timestamptz,                                                   -- [SRS] REQ-44 admin removal (soft)
-  removed_by  uuid REFERENCES admins(user_id)                                -- [SRS] REQ-44
+  removed_by  uuid REFERENCES admins(user_id),                               -- [SRS] REQ-44
+  removal_reason text                                                        -- [SRS] #36 (migration 007): why the admin hid it
 );
 CREATE INDEX reviews_venue_idx ON reviews(venue_id) WHERE removed_at IS NULL;
+CREATE INDEX reviews_flagged_idx ON reviews (created_at) WHERE is_flagged;
+
+-- [SRS] REQ-44 / EUC-34, srs-alignment #36 (migration 007): a logged-in user reports a review, once per review.
+-- Reporting sets reviews.is_flagged; the admin's decision resolves the open reports.
+CREATE TABLE review_reports (
+  report_id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  review_id   uuid NOT NULL REFERENCES reviews(review_id) ON DELETE CASCADE,
+  reporter_id uuid NOT NULL REFERENCES users(user_id),
+  reason      text NOT NULL CHECK (reason IN ('spam', 'offensive', 'fake', 'off_topic', 'personal_info', 'other')),
+  note        text CHECK (char_length(note) <= 500),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz,
+  CONSTRAINT review_reports_one_per_user UNIQUE (review_id, reporter_id)
+);
+CREATE INDEX review_reports_open_idx ON review_reports (review_id) WHERE resolved_at IS NULL;
 
 CREATE TABLE google_reviews (
   google_review_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

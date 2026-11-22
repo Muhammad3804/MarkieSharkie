@@ -10,6 +10,7 @@ const PAGES = {
   review: lazy(() => import('../pages/admin/ApprovalReview.jsx')),
   edits: lazy(() => import('../pages/admin/VenueEdits.jsx')),
   editReview: lazy(() => import('../pages/admin/VenueEditReview.jsx')),
+  reviews: lazy(() => import('../pages/admin/Reviews.jsx')),
   images: lazy(() => import('../pages/admin/FlaggedImages.jsx')),
   venues: lazy(() => import('../pages/admin/Venues.jsx')),
   users: lazy(() => import('../pages/admin/Users.jsx')),

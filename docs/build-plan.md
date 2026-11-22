@@ -43,7 +43,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
 
 ## Phase 6: Notifications and reviews (REQ-42 to 45, EUC-29 to 31)
 - [ ] Notifications table + socket push + bell UI
-- [ ] Reviews, avg rating, Google reviews adapter, flagging
+- [ ] Reviews, avg rating, Google reviews adapter, flagging (reporting + admin moderation + rating recompute done 2026-11-22; writing a review needs the booking engine)
 
 ## Phase 7: AI chatbot (REQ-27, 28, EUC-20)
 - [ ] LLM adapter, filter extraction, retrieval, grounded answer, history, fallback
@@ -59,7 +59,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
 
 ## Phase 10: Weather and admin (REQ-46 to 48, EUC-32 to 35)
 - [ ] Weather adapter + job + advisory banner
-- [ ] Admin users, moderation, disputes, audit log, bookings oversight
+- [ ] Admin users, moderation, disputes, audit log, bookings oversight (review moderation, flagged images and the venue audit log done 2026-11-22)
 
 ## Phase 11: Polish and release
 - [ ] Playwright e2e for: register → search → hold → book → owner confirm → payment → invitation → RSVP → check-in → review

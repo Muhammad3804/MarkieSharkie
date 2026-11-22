@@ -204,7 +204,7 @@ function paginate(rows, page) {
 export const APPROVAL_STATUSES = ['pending', 'changes_requested', 'approved', 'rejected']
 
 // Sidebar badges are read synchronously (navCounts); every server answer that has the numbers refreshes this.
-const cachedCounts = { pending: 0, images: 0, edits: 0, loaded: false, loading: false }
+const cachedCounts = { pending: 0, images: 0, edits: 0, reviews: 0, loaded: false, loading: false }
 const changed = () => notifyStoreChange() // admin pages refetch on store changes (features/admin/hooks.js)
 
 export function approvalCounts() {
@@ -508,6 +508,7 @@ function applyStats(stats) {
   cachedCounts.pending = stats.kpis.pendingApprovals
   cachedCounts.images = stats.kpis.flaggedImages
   cachedCounts.edits = stats.kpis.pendingEdits ?? 0
+  cachedCounts.reviews = stats.kpis.reportedReviews ?? 0
   cachedCounts.loaded = true
 }
 
@@ -530,6 +531,7 @@ export function navCounts() {
     approvals: cachedCounts.pending,
     images: cachedCounts.images,
     edits: cachedCounts.edits,
+    reviews: cachedCounts.reviews,
     reports: state.disputes.filter((d) => d.status === 'open').length + state.reports.filter((r) => r.status === 'open').length,
   }
 }
@@ -663,4 +665,27 @@ export async function rejectRevision(id, reason) {
   await apiFetch(`/admin/revisions/${encodeURIComponent(id)}/reject`, { method: 'POST', body: { reason } })
   cachedCounts.edits = Math.max(0, cachedCounts.edits - 1)
   changed()
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Review moderation (REQ-44, EUC-34)
+// ---------------------------------------------------------------------------------------------------------------
+export const REVIEW_STATUSES = ['reported', 'hidden', 'all']
+
+// GET /api/admin/reviews -> { rows, total, page, pageCount, pageSize, counts: { reported, hidden, all } }
+export async function listModerationReviews({ status = 'reported', q = '', page = 1 } = {}) {
+  const data = await apiFetch(`/admin/reviews?${query({ status, q, page, pageSize: PAGE_SIZE })}`)
+  cachedCounts.reviews = data.counts.reported
+  return data
+}
+
+// action: 'hide' | 'restore' | 'dismiss' | 'delete'; a reason is always required (audited). -> { avgRating }
+export async function moderateReview(id, action, reason) {
+  const path = `/admin/reviews/${encodeURIComponent(id)}`
+  const result =
+    action === 'delete'
+      ? await apiFetch(path, { method: 'DELETE', body: { reason } })
+      : await apiFetch(`${path}/${action}`, { method: 'POST', body: { reason } })
+  changed()
+  return result
 }

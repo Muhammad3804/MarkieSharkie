@@ -9,6 +9,7 @@ const ACTION_GROUPS = [
   { value: '', label: 'All actions' },
   { value: 'venue', label: 'Venues' },
   { value: 'image', label: 'Images' },
+  { value: 'review', label: 'Reviews' },
   { value: 'user', label: 'Users' },
   { value: 'dispute', label: 'Disputes' },
   { value: 'report', label: 'Reports' },

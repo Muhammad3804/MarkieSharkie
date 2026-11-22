@@ -31,11 +31,11 @@
 | Guest | `GET /i/:token`, `POST /i/:token/rsvp` | guest (token) |
 | Check-in | `POST /checkin/session` (event code), `POST /checkin/scan` | attendant (code) |
 | Webhooks | `POST /webhooks/whatsapp` (delivery status + RSVP button replies) | Meta, signature verified |
-| Reviews | `POST /bookings/:id/review`, `POST /reviews/:id/flag` | customer |
+| Reviews | **Built (2026-11-22, #36):** `POST /venues/:id/reviews/:reviewId/report` (customer, venue_owner, decorator; once per user per review). Planned: `POST /bookings/:id/review` (customer, after a completed booking) | logged in, not admin |
 | Notifications | `GET /notifications`, `POST /notifications/:id/read`, `POST /notifications/read-all` | any user |
 | Weather | `GET /bookings/:id/weather` | customer |
 | Disputes | `POST /bookings/:id/disputes` | customer, venue_owner |
-| Admin | **Built:** `GET /admin/venues` (status, search, filters, sort, pages), `GET /admin/venues/:id`, `POST /admin/venues/:id/approve|reject|request-changes|suspend|unsuspend`, `POST /admin/venues/approve` (bulk), `GET /admin/images`, `POST /admin/images/:id/decision`, `GET /admin/stats`, `GET /admin/audit`. Planned: `/admin/users` (+ suspend/unblock/remove), `/admin/admins`, `/admin/reviews/flagged`, `/admin/bookings`, `/admin/disputes` | admin (every write audited) |
+| Admin | **Built:** `GET /admin/venues` (status, search, filters, sort, pages), `GET /admin/venues/:id`, `POST /admin/venues/:id/approve|reject|request-changes|suspend|unsuspend`, `POST /admin/venues/approve` (bulk), `GET /admin/images`, `POST /admin/images/:id/decision`, `GET /admin/stats`, `GET /admin/audit`, `GET /admin/revisions[/:id]`, `POST /admin/revisions/:id/approve|reject`, `GET /admin/reviews`, `POST /admin/reviews/:id/hide|restore|dismiss`, `DELETE /admin/reviews/:id` (reason required). Planned: `/admin/users` (+ suspend/unblock/remove), `/admin/admins`, `/admin/bookings`, `/admin/disputes` | admin (every write audited) |
 
 ## Authentication (REQ-2, NFR-4)
 
@@ -90,6 +90,12 @@
   archived and replaced, never changed. A hall with bookings can't be removed. Every id in an edit (photos, files,
   packages, add-ons, uploads) must belong to that venue / owner. Owner actions go to `owner_activity_log`; admin
   decisions to `admin_audit_log`.
+- **Review moderation (REQ-44, EUC-34, srs-alignment #36):** reporting needs a login (admins can't; not your own
+  review, 403; once per user per review, 409 `ALREADY_REPORTED`; 30 an hour per IP) and only works for reviews on a
+  public venue page. A report sets `reviews.is_flagged`. The admin hides (soft: `removed_at`, `removed_by`,
+  `removal_reason`), restores, keeps ("dismiss", reports closed) or deletes (row gone, its text kept in the audit
+  row). Each decision locks the review, closes its open reports, recomputes `venues.avg_rating` from visible reviews
+  and writes `admin_audit_log` in one transaction. Hidden reviews never reach public responses.
 - **Deactivate (REQ-5):** `is_active = false` hides the venue from search, its page and new bookings; confirmed
   bookings stay valid; requests already made stay with the owner (docs/booking-engine.md).
 - **Admin writes:** lock the venue row, check the transition (409 `INVALID_STATUS`), change, write `admin_audit_log`

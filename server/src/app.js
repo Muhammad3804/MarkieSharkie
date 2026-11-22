@@ -14,6 +14,7 @@ import { authRouter } from './modules/auth/routes.js'
 import { usersRouter } from './modules/users/routes.js'
 import { venuesRouter } from './modules/venues/routes.js'
 import { ownerRouter } from './modules/owner/routes.js'
+import { adminReviewsRouter, reviewReportsRouter } from './modules/reviews/routes.js'
 import { adminRouter } from './modules/admin/routes.js'
 import { getStorage } from './integrations/storage.js'
 
@@ -39,7 +40,9 @@ function listRoutes(mounts) {
     for (const layer of router.stack) {
       if (!layer.route) continue
       for (const method of Object.keys(layer.route.methods)) {
-        routes.push({ method: method.toUpperCase(), path: `${prefix}${layer.route.path}` })
+        // A router mounted at a prefix answers its '/' route at the prefix itself (GET /api/admin/reviews).
+        const path = layer.route.path === '/' ? prefix : `${prefix}${layer.route.path}`
+        routes.push({ method: method.toUpperCase(), path })
       }
     }
   }
@@ -114,6 +117,8 @@ export function createApp({ logger = defaultLogger, rateLimits: overrides = AUTH
     ['/api', usersRouter()],
     ['/api', venuesRouter({ rateLimits })],
     ['/api/owner', ownerRouter({ rateLimits })],
+    ['/api', reviewReportsRouter({ rateLimits })],
+    ['/api/admin/reviews', adminReviewsRouter({ rateLimits })],
     ['/api/admin', adminRouter({ rateLimits })],
   ]
   for (const [prefix, router] of mounts) app.use(prefix, router)

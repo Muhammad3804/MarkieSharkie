@@ -1619,6 +1619,185 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /venues/{id}/reviews/{reviewId}/report:
+    post:
+      tags: [Venues]
+      operationId: reportReview
+      summary: Report a review (REQ-44)
+      description: |
+        Logged-in customers, venue owners and decorators (admins get 403). Once per user per review (409
+        `ALREADY_REPORTED`); not your own review (403). The review must be on a public venue page (404 otherwise).
+        Sets reviews.is_flagged so it shows in the admin queue. 30 an hour per IP.
+      x-srs: [REQ-44, EUC-34]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: reviewId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [spam, offensive, fake, off_topic, personal_info, other] }
+                note: { type: string, maxLength: 500, description: Required (5+ characters) when the reason is other. }
+      responses:
+        '201':
+          description: Reported.
+          content:
+            application/json:
+              schema: { type: object, properties: { report: { type: object } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reviews:
+    get:
+      tags: [Admin]
+      operationId: adminListReviews
+      summary: Reported, hidden or all reviews (REQ-44)
+      x-srs: [REQ-44, EUC-34]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: query, name: status, required: false, schema: { type: string, enum: [reported, hidden, all] } }
+        - { in: query, name: q, required: false, schema: { type: string, maxLength: 100 } }
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: Rows (review, venue, reviewer, open reports with reasons) and counts per status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reviews/{id}/hide:
+    post:
+      tags: [Admin]
+      operationId: adminHideReview
+      summary: Hide a review (reversible; leaves the public page and the average rating)
+      x-srs: [REQ-44, REQ-42, NFR-4, EUC-34]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Hidden; the venue average rating is recomputed. Audited.
+          content:
+            application/json:
+              schema: { type: object, properties: { avgRating: { type: number } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reviews/{id}/restore:
+    post:
+      tags: [Admin]
+      operationId: adminRestoreReview
+      summary: Show a hidden review again
+      x-srs: [REQ-44, REQ-42, NFR-4, EUC-34]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Restored; rating recomputed. Audited.
+          content:
+            application/json:
+              schema: { type: object, properties: { avgRating: { type: number } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reviews/{id}/dismiss:
+    post:
+      tags: [Admin]
+      operationId: adminDismissReviewReports
+      summary: Keep a reported review (close its reports)
+      x-srs: [REQ-44, REQ-42, NFR-4, EUC-34]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Reports closed; the review stays. Audited.
+          content:
+            application/json:
+              schema: { type: object, properties: { avgRating: { type: number } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/reviews/{id}:
+    delete:
+      tags: [Admin]
+      operationId: adminDeleteReview
+      summary: Delete a review permanently (a copy of its text stays in the audit log)
+      x-srs: [REQ-44, REQ-42, NFR-4, EUC-34]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Deleted; rating recomputed. Audited with the review text.
+          content:
+            application/json:
+              schema: { type: object, properties: { avgRating: { type: number } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /admin/images:
     get:
       tags: [Admin]
@@ -1699,7 +1878,7 @@ paths:
         - bearerAuth: []
       parameters:
         - { in: query, name: q, schema: { type: string } }
-        - { in: query, name: action, schema: { type: string, enum: [venue, image, user] } }
+        - { in: query, name: action, schema: { type: string, enum: [venue, image, review, user] } }
         - { in: query, name: page, schema: { type: integer } }
         - { in: query, name: pageSize, schema: { type: integer, maximum: 50 } }
       responses:
@@ -2017,6 +2196,11 @@ components:
         Numbers are sent as text like the form fields. capacity, base price and venue type are computed by the server.
       required: [venue, halls, venueImages, menuPackages, bookingRules]
       additionalProperties: true
+    ReviewDecision:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 500 }
     ListingEdit:
       type: object
       description: |
@@ -2178,6 +2362,7 @@ components:
         - LAST_MENU
         - TOO_MANY_MENUS
         - TOO_MANY_ADD_ONS
+        - ALREADY_REPORTED
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR
