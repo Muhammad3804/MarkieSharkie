@@ -51,3 +51,12 @@ export async function audit(req, res) {
   noStore(res)
   res.json(await service.listAudit(req.query))
 }
+
+export async function detectionStatus(_req, res) {
+  noStore(res)
+  res.json(service.imageDetectionStatus())
+}
+export async function detectionTest(req, res) {
+  noStore(res)
+  res.json(await service.testImageDetection(req.user.id, req.file))
+}

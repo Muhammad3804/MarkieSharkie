@@ -557,6 +557,14 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **"Test the AI image check" panel (REQ-9 demo).** Admin > Flagged images has a card that shows which
+  detector runs (live Sightengine or the fake one) and runs one photo through it with the real rules: score,
+  verdict, high-confidence flag, response time. `GET /api/admin/image-detection`, `POST /api/admin/image-detection/test`
+  (stores nothing but an audit row `image.detection_test`; 502 `DETECTOR_UNAVAILABLE` when the provider is down;
+  30 tests an hour). Verified live: Sightengine answered in 2.3 s and scored the mock's `gallery-hall-1` photo 99%
+  AI-generated, so the seeded gallery photos are most likely AI-made. The E2E test venue's canvas photos were swapped
+  for real venue photos (data only).
+
 - 2026-11-22: **Venues API, owner listings, admin approval and AI image check (Phase 2, Part 3).** Server:
   `modules/venues` (public landing / search / page / availability / stats), `modules/owner` (drafts, multipart
   uploads checked by content, submit / resubmit in one transaction, my venues, retry image checks), `modules/admin`

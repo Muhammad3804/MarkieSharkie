@@ -1,7 +1,10 @@
 import { pool } from '../../db/pool.js'
 import { withTransaction } from '../../db/withTransaction.js'
 import { env } from '../../config/env.js'
+import { classifyScore, detectAiImage, detectorInfo } from '../../integrations/imageDetection.js'
 import { AppError, notFoundError } from '../../lib/AppError.js'
+import { detectFileType, UPLOAD_RULES } from '../../lib/fileType.js'
+import { logger } from '../../lib/logger.js'
 import { absolute, toListing, toVenueDetail } from '../venues/mappers.js'
 import { generateSlots, loadVenueBundle } from '../venues/repository.js'
 import * as repo from './repository.js'
@@ -283,4 +286,61 @@ export async function listAudit(query) {
     pageSize: query.pageSize,
     pageCount: Math.max(1, Math.ceil(total / query.pageSize)),
   }
+}
+
+// ---------------------------------------------------------------- AI image check test (REQ-9, for demos)
+
+// Which detector is running (live Sightengine or the fake one) and its thresholds.
+export const imageDetectionStatus = () => detectorInfo()
+
+// Runs one photo through the same detector and the same genuine / flagged rule as real uploads, and says how long it
+// took. Nothing is stored except an audit row (who tested, the score and the verdict, never the photo).
+export async function testImageDetection(adminId, file) {
+  const rules = UPLOAD_RULES.photo
+  if (!file?.buffer?.length)
+    throw new AppError(400, 'VALIDATION_ERROR', 'Choose a photo to test.', [
+      { field: 'file', message: 'Choose a photo to test.' },
+    ])
+  const type = detectFileType(file.buffer)
+  if (!type || !rules.types.includes(type.mime)) {
+    throw new AppError(415, 'UNSUPPORTED_FILE_TYPE', rules.label, [{ field: 'file', message: rules.label }])
+  }
+  if (file.size > rules.maxBytes)
+    throw new AppError(413, 'FILE_TOO_LARGE', rules.label, [{ field: 'file', message: rules.label }])
+
+  const info = detectorInfo()
+  const started = performance.now()
+  let score
+  try {
+    ;({ score } = await detectAiImage({ buffer: file.buffer, mimeType: type.mime, fileName: `test.${type.ext}` }))
+  } catch (err) {
+    const reason =
+      err?.name === 'TimeoutError' ? `no answer within ${Math.round(info.timeoutMs / 1000)} seconds` : err.message
+    logger.warn({ err: { message: err.message } }, 'AI image check test failed')
+    throw new AppError(
+      502,
+      'DETECTOR_UNAVAILABLE',
+      `The AI check isn’t working right now (${reason}). Uploaded photos stay pending until it works again.`,
+    )
+  }
+  const durationMs = Math.round(performance.now() - started)
+  const verdict = classifyScore(score)
+  const result = {
+    provider: info.provider,
+    live: info.live,
+    score: Math.round(score * 1000) / 1000,
+    verdict,
+    highConfidence: score >= info.flagThreshold,
+    thresholds: { genuine: info.genuineThreshold, flag: info.flagThreshold },
+    durationMs,
+    checkedAt: new Date().toISOString(),
+  }
+  await repo.insertAudit(pool, {
+    adminId,
+    action: 'image.detection_test',
+    targetTable: 'admins',
+    targetId: adminId,
+    details: { provider: result.provider, score: result.score, verdict, durationMs },
+  })
+  return result
 }

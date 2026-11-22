@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { api, bearer } from './helpers/app.js'
 import { count, one, pool, resetDb } from './helpers/db.js'
 import { signedIn } from './helpers/factories.js'
-import { submission, submitListing, uploadIds, useTempStorage } from './helpers/venues.js'
+import { jpeg, submission, submitListing, uploadIds, useTempStorage } from './helpers/venues.js'
 import { setImageDetector } from '../src/integrations/imageDetection.js'
 import { settleVerifications } from '../src/modules/venues/imageVerification.js'
 
@@ -362,5 +362,71 @@ describe('dashboard and audit log (NFR-4)', () => {
       }),
     ])
     expect(await pool.query('SELECT 1')).toBeTruthy()
+  })
+})
+
+describe('AI image check test panel (REQ-9 demo)', () => {
+  it('says which detector runs, scores a photo with the real rules and audits it, storing nothing else', async () => {
+    const agent = api()
+    const admin = await signedIn(agent, 'admin')
+    const status = await agent.get('/api/admin/image-detection').set(...auth(admin))
+    expect(status.body).toMatchObject({ provider: 'custom', live: false, flagThreshold: 0.8, genuineThreshold: 0.3 })
+
+    setImageDetector(async () => ({ score: 0.91 }))
+    const res = await agent
+      .post('/api/admin/image-detection/test')
+      .set(...auth(admin))
+      .attach('file', jpeg(), 'ai.jpg')
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({
+      score: 0.91,
+      verdict: 'flagged',
+      highConfidence: true,
+      thresholds: { genuine: 0.3, flag: 0.8 },
+    })
+    expect(res.body.durationMs).toEqual(expect.any(Number))
+
+    setImageDetector(async () => ({ score: 0.04 }))
+    const real = await agent
+      .post('/api/admin/image-detection/test')
+      .set(...auth(admin))
+      .attach('file', jpeg(), 'real.jpg')
+    expect(real.body).toMatchObject({ verdict: 'genuine', highConfidence: false })
+
+    expect(await count('SELECT count(*) FROM venue_images')).toBe(0)
+    expect(await count('SELECT count(*) FROM media_uploads')).toBe(0)
+    expect(await audits('image.detection_test')).toBe(2)
+  })
+
+  it('reports a detector that is down as 502, and refuses non-photos and non-admins', async () => {
+    const agent = api()
+    const admin = await signedIn(agent, 'admin')
+    setImageDetector(async () => {
+      throw new Error('sightengine: Incorrect API user or secret')
+    })
+    const down = await agent
+      .post('/api/admin/image-detection/test')
+      .set(...auth(admin))
+      .attach('file', jpeg(), 'x.jpg')
+    expect(down.status).toBe(502)
+    expect(down.body.error).toMatchObject({
+      code: 'DETECTOR_UNAVAILABLE',
+      message: expect.stringMatching(/Incorrect API user or secret/),
+    })
+    const notPhoto = await agent
+      .post('/api/admin/image-detection/test')
+      .set(...auth(admin))
+      .attach('file', Buffer.from('hello'), 'x.jpg')
+    expect(notPhoto.status).toBe(415)
+    const owner = await signedIn(agent, 'venue_owner')
+    expect((await agent.get('/api/admin/image-detection').set(...auth(owner))).status).toBe(403)
+    expect(
+      (
+        await agent
+          .post('/api/admin/image-detection/test')
+          .set(...auth(owner))
+          .attach('file', jpeg(), 'x.jpg')
+      ).status,
+    ).toBe(403)
   })
 })

@@ -1290,6 +1290,84 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /admin/image-detection:
+    get:
+      tags: [Admin]
+      operationId: adminImageDetectionStatus
+      summary: Which AI image check is running (REQ-9)
+      description: |
+        `provider` is `sightengine` (live, needs SIGHTENGINE_API_USER / SIGHTENGINE_API_SECRET) or `fake` (every photo
+        genuine, used without keys), with the timeout and score thresholds.
+      x-srs: [REQ-9]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The detector in use.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string, enum: [sightengine, fake, custom] }
+                  live: { type: boolean }
+                  timeoutMs: { type: integer }
+                  flagThreshold: { type: number }
+                  genuineThreshold: { type: number }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/image-detection/test:
+    post:
+      tags: [Admin]
+      operationId: adminImageDetectionTest
+      summary: Test the AI image check with one photo (REQ-9 demo)
+      description: |
+        Runs the photo (JPEG / PNG up to 5 MB, checked by content) through the same detector and the same genuine /
+        flagged rule as real uploads. Nothing is stored except an audit row (`image.detection_test`, with the score
+        and verdict). 502 `DETECTOR_UNAVAILABLE` when the provider doesn't answer. Rate limited: 30 an hour per IP.
+      x-srs: [REQ-9, NFR-2, NFR-4]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: The detector's answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string }
+                  live: { type: boolean }
+                  score: { type: number, minimum: 0, maximum: 1, description: Probability the photo is AI-generated. }
+                  verdict: { type: string, enum: [genuine, flagged] }
+                  highConfidence: { type: boolean }
+                  thresholds: { type: object, properties: { genuine: { type: number }, flag: { type: number } } }
+                  durationMs: { type: integer }
+                  checkedAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '413': { $ref: '#/components/responses/FileRejected' }
+        '415': { $ref: '#/components/responses/FileRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502':
+          description: '`DETECTOR_UNAVAILABLE`: the AI provider did not answer (timeout, bad keys, quota).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1599,6 +1677,7 @@ components:
         - FILE_TOO_LARGE
         - UPLOAD_LIMIT
         - BAD_UPLOAD
+        - DETECTOR_UNAVAILABLE
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR

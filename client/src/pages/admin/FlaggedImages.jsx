@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { decideImage, listFlaggedImages } from '../../api/admin.js'
 import { useAdminData, useUrlState, useHref } from '../../features/admin/hooks.js'
+import AiCheckTester from '../../features/admin/AiCheckTester.jsx'
 import ConfirmDialog from '../../features/admin/ConfirmDialog.jsx'
 import Lightbox from '../../components/venue/Lightbox.jsx'
 import { Button, Card, EmptyState, ErrorState, PageHeader, Skeleton, StatusBadge, UrlTabs } from '../../features/admin/ui.jsx'
@@ -28,6 +29,7 @@ export default function FlaggedImages() {
     <>
       <title>Flagged images | Admin | MarkieSharkie</title>
       <PageHeader title="Flagged images" description="Photos our AI check thinks may be AI-generated or stock. Nothing is published or deleted until you decide (REQ-9, REQ-10)." />
+      <AiCheckTester />
       <UrlTabs label="Image decision" value={params.status} hrefFor={(value) => href({ status: value === 'flagged' ? '' : value })} items={TABS.map((tab) => ({ ...tab, count: data?.counts[tab.value] }))} />
 
       {status === 'loading' ? (

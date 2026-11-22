@@ -609,3 +609,21 @@ export function resetDemoData() {
   resetInvitations()
   store.reset()
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// AI image check test (REQ-9 demo): GET /api/admin/image-detection, POST /api/admin/image-detection/test
+// ---------------------------------------------------------------------------------------------------------------
+// { provider: 'sightengine' | 'fake', live, timeoutMs, flagThreshold, genuineThreshold }
+export function getImageDetectionStatus() {
+  return apiFetch('/admin/image-detection')
+}
+
+// Runs one photo through the live AI check (nothing is stored but an audit row).
+// -> { provider, live, score (0..1), verdict: 'genuine' | 'flagged', highConfidence, thresholds, durationMs }
+export async function testImageDetection(file) {
+  const form = new FormData()
+  form.append('file', file, file.name || 'photo.jpg')
+  const result = await apiFetch('/admin/image-detection/test', { method: 'POST', body: form })
+  changed() // the audit log has a new row
+  return result
+}

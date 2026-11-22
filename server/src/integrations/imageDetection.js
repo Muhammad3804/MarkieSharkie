@@ -62,3 +62,10 @@ export function setImageDetector(fn) {
 export function classifyScore(score) {
   return score <= env.imageDetection.genuineThreshold ? 'genuine' : 'flagged'
 }
+
+// What the AI check is running on, for the admin's "Test the AI check" panel. live = a real provider is called.
+export function detectorInfo() {
+  const { provider, timeoutMs, flagThreshold, genuineThreshold } = env.imageDetection
+  const name = detector ? 'custom' : provider
+  return { provider: name, live: name === 'sightengine', timeoutMs, flagThreshold, genuineThreshold }
+}

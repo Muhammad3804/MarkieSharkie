@@ -77,6 +77,9 @@
   above → flagged (never published automatically, never deleted; admin keeps or removes it). Detector down → stays
   pending, the owner can retry. Every check is a row in `image_verifications`. Approving a venue publishes genuine
   photos and the still-unchecked ones (the admin reviewed them, srs-alignment #28); flagged ones wait for a decision.
+- **AI check test (demo):** `GET /admin/image-detection` (which detector, thresholds) and
+  `POST /admin/image-detection/test` (one JPEG / PNG ≤ 5 MB through the same detector and rules; nothing stored but
+  an audit row; 30 an hour per IP because it may call the paid API).
 - **Admin writes:** lock the venue row, check the transition (409 `INVALID_STATUS`), change, write `admin_audit_log`
   (who, what, when, reason / note / checklist) in one transaction. Bulk approve is all or nothing.
 - **Rate limits (per IP):** public reads 1500 / 15 min, owner writes 600 / 15 min, uploads 400 / hour, admin writes

@@ -50,6 +50,7 @@ export const ACTION_LABELS = {
   'venue.submit': 'Submitted listing',
   'image.keep': 'Kept flagged image',
   'image.remove': 'Removed flagged image',
+  'image.detection_test': 'Tested the AI image check',
   'user.suspend': 'Suspended user',
   'user.unblock': 'Unblocked user',
   'user.remove': 'Removed user',

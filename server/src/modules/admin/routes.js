@@ -3,6 +3,7 @@ import { asyncHandler } from '../../lib/asyncHandler.js'
 import { authenticate } from '../../middleware/authenticate.js'
 import { createRateLimiter } from '../../middleware/rateLimit.js'
 import { requireRole } from '../../middleware/requireRole.js'
+import { singleFile } from '../../middleware/upload.js'
 import { validate } from '../../middleware/validate.js'
 import * as controller from './controller.js'
 import {
@@ -72,6 +73,16 @@ export function adminRouter({ rateLimits }) {
     writes,
     validate({ params: imageParamsSchema, body: imageDecisionBodySchema }),
     asyncHandler(controller.decideImage),
+  )
+
+  // REQ-9 demo: is the AI check working? (same detector and rules as real uploads; stores nothing but an audit row)
+  router.get('/image-detection', asyncHandler(controller.detectionStatus))
+  router.post(
+    '/image-detection/test',
+    createRateLimiter(rateLimits.detectionTest),
+    singleFile,
+    validate({ body: emptyBodySchema }),
+    asyncHandler(controller.detectionTest),
   )
 
   router.get('/stats', asyncHandler(controller.stats))
