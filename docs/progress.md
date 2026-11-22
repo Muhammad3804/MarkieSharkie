@@ -557,6 +557,10 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Favicon.** Vite's default lightning-bolt `favicon.svg` replaced by the MarkieSharkie snow-globe tent
+  (cropped from `src/assets/brand/logo.png`): `public/favicon-32.png`, `favicon-48.png`, `apple-touch-icon.png`
+  (180, white background) and `icon-192.png` / `icon-512.png` ready for the PWA manifest.
+
 - 2026-11-22: **Admin entry points.** Footer link "Admin login" (-> `/admin`, which asks an admin to log in and then
   shows the dashboard). An admin who logs in from the header (nothing to resume) is taken to `/admin`; a resumed
   action still wins, and other roles stay on their page. The account menu keeps "Admin dashboard" for admins.
