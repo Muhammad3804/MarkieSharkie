@@ -82,18 +82,17 @@ export async function seedBooking({
      VALUES ($1, $2, 'Canal Road', 'Faisalabad', 'indoor', 500, 3500.00) RETURNING venue_id`,
     [ownerId, venueName],
   )
-  let hallId = null
-  if (hall) {
-    const h = await one('INSERT INTO halls (venue_id, name, capacity) VALUES ($1, $2, 300) RETURNING hall_id', [
-      venue.venue_id,
-      hall,
-    ])
-    hallId = h.hall_id
-  }
+  // Slots belong to a hall since migration 002 (srs-alignment #19). The booking's own hall_id stays NULL unless a
+  // hall name is given, like a whole-venue booking.
+  const h = await one('INSERT INTO halls (venue_id, name, capacity) VALUES ($1, $2, 300) RETURNING hall_id', [
+    venue.venue_id,
+    hall ?? 'Main hall',
+  ])
+  const hallId = hall ? h.hall_id : null
   const slot = await one(
-    `INSERT INTO time_slots (venue_id, date, start_time, end_time, status)
-     VALUES ($1, $2, '19:00', '23:00', 'booked') RETURNING slot_id`,
-    [venue.venue_id, date],
+    `INSERT INTO time_slots (venue_id, hall_id, date, start_time, end_time, status)
+     VALUES ($1, $2, $3, '19:00', '23:00', 'booked') RETURNING slot_id`,
+    [venue.venue_id, h.hall_id, date],
   )
   const booking = await one(
     `INSERT INTO bookings (slot_id, customer_id, venue_id, hall_id, event_type, guest_count, total_amount, advance_amount)
