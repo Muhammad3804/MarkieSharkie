@@ -84,7 +84,7 @@ function Kpis({ kpis }) {
         { label: 'Pending approvals', value: kpis.pendingApprovals, note: `${kpis.pendingNewThisWeek} new this week`, to: '/admin/approvals', icon: 'file-check', emphasis: kpis.pendingApprovals > 0 },
         { label: 'Live venues', value: kpis.liveVenues, note: kpis.suspendedVenues ? `${kpis.suspendedVenues} suspended` : 'None suspended', to: '/admin/venues', icon: 'building' },
         { label: 'Users', value: kpis.users, note: `${kpis.usersByRole.customer} customers · ${kpis.usersByRole.venue_owner} owners`, to: '/admin/users', icon: 'users' },
-        { label: 'Bookings this month', value: kpis.bookingsThisMonth, note: 'Mock until bookings exist', icon: 'calendar' },
+        { label: 'Bookings this month', value: kpis.bookingsThisMonth, note: 'Created this month, all sources', icon: 'calendar' },
         { label: 'Flagged images', value: kpis.flaggedImages, note: 'Waiting for a decision', to: '/admin/images', icon: 'image-alert', emphasis: kpis.flaggedImages > 0 },
       ]
     : Array.from({ length: 5 }, (_, i) => ({ label: `kpi-${i}` }))

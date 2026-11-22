@@ -18,9 +18,9 @@
 | Me | `GET /me` | any user |
 | Me | `PATCH /me` | customer, venue_owner, decorator (EUC-03 actors, srs-alignment #24) |
 | Me | `GET /me/searches`, `GET /me/bookings` | customer (REQ-4) |
-| Venues (public) | `GET /venues` (search), `GET /venues/:id`, `GET /venues/:id/slots?from&to`, `GET /venues/:id/reviews`, `POST /venues/compare` | public / customer |
+| Venues (public) | **Built:** `GET /venues/landing`, `GET /venues` (search, saves a customer's history), `GET /venues/:id`, `GET /venues/:id/availability?from&to`, `GET /stats`. Planned: `GET /venues/:id/reviews`, `POST /venues/compare` | public (optional customer token) |
 | Recommendations | `GET /recommendations` | customer |
-| Owner venues | `POST /owner/venues`, `PATCH /owner/venues/:id`, `POST /owner/venues/:id/deactivate`, images, walkthroughs, stage-photos, menus, add-ons, slots (create/block/unblock) | venue_owner (own venues) |
+| Owner venues | **Built:** `GET/PUT/DELETE /owner/draft`, `POST /owner/uploads` (multipart), `GET/POST /owner/venues`, `GET/PUT /owner/venues/:id` (resubmit), `POST /owner/venues/:id/images/verify`. Planned: edit a live venue, deactivate, stage photos, slots (create/block/unblock) | venue_owner (own venues; another owner's id is 404) |
 | Holds and bookings | `POST /slots/:id/hold`, `DELETE /slots/:id/hold`, `POST /bookings`, `POST /bookings/:id/cancel`, `PUT /bookings/:id/add-ons`, `PUT /bookings/:id/menu` | customer |
 | Owner bookings | `GET /owner/bookings`, `POST /owner/bookings/:id/accept|confirm|reject`, `POST /owner/bookings/offline` | venue_owner |
 | Quotations | `POST /quotations`, `POST /quotations/:id/accept|reject|counter`, `GET /quotations` | customer, venue_owner |
@@ -35,7 +35,7 @@
 | Notifications | `GET /notifications`, `POST /notifications/:id/read`, `POST /notifications/read-all` | any user |
 | Weather | `GET /bookings/:id/weather` | customer |
 | Disputes | `POST /bookings/:id/disputes` | customer, venue_owner |
-| Admin | `/admin/users` (+ suspend/unblock/remove), `/admin/admins` (create admin), `/admin/venues/pending` (+ approve/reject), `/admin/images/flagged`, `/admin/reviews/flagged`, `/admin/bookings`, `/admin/disputes` (+ take/resolve), `/admin/audit-log` | admin |
+| Admin | **Built:** `GET /admin/venues` (status, search, filters, sort, pages), `GET /admin/venues/:id`, `POST /admin/venues/:id/approve|reject|request-changes|suspend|unsuspend`, `POST /admin/venues/approve` (bulk), `GET /admin/images`, `POST /admin/images/:id/decision`, `GET /admin/stats`, `GET /admin/audit`. Planned: `/admin/users` (+ suspend/unblock/remove), `/admin/admins`, `/admin/reviews/flagged`, `/admin/bookings`, `/admin/disputes` | admin (every write audited) |
 
 ## Authentication (REQ-2, NFR-4)
 
@@ -57,6 +57,30 @@
   password) or the interactive `npm run create-admin`.
 - Public registration only allows `customer`, `venue_owner`, `decorator`. Admins are created by an existing admin (REQ-1); the very first admin comes from a seed/CLI script (`npm run create-admin`), never from an API route.
 - Suspended (`is_active=false`) or deleted users: block at login **and** in the auth middleware on every request (REQ-3).
+
+## Venues, uploads and moderation (Phase 2, built 2026-11-22)
+
+- **Visibility:** public routes return only `approval_status = 'approved' AND is_active`; anything else is 404 (never
+  says why). Venue lists are `Cache-Control: no-store` so an approval or suspension shows at once.
+- **Ownership:** every owner route checks `venues.owner_id = req.user.id` in the service; another owner's venue or
+  draft is 404. Upload ids in a submission must be the owner's own, of the right kind, unused (or already this
+  venue's), else 400 with the field path.
+- **Uploads (REQ-8, REQ-11):** multipart, one file, the type is read from the first bytes (JPEG / PNG / PDF / glTF),
+  never the name or Content-Type: photo JPEG/PNG ≤ 5 MB, floor plan JPEG/PNG/PDF ≤ 10 MB, walkthrough `.glb` ≤ 50 MB
+  or 360° JPEG ≤ 20 MB (415 / 413 otherwise). 128-bit random names under `venues/owner-<id>/`, 300 uploads a day per
+  owner, at most 60 photos per listing. Stored through `integrations/storage.js` (local disk `server/uploads/`,
+  git-ignored; S3 / Cloudinary can replace it). Served at `/uploads/*` with `nosniff`, no directory listing, no
+  dotfiles, CORP `cross-origin` (the PWA is on another origin), non-images as downloads. File URLs are unguessable
+  but not secret: an unapproved listing's photos can be fetched by anyone who has the URL.
+- **AI image check (REQ-9, REQ-10):** after the submission commits, each photo goes to `integrations/imageDetection.js`
+  (Sightengine `genai`; fake when no API user / secret). Score ≤ `IMAGE_DETECTION_GENUINE_THRESHOLD` → genuine,
+  above → flagged (never published automatically, never deleted; admin keeps or removes it). Detector down → stays
+  pending, the owner can retry. Every check is a row in `image_verifications`. Approving a venue publishes genuine
+  photos and the still-unchecked ones (the admin reviewed them, srs-alignment #28); flagged ones wait for a decision.
+- **Admin writes:** lock the venue row, check the transition (409 `INVALID_STATUS`), change, write `admin_audit_log`
+  (who, what, when, reason / note / checklist) in one transaction. Bulk approve is all or nothing.
+- **Rate limits (per IP):** public reads 1500 / 15 min, owner writes 600 / 15 min, uploads 400 / hour, admin writes
+  600 / 15 min (`middleware/rateLimit.js`).
 
 ## Authorization (REQ-3, SYS-04)
 

@@ -9,6 +9,11 @@ export function subscribeMockStores(listener) {
   return () => listeners.delete(listener)
 }
 
+// Tells every subscriber that data changed (the server-backed admin API uses it after a write, so pages refetch).
+export function notifyStoreChange() {
+  emit()
+}
+
 function emit() {
   for (const listener of listeners) listener()
 }

@@ -1,29 +1,34 @@
 import { resetBookings } from './bookings.js'
 import { resetInvitations } from './invitations.js'
-import { createMockStore, latency } from './mockStore.js'
-import {
-  getListingRecord,
-  listListingRecords,
-  listingToVenue,
-  resetListings,
-  resolveListingFiles,
-  setListingStatus,
-  setVenueSuspended,
-  suspendedVenues,
-} from './listings.js'
-import { listMockCatalog } from './venues.js'
+import { createMockStore, latency, notifyStoreChange } from './mockStore.js'
+import { getSessionUser } from './auth.js'
+import { ApiError, apiFetch } from './http.js'
+import { listingToDraft, toHistory } from './listings.js'
 import { PAKISTAN_BOUNDS, CITIES } from '../features/host/options.js'
 import { REPORT_REASONS } from '../features/admin/format.js'
 
 export { REPORT_REASONS }
 
-// Admin API (REQ-7, 9, 10, 47, 48, NFR-4 audit), mocked in localStorage `markiesharkie:admin` until the server
+// Admin API (REQ-7, 9, 10, 47, 48, NFR-4 audit). Venues, approvals, photo checks, the dashboard and the venue /
+// photo audit log come from the server (/api/admin/...). Users, disputes and listing reports are still a demo in
+// localStorage `markiesharkie:admin` (REQ-47 / REQ-48 come with their own modules); the comments below this line
+// describe that demo part. Original note: mocked in localStorage until the server
 // exists. Every function maps to a route in docs/api-and-security.md ("/admin/..."); every action that changes
 // something writes an admin_audit_log row (`audit` below). The server re-checks role = admin on each request.
-// TODO(auth): CURRENT_ADMIN comes from the session once auth exists.
-export const CURRENT_ADMIN = { id: 'admin-1', name: 'Zara Malik', email: 'zara@markiesharkie.pk' }
+// The logged-in admin (the route is admin-only, RequireRole in app/router.jsx).
+export const CURRENT_ADMIN = {
+  get id() {
+    return getSessionUser()?.id ?? ''
+  },
+  get name() {
+    return getSessionUser()?.name ?? 'Admin'
+  },
+  get email() {
+    return getSessionUser()?.email ?? ''
+  },
+}
 
-const STORE_VERSION = 1
+const STORE_VERSION = 2 // 2: venues, photos and the venue audit log moved to the server
 const HOUR = 3600000
 const DAY = 24 * HOUR
 export const PAGE_SIZE = 10
@@ -35,9 +40,6 @@ function hash(text) {
   return ((h >>> 0) % 10000) / 10000
 }
 
-const GALLERY_URLS = Object.fromEntries(
-  Object.entries(import.meta.glob('../assets/gallery/*.webp', { eager: true, import: 'default' })).map(([path, url]) => [path.split('/').pop().replace('.webp', ''), url]),
-)
 
 // ---------------------------------------------------------------------------------------------------------------
 // Seed data
@@ -145,57 +147,20 @@ function seedReports(now, venues) {
 
 // REQ-9: images the AI check flagged. The score is the detector's confidence that the photo is AI-generated or
 // stock (mock). Keep = verification_status 'approved' (published), remove = 'rejected' (never published).
-const FLAG_ASSETS = ['stage-2', 'hall-3', 'bridal-4', 'entrance-2', 'stage-4', 'hallway-3', 'hall-1', 'parking-2', 'bathroom-3', 'stage-1']
-function seedFlaggedImages(now, venues) {
-  return FLAG_ASSETS.map((asset, i) => {
-    const venue = venues[(i * 5 + 1) % venues.length]
-    const score = 0.61 + hash(`flag-${asset}`) * 0.37
-    const status = i < 7 ? 'flagged' : i === 7 ? 'approved' : 'rejected'
-    return {
-      id: `flag-${i + 1}`,
-      venueId: venue.id,
-      venueName: venue.name,
-      ownerName: `${venue.name} team`,
-      asset,
-      fileName: `${asset}-${1200 + i}.jpg`,
-      aiScore: Math.round(score * 100) / 100,
-      aiLabel: i % 3 === 0 ? 'Possibly stock photo' : 'Possibly AI-generated',
-      status,
-      uploadedAt: new Date(now - (i * 9 + 2) * HOUR).toISOString(),
-      decidedAt: status === 'flagged' ? null : new Date(now - i * 3 * HOUR).toISOString(),
-    }
-  })
-}
-
-function seedAudit(now) {
-  return listListingRecords()
-    .filter((listing) => listing.status !== 'pending')
-    .map((listing, i) => ({
-      logId: `log-seed-${i + 1}`,
-      adminId: CURRENT_ADMIN.id,
-      adminName: CURRENT_ADMIN.name,
-      action: { approved: 'venue.approve', rejected: 'venue.reject', changes_requested: 'venue.request_changes' }[listing.status],
-      targetTable: 'venues',
-      targetId: listing.id,
-      targetLabel: listing.payload.venue.name,
-      details: listing.rejectionReason ? { reason: listing.rejectionReason } : listing.changesNote ? { note: listing.changesNote } : {},
-      createdAt: listing.decidedAt ?? new Date(now - DAY).toISOString(),
-    }))
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-}
+// Venue names for the demo disputes and reports (the seeded catalogue's names; ids are demo ids).
+const DEMO_VENUES = ['Qasar-e-Noor', 'The Palms Marquee', 'Rosewood Banquet', 'Jasmine Garden', 'Pearl Banquet', 'Chenab Palace', 'Imperial Manor', 'Opal Pavilion'].map((name, i) => ({ id: `demo-venue-${i + 1}`, name, city: i % 3 === 0 ? 'Lahore' : i % 3 === 1 ? 'Islamabad' : 'Faisalabad', priceFrom: `${3500 + i * 250}.00` }))
 
 const store = createMockStore('markiesharkie:admin', {
   seed: () => {
     const now = Date.now()
-    const venues = listMockCatalog()
+    const venues = DEMO_VENUES
     const users = seedUsers(now)
     return {
       version: STORE_VERSION,
       users,
       disputes: seedDisputes(now, venues, users),
       reports: seedReports(now, venues),
-      flaggedImages: seedFlaggedImages(now, venues),
-      audit: seedAudit(now),
+      audit: [],
       notificationsReadAt: null,
     }
   },
@@ -218,7 +183,6 @@ function audit(state, { action, targetTable, targetId, targetLabel, details = {}
   return { ...state, audit: [entry, ...state.audit] }
 }
 
-const record = (entry) => store.update((state) => audit(state, entry))
 
 // ---------------------------------------------------------------------------------------------------------------
 // Shared helpers
@@ -233,80 +197,35 @@ function paginate(rows, page) {
 }
 
 // When a mock catalogue venue was listed (UI-only, for the submissions chart and "All venues").
-const catalogCreatedAt = (id, now) => new Date(now - (7 + Math.floor(hash(`${id}:created`) * 77)) * DAY).toISOString()
 
 // ---------------------------------------------------------------------------------------------------------------
-// Venue approvals (REQ-7)
+// Venue approvals (REQ-7): GET/POST /api/admin/venues...
 // ---------------------------------------------------------------------------------------------------------------
 export const APPROVAL_STATUSES = ['pending', 'changes_requested', 'approved', 'rejected']
 
-function approvalRow(listing) {
-  const { venue, halls, extras } = listing.payload
-  return {
-    id: listing.id,
-    name: venue.name,
-    city: venue.city,
-    area: extras.area,
-    category: extras.category,
-    venueType: venue.venueType,
-    capacity: venue.capacity,
-    hallCount: halls.length,
-    photoCount: listing.payload.venueImages.length,
-    basePrice: venue.basePrice,
-    owner: listing.owner,
-    status: listing.status,
-    submittedAt: listing.submittedAt,
-    decidedAt: listing.decidedAt,
-    coverId: listing.payload.venueImages.find((image) => image.isCover)?.imageId ?? listing.payload.venueImages[0]?.imageId,
-  }
-}
-
-const APPROVAL_SORTS = {
-  oldest: (a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt),
-  newest: (a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt),
-  name: (a, b) => a.name.localeCompare(b.name),
-  capacity: (a, b) => b.capacity - a.capacity,
-}
+// Sidebar badges are read synchronously (navCounts); every server answer that has the numbers refreshes this.
+const cachedCounts = { pending: 0, images: 0, loaded: false, loading: false }
+const changed = () => notifyStoreChange() // admin pages refetch on store changes (features/admin/hooks.js)
 
 export function approvalCounts() {
-  const counts = Object.fromEntries(APPROVAL_STATUSES.map((status) => [status, 0]))
-  for (const listing of listListingRecords()) counts[listing.status] = (counts[listing.status] ?? 0) + 1
-  return counts
+  return { pending: cachedCounts.pending, changes_requested: 0, approved: 0, rejected: 0 }
+}
+
+const APPROVAL_SORT = { oldest: 'oldest', newest: 'newest', name: 'name', capacity: 'capacity' }
+const query = (params) => {
+  const q = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== null && value !== '') q.set(key, String(value))
+  return q.toString()
 }
 
 // { rows (with coverUrl), total, page, pageCount, counts, cities } for the approvals table.
 // params: { status, q, city, type, from, to (yyyy-mm-dd), sort, page }
 export async function listApprovals(params) {
-  await latency()
-  const all = listListingRecords().map(approvalRow)
-  const fromTime = params.from ? Date.parse(`${params.from}T00:00:00+05:00`) : null
-  const toTime = params.to ? Date.parse(`${params.to}T23:59:59+05:00`) : null
-  const rows = all
-    .filter(
-      (row) =>
-        row.status === params.status &&
-        matchesQuery(params.q, row.name, row.city, row.area, row.owner.name, row.owner.email) &&
-        (!params.city || row.city === params.city) &&
-        (!params.type || row.venueType === params.type) &&
-        (fromTime === null || Date.parse(row.submittedAt) >= fromTime) &&
-        (toTime === null || Date.parse(row.submittedAt) <= toTime),
-    )
-    .sort(APPROVAL_SORTS[params.sort] ?? APPROVAL_SORTS.oldest)
-  const result = paginate(rows, params.page)
-  // Cover thumbnails for the visible page only.
-  result.rows = await Promise.all(
-    result.rows.map(async (row) => {
-      const urls = await resolveListingFiles(getListingRecord(row.id))
-      return { ...row, coverUrl: urls[row.coverId] ?? null }
-    }),
+  const data = await apiFetch(
+    `/admin/venues?${query({ status: params.status, q: params.q, city: params.city, type: params.type, submittedFrom: params.from, submittedTo: params.to, sort: APPROVAL_SORT[params.sort] ?? 'oldest', page: params.page || 1, pageSize: PAGE_SIZE })}`,
   )
-  return { ...result, counts: approvalCounts(), cities: [...new Set(all.map((row) => row.city))].sort() }
-}
-
-// Mock AI detector score per photo (REQ-9): most photos are clearly genuine, a few are borderline.
-export function mockAiScore(imageId) {
-  const r = hash(`ai:${imageId}`)
-  return Math.round((r < 0.85 ? r * 0.3 : 0.45 + r * 0.4) * 100) / 100
+  cachedCounts.pending = data.counts.pending
+  return { rows: data.rows, total: data.total, page: data.page, pageCount: data.pageCount, pageSize: data.pageSize, counts: data.counts, cities: data.cities }
 }
 
 const R = 6371
@@ -319,14 +238,14 @@ function distanceKm(a, b) {
 }
 
 // Hints for the review checklist. The admin still ticks each box; these only say what we could check automatically.
-function autoChecks(listing) {
+function autoChecks(listing, aiScores) {
   const { draft, payload } = listing
   const hallsWithPhoto = draft.halls.filter((hall) => draft.venueImages.some((image) => image.hallId === hall.hallId))
   const center = CITIES.find((city) => city.value === draft.venue.city)
   const point = payload.venue.location
   const inPakistan = point && point.lat >= PAKISTAN_BOUNDS.minLat && point.lat <= PAKISTAN_BOUNDS.maxLat && point.lng >= PAKISTAN_BOUNDS.minLng && point.lng <= PAKISTAN_BOUNDS.maxLng
   const km = point && center ? distanceKm(point, center) : null
-  const flaggedPhotos = draft.venueImages.filter((image) => mockAiScore(image.imageId) >= 0.6).length
+  const flaggedPhotos = draft.venueImages.filter((image) => (aiScores[image.imageId] ?? 0) > 0.3).length
   const missing = [
     !draft.venue.headline.trim() && 'listing title',
     draft.venue.description.trim().length < 50 && 'a longer description',
@@ -348,158 +267,120 @@ function autoChecks(listing) {
   }
 }
 
-// Everything the review page shows: { listing, venue (detail shape), urls, checks, aiScores }. null = not found.
+// Everything the review page shows: { listing (with the wizard draft), venue (detail shape), urls, checks,
+// aiScores, suspended }. null = not found. GET /api/admin/venues/:id
 export async function getApproval(id) {
-  await latency()
-  const listing = getListingRecord(id)
-  if (!listing) return null
-  const urls = await resolveListingFiles(listing)
-  return {
-    listing,
-    venue: listingToVenue(listing, urls),
-    urls,
-    checks: autoChecks(listing),
-    aiScores: Object.fromEntries(listing.payload.venueImages.map((image) => [image.imageId, mockAiScore(image.imageId)])),
-    suspended: Boolean(suspendedVenues()[id]),
+  let data
+  try {
+    data = await apiFetch(`/admin/venues/${encodeURIComponent(id)}`)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
   }
+  const { listing: server, venue, history } = data
+  const { draft, files } = listingToDraft(server)
+  const suspended = server.status === 'suspended'
+  const listing = {
+    id: server.id,
+    status: suspended ? 'approved' : server.status,
+    owner: server.owner,
+    submittedAt: server.submittedAt,
+    decidedAt: server.decidedAt,
+    rejectionReason: server.rejectionReason,
+    changesNote: server.changesNote,
+    history: toHistory(server, history),
+    payload: { venue: { name: server.venue.name, location: server.venue.lat == null ? null : { lat: server.venue.lat, lng: server.venue.lng } } },
+    draft,
+  }
+  const aiScores = Object.fromEntries(server.images.map((image) => [image.imageId, image.aiScore ?? 0]))
+  return { listing, venue, urls: Object.fromEntries(files.map((file) => [file.id, file.url])), checks: autoChecks(listing, aiScores), aiScores, suspended }
 }
 
+// One id: POST /admin/venues/:id/approve (with the checklist). Several: POST /admin/venues/approve (all or nothing).
 export async function approveListings(ids, { checklist } = {}) {
-  await latency(300)
-  for (const id of ids) {
-    const listing = getListingRecord(id)
-    if (!listing || (listing.status !== 'pending' && listing.status !== 'changes_requested')) continue
-    setListingStatus(id, { status: 'approved', by: CURRENT_ADMIN.id })
-    record({ action: 'venue.approve', targetTable: 'venues', targetId: id, targetLabel: listing.payload.venue.name, details: checklist ? { checklist } : { bulk: ids.length > 1 } })
-  }
-}
-
-// Only pending or changes-requested listings can be decided; anything else is a 409 on the server.
-function assertDecidable(id) {
-  const listing = getListingRecord(id)
-  if (!listing) throw new Error('Listing not found')
-  if (listing.status !== 'pending' && listing.status !== 'changes_requested') throw new Error(`Listing is already ${listing.status}`)
+  if (ids.length === 1) await apiFetch(`/admin/venues/${encodeURIComponent(ids[0])}/approve`, { method: 'POST', body: checklist ? { checklist } : {} })
+  else await apiFetch('/admin/venues/approve', { method: 'POST', body: { ids } })
+  changed()
 }
 
 export async function rejectListing(id, reason) {
   if (!reason?.trim()) throw new Error('A reason is required')
-  await latency(300)
-  assertDecidable(id)
-  const listing = setListingStatus(id, { status: 'rejected', by: CURRENT_ADMIN.id, reason: reason.trim() })
-  record({ action: 'venue.reject', targetTable: 'venues', targetId: id, targetLabel: listing.payload.venue.name, details: { reason: reason.trim() } })
+  await apiFetch(`/admin/venues/${encodeURIComponent(id)}/reject`, { method: 'POST', body: { reason: reason.trim() } })
+  changed()
 }
 
 export async function requestListingChanges(id, note) {
   if (!note?.trim()) throw new Error('A note is required')
-  await latency(300)
-  assertDecidable(id)
-  const listing = setListingStatus(id, { status: 'changes_requested', by: CURRENT_ADMIN.id, note: note.trim() })
-  record({ action: 'venue.request_changes', targetTable: 'venues', targetId: id, targetLabel: listing.payload.venue.name, details: { note: note.trim() } })
+  await apiFetch(`/admin/venues/${encodeURIComponent(id)}/request-changes`, { method: 'POST', body: { note: note.trim() } })
+  changed()
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Flagged images (REQ-9, REQ-10)
+// Photos checked by the AI detector (REQ-9, REQ-10): GET /api/admin/images, POST /api/admin/images/:id/decision
 // ---------------------------------------------------------------------------------------------------------------
 export async function listFlaggedImages({ status = 'flagged' }) {
-  await latency()
-  const images = store.get().flaggedImages
+  const data = await apiFetch(`/admin/images?status=${encodeURIComponent(status)}`)
+  cachedCounts.images = data.counts.flagged
   return {
-    images: images
-      .filter((image) => image.status === status)
-      .sort((a, b) => b.aiScore - a.aiScore)
-      .map((image) => ({ ...image, imageUrl: GALLERY_URLS[image.asset] })),
-    counts: { flagged: images.filter((i) => i.status === 'flagged').length, approved: images.filter((i) => i.status === 'approved').length, rejected: images.filter((i) => i.status === 'rejected').length },
+    images: data.images.map((image) => ({
+      ...image,
+      aiScore: image.aiScore ?? 0,
+      aiLabel: image.aiScore === null ? 'Needs a look' : image.highConfidence ? 'Likely AI-generated' : 'Possibly AI-generated',
+    })),
+    counts: { flagged: data.counts.flagged, approved: data.counts.approved, rejected: data.counts.rejected },
   }
 }
 
-// decision: 'approved' (keep, publish) | 'rejected' (remove, never published). The owner is notified (REQ-10).
+// decision: 'approved' (keep, publish) | 'rejected' (remove, never published). 409 if already decided.
 export async function decideImage(id, decision) {
-  await latency(250)
-  // Already decided (e.g. a double click while the list refreshed): the server answers 409; do nothing.
-  if (store.get().flaggedImages.find((i) => i.id === id)?.status !== 'flagged') throw new Error('Image already decided')
-  store.update((state) => {
-    const image = state.flaggedImages.find((i) => i.id === id)
-    const next = { ...state, flaggedImages: state.flaggedImages.map((i) => (i.id === id ? { ...i, status: decision, decidedAt: new Date().toISOString() } : i)) }
-    return audit(next, { action: decision === 'approved' ? 'image.keep' : 'image.remove', targetTable: 'venue_images', targetId: id, targetLabel: `${image.fileName} (${image.venueName})`, details: { aiScore: image.aiScore } })
-  })
+  await apiFetch(`/admin/images/${encodeURIComponent(id)}/decision`, { method: 'POST', body: { decision } })
+  changed()
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// All venues (live catalogue + approved listings) and suspension
+// Live and suspended venues (srs-alignment #29): GET /api/admin/venues?status=approved|suspended
 // ---------------------------------------------------------------------------------------------------------------
-async function allLiveVenues() {
-  const now = Date.now()
-  const suspended = suspendedVenues()
-  const catalog = listMockCatalog().map((venue) => ({
-    id: venue.id,
-    name: venue.name,
-    city: venue.city,
-    area: venue.area,
-    venueType: venue.venueType,
-    capacity: venue.capacity,
-    rating: venue.rating,
-    reviewCount: venue.reviewCount,
-    image: venue.image,
-    ownerName: `${venue.name} team`,
-    source: 'catalog',
-    listedAt: catalogCreatedAt(venue.id, now),
-  }))
-  const approved = await Promise.all(
-    listListingRecords()
-      .filter((listing) => listing.status === 'approved')
-      .map(async (listing) => {
-        const urls = await resolveListingFiles(listing)
-        const cover = listing.payload.venueImages.find((image) => image.isCover) ?? listing.payload.venueImages[0]
-        return {
-          id: listing.id,
-          name: listing.payload.venue.name,
-          city: listing.payload.venue.city,
-          area: listing.payload.extras.area,
-          venueType: listing.payload.venue.venueType,
-          capacity: listing.payload.venue.capacity,
-          rating: 0,
-          reviewCount: 0,
-          image: urls[cover?.imageId] ?? '',
-          ownerName: listing.owner.name,
-          source: 'listing',
-          listedAt: listing.decidedAt,
-        }
-      }),
-  )
-  return [...approved, ...catalog].map((venue) => ({ ...venue, suspended: suspended[venue.id] ?? null }))
-}
-
-const VENUE_SORTS = {
-  newest: (a, b) => Date.parse(b.listedAt) - Date.parse(a.listedAt),
-  name: (a, b) => a.name.localeCompare(b.name),
-  rating: (a, b) => b.rating - a.rating,
-  capacity: (a, b) => b.capacity - a.capacity,
-}
+const VENUE_SORT = { newest: 'decided', name: 'name', rating: 'rating', capacity: 'capacity' }
+const NEW_DAYS = 21
 
 // params: { status: 'live' | 'suspended', q, city, sort, page }
 export async function listVenues(params) {
-  await latency()
-  const all = await allLiveVenues()
-  const rows = all
-    .filter((venue) => (params.status === 'suspended' ? venue.suspended : !venue.suspended) && matchesQuery(params.q, venue.name, venue.city, venue.area, venue.ownerName) && (!params.city || venue.city === params.city))
-    .sort(VENUE_SORTS[params.sort] ?? VENUE_SORTS.newest)
+  const status = params.status === 'suspended' ? 'suspended' : 'approved'
+  const data = await apiFetch(`/admin/venues?${query({ status, q: params.q, city: params.city, sort: VENUE_SORT[params.sort] ?? 'decided', page: params.page || 1, pageSize: PAGE_SIZE })}`)
   return {
-    ...paginate(rows, params.page),
-    counts: { live: all.filter((v) => !v.suspended).length, suspended: all.filter((v) => v.suspended).length },
-    cities: [...new Set(all.map((v) => v.city))].sort(),
+    rows: data.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      city: row.city,
+      area: row.area,
+      venueType: row.venueType,
+      capacity: row.capacity,
+      rating: row.rating,
+      reviewCount: row.reviewCount,
+      image: row.coverUrl ?? '',
+      ownerName: row.owner.name,
+      source: row.decidedAt && Date.now() - Date.parse(row.decidedAt) < NEW_DAYS * DAY ? 'listing' : 'catalog',
+      listedAt: row.decidedAt ?? row.submittedAt,
+      suspended: row.status === 'suspended' ? { at: row.decidedAt ?? row.submittedAt, reason: row.suspensionReason ?? '' } : null,
+    })),
+    total: data.total,
+    page: data.page,
+    pageCount: data.pageCount,
+    pageSize: data.pageSize,
+    counts: { live: data.counts.approved, suspended: data.counts.suspended },
+    cities: data.cities,
   }
 }
 
-export async function suspendVenue(id, name, reason) {
-  await latency(250)
-  setVenueSuspended(id, true, { by: CURRENT_ADMIN.id, reason })
-  record({ action: 'venue.suspend', targetTable: 'venues', targetId: id, targetLabel: name, details: reason ? { reason } : {} })
+export async function suspendVenue(id, _name, reason) {
+  const text = reason?.trim()
+  await apiFetch(`/admin/venues/${encodeURIComponent(id)}/suspend`, { method: 'POST', body: { reason: text && text.length >= 5 ? text : 'No reason given.' } })
+  changed()
 }
 
-export async function unsuspendVenue(id, name) {
-  await latency(250)
-  setVenueSuspended(id, false, { by: CURRENT_ADMIN.id })
-  record({ action: 'venue.unsuspend', targetTable: 'venues', targetId: id, targetLabel: name })
+export async function unsuspendVenue(id) {
+  await apiFetch(`/admin/venues/${encodeURIComponent(id)}/unsuspend`, { method: 'POST', body: {} })
+  changed()
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -605,108 +486,89 @@ export async function reportListing({ venueId, venueName, reason, details }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Audit log (NFR-4)
+// Audit log (NFR-4): venue and photo decisions from GET /api/admin/audit; user, dispute and report actions are
+// still the local demo log until those modules exist on the server.
 // ---------------------------------------------------------------------------------------------------------------
+const LOCAL_ACTIONS = new Set(['user', 'dispute', 'report'])
+
 export async function listAudit({ q, action, page }) {
-  await latency()
-  const all = store.get().audit
-  const rows = all.filter((entry) => (!action || entry.action.startsWith(`${action}.`)) && matchesQuery(q, entry.targetLabel, entry.adminName, entry.action, JSON.stringify(entry.details)))
-  return paginate(rows, page)
+  if (LOCAL_ACTIONS.has(action)) {
+    const all = store.get().audit
+    const rows = all.filter((entry) => entry.action.startsWith(`${action}.`) && matchesQuery(q, entry.targetLabel, entry.adminName, entry.action, JSON.stringify(entry.details)))
+    return paginate(rows, page)
+  }
+  const data = await apiFetch(`/admin/audit?${query({ q, action, page: page || 1, pageSize: PAGE_SIZE })}`)
+  return { rows: data.rows, total: data.total, page: data.page, pageCount: data.pageCount, pageSize: data.pageSize }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Overview, sidebar badges and notifications
 // ---------------------------------------------------------------------------------------------------------------
-// Sync, for the sidebar badges (they re-read on every store change).
+function applyStats(stats) {
+  cachedCounts.pending = stats.kpis.pendingApprovals
+  cachedCounts.images = stats.kpis.flaggedImages
+  cachedCounts.loaded = true
+}
+
+// Sync, for the sidebar badges (they re-read on every store change). The first call loads the numbers.
 export function navCounts() {
+  if (!cachedCounts.loaded && !cachedCounts.loading) {
+    cachedCounts.loading = true
+    apiFetch('/admin/stats')
+      .then((stats) => {
+        applyStats(stats)
+        changed()
+      })
+      .catch(() => {})
+      .finally(() => {
+        cachedCounts.loading = false
+      })
+  }
   const state = store.get()
   return {
-    approvals: approvalCounts().pending,
-    images: state.flaggedImages.filter((i) => i.status === 'flagged').length,
+    approvals: cachedCounts.pending,
+    images: cachedCounts.images,
     reports: state.disputes.filter((d) => d.status === 'open').length + state.reports.filter((r) => r.status === 'open').length,
   }
 }
 
-const WEEKS = 12
-// Monday 00:00 Pakistan time of the week `iso` falls in, as a timestamp.
-function weekStart(time) {
-  const pk = new Date(time + 5 * HOUR)
-  const day = (pk.getUTCDay() + 6) % 7
-  return Date.UTC(pk.getUTCFullYear(), pk.getUTCMonth(), pk.getUTCDate() - day) - 5 * HOUR
-}
-
+// GET /api/admin/stats, plus the demo disputes / reports for the attention list and activity feed.
 export async function getOverview() {
-  await latency()
-  const now = Date.now()
+  const stats = await apiFetch('/admin/stats')
+  applyStats(stats)
   const state = store.get()
-  const listings = listListingRecords()
-  const live = await allLiveVenues()
-  const counts = approvalCounts()
-
-  // Submissions per week: host listings (any status) + catalogue venues by their listing date.
-  const thisWeek = weekStart(now)
-  const weeks = Array.from({ length: WEEKS }, (_, i) => ({ start: thisWeek - (WEEKS - 1 - i) * 7 * DAY, submitted: 0, approved: 0 }))
-  const bucket = (iso) => weeks.find((w) => Date.parse(iso) >= w.start && Date.parse(iso) < w.start + 7 * DAY)
-  for (const listing of listings) {
-    const week = bucket(listing.history[0]?.at ?? listing.submittedAt)
-    if (week) week.submitted += 1
-    if (listing.status === 'approved' && listing.decidedAt) {
-      const decided = bucket(listing.decidedAt)
-      if (decided) decided.approved += 1
-    }
-  }
-  for (const venue of listMockCatalog()) {
-    const week = bucket(catalogCreatedAt(venue.id, now))
-    if (week) {
-      week.submitted += 1
-      week.approved += 1
-    }
-  }
-
-  const pending = listings.filter((l) => l.status === 'pending').sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt))
+  const pkWeekStart = (week) => Date.parse(`${week}T00:00:00+05:00`)
   const attention = [
-    ...pending.filter((l) => now - Date.parse(l.submittedAt) > 2 * DAY).map((l) => ({ id: l.id, kind: 'approval', title: l.payload.venue.name, detail: `Waiting for review since ${l.submittedAt}`, at: l.submittedAt, to: `/admin/approvals/${l.id}` })),
+    ...stats.oldPending.map((v) => ({ id: v.id, kind: 'approval', title: v.name, detail: `Waiting for review since ${v.submittedAt}`, at: v.submittedAt, to: `/admin/approvals/${v.id}` })),
+    ...(stats.kpis.flaggedImages
+      ? [{ id: 'flagged-photos', kind: 'image', title: `${stats.kpis.flaggedImages} photo${stats.kpis.flaggedImages === 1 ? '' : 's'} flagged by the AI check`, detail: 'Keep or remove each one', at: new Date().toISOString(), to: '/admin/images' }]
+      : []),
     ...state.disputes.filter((d) => d.status === 'open').map((d) => ({ id: d.id, kind: 'dispute', title: `Dispute on ${d.bookingId}`, detail: d.venueName, at: d.createdAt, to: `/admin/reports?tab=disputes&status=open#${d.id}` })),
-    ...state.flaggedImages.filter((i) => i.status === 'flagged' && i.aiScore >= 0.85).map((i) => ({ id: i.id, kind: 'image', title: `${i.fileName} scored ${Math.round(i.aiScore * 100)}%`, detail: i.venueName, at: i.uploadedAt, to: '/admin/images' })),
     ...state.reports.filter((r) => r.status === 'open').map((r) => ({ id: r.id, kind: 'report', title: `Report on ${r.venueName}`, detail: REPORT_REASONS.find((x) => x.value === r.reason)?.label ?? r.reason, at: r.createdAt, to: `/admin/reports?tab=reports&status=open#${r.id}` })),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
 
   const activity = [
-    ...state.audit.slice(0, 12).map((entry) => ({ id: entry.logId, kind: 'audit', action: entry.action, actor: entry.adminName, target: entry.targetLabel, at: entry.createdAt })),
-    ...listings.map((l) => ({ id: `sub-${l.id}-${l.submittedAt}`, kind: 'submission', action: 'venue.submit', actor: l.owner.name, target: l.payload.venue.name, at: l.submittedAt })),
+    ...stats.activity.map((entry) => ({ id: entry.id, kind: 'audit', action: entry.action, actor: entry.actor, target: entry.target, at: entry.at })),
+    ...stats.submissions.map((s) => ({ id: `sub-${s.id}-${s.submittedAt}`, kind: 'submission', action: 'venue.submit', actor: s.ownerName, target: s.name, at: s.submittedAt })),
     ...state.reports.map((r) => ({ id: `rep-${r.id}`, kind: 'report', action: 'report.create', actor: r.reporter, target: r.venueName, at: r.createdAt })),
   ]
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, 8)
 
-  const monthStart = new Date(now)
-  const users = state.users.filter((u) => !u.deletedAt)
   return {
-    kpis: {
-      pendingApprovals: counts.pending,
-      pendingNewThisWeek: pending.filter((l) => Date.parse(l.submittedAt) >= thisWeek).length,
-      liveVenues: live.filter((v) => !v.suspended).length,
-      suspendedVenues: live.filter((v) => v.suspended).length,
-      users: users.length,
-      usersByRole: { customer: users.filter((u) => u.role === 'customer').length, venue_owner: users.filter((u) => u.role === 'venue_owner').length, decorator: users.filter((u) => u.role === 'decorator').length },
-      // Mock until the booking engine exists: a stable number per month.
-      bookingsThisMonth: 96 + Math.floor(hash(`bookings:${monthStart.getUTCFullYear()}-${monthStart.getUTCMonth()}`) * 60),
-      flaggedImages: state.flaggedImages.filter((i) => i.status === 'flagged').length,
-    },
-    weeks,
+    kpis: stats.kpis,
+    weeks: stats.weeks.map((w) => ({ start: pkWeekStart(w.week), submitted: w.submitted, approved: w.approved })),
     attention,
     activity,
   }
 }
 
 export async function getNotifications() {
-  await latency(120)
   const state = store.get()
   const readAt = state.notificationsReadAt ? Date.parse(state.notificationsReadAt) : 0
+  const pending = await apiFetch(`/admin/venues?${query({ status: 'pending', sort: 'newest', pageSize: 10 })}`).catch(() => ({ rows: [] }))
   const items = [
-    ...listListingRecords()
-      .filter((l) => l.status === 'pending')
-      .map((l) => ({ id: `n-sub-${l.id}`, text: `${l.payload.venue.name} was submitted for review`, at: l.submittedAt, to: `/admin/approvals/${l.id}` })),
+    ...pending.rows.map((v) => ({ id: `n-sub-${v.id}`, text: `${v.name} was submitted for review`, at: v.submittedAt, to: `/admin/approvals/${v.id}` })),
     ...state.reports.filter((r) => r.status === 'open').map((r) => ({ id: `n-rep-${r.id}`, text: `New report on ${r.venueName}`, at: r.createdAt, to: `/admin/reports?tab=reports&status=open#${r.id}` })),
     ...state.disputes.filter((d) => d.status === 'open').map((d) => ({ id: `n-dis-${d.id}`, text: `Dispute opened on ${d.bookingId}`, at: d.createdAt, to: `/admin/reports?tab=disputes&status=open#${d.id}` })),
   ]
@@ -720,28 +582,30 @@ export function markNotificationsRead() {
   store.update((state) => ({ ...state, notificationsReadAt: new Date().toISOString() }))
 }
 
-// Global search in the top bar: venues (listings + catalogue) and users by name.
+// Global search in the top bar: venues of any status (server) and the demo users by name.
 export async function searchAdmin(q) {
   if (!q.trim()) return []
-  await latency(100)
-  const listings = listListingRecords()
-    .filter((l) => matchesQuery(q, l.payload.venue.name, l.owner.name))
-    .map((l) => ({ id: l.id, kind: 'Listing', label: l.payload.venue.name, detail: `${l.payload.venue.city} · ${l.status.replace('_', ' ')}`, to: `/admin/approvals/${l.id}` }))
-  const suspended = suspendedVenues()
-  const venues = listMockCatalog()
-    .filter((v) => matchesQuery(q, v.name, v.area))
-    .map((v) => ({ id: v.id, kind: 'Venue', label: v.name, detail: `${v.city}${suspended[v.id] ? ' · suspended' : ''}`, to: `/admin/venues?q=${encodeURIComponent(v.name)}${suspended[v.id] ? '&status=suspended' : ''}` }))
+  const data = await apiFetch(`/admin/venues?${query({ q: q.trim(), sort: 'name', pageSize: 6 })}`).catch(() => ({ rows: [] }))
+  const venues = data.rows.map((v) => {
+    const live = v.status === 'approved' || v.status === 'suspended'
+    return {
+      id: v.id,
+      kind: live ? 'Venue' : 'Listing',
+      label: v.name,
+      detail: `${v.city} · ${v.status.replace('_', ' ')}`,
+      to: live ? `/admin/venues?q=${encodeURIComponent(v.name)}${v.status === 'suspended' ? '&status=suspended' : ''}` : `/admin/approvals/${v.id}`,
+    }
+  })
   const users = store
     .get()
     .users.filter((u) => matchesQuery(q, u.name, u.email))
     .map((u) => ({ id: u.id, kind: 'User', label: u.name, detail: u.email, to: `/admin/users?q=${encodeURIComponent(u.email)}&user=${u.id}` }))
-  return [...listings, ...venues, ...users].slice(0, 8)
+  return [...venues, ...users].slice(0, 8)
 }
 
+// Resets the demo-only admin data (users, disputes, reports) plus the demo bookings and invitations.
 export function resetDemoData() {
-  resetListings()
   resetBookings()
   resetInvitations()
   store.reset()
 }
-

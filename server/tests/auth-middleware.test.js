@@ -123,7 +123,14 @@ describe('requireRole (REQ-3, SYS-04)', () => {
 
   it('no admin can be created through the API (REQ-1)', async () => {
     const app = (await import('./helpers/app.js')).testApp()
-    const paths = app.locals.routes.map((r) => r.path)
-    expect(paths.some((p) => /admin/.test(p))).toBe(false)
+    // /api/admin/* exists for moderation (admin only), but no route creates an account other than public
+    // registration, which refuses role 'admin' (register.test.js). The first admin comes from the CLI / seed.
+    const creates = app.locals.routes.filter(
+      (r) => r.method === 'POST' && /\/(users|admins|accounts)$|\/register$/.test(r.path),
+    )
+    expect(creates.map((r) => r.path)).toEqual(['/api/auth/register'])
+    expect(
+      app.locals.routes.filter((r) => r.path.includes('admin')).every((r) => r.path.startsWith('/api/admin/')),
+    ).toBe(true)
   })
 })

@@ -17,10 +17,13 @@ Protect the core differentiators first: booking engine (hold + no double booking
 - [ ] Profile page per role (API done 2026-11-21: `GET/PATCH /api/me`, `/api/me/searches`, `/api/me/bookings`; the client page is not built)
 
 ## Phase 2: Venues (REQ-5 to REQ-11, EUC-04 to 08)
-- [ ] Owner venue CRUD, approval workflow, admin approve/reject with reason
-- [ ] Image upload + AI detection adapter (fake first) + flagged queue
-- [ ] Menus, menu items, add-ons
-- [ ] Walkthrough upload + viewer, stage photos
+- [x] Owner submit / resubmit, drafts, approval workflow (approve, reject with reason, request changes, suspend,
+      bulk approve), audit log, admin stats (2026-11-22, branch `feat/server-venues`). Editing a live venue and
+      deactivating it (REQ-5) still to do
+- [x] Image upload (content-checked) + AI detection adapter (Sightengine, fake without keys) + flagged queue (REQ-9, 10)
+- [x] Menus, menu items, add-ons (created with the listing; editing them after approval still to do)
+- [x] Walkthrough upload (.glb / 360° JPEG) stored per hall; viewer was already in the client. Stage photos still to do
+- [x] Public venue API: landing rows, search with the Explore filters, venue page, per-hall availability, stats
 
 ## Phase 3: Search and discovery (REQ-12 to REQ-15, EUC-09 to 12)
 - [ ] Search with filters + free-on-date + ranking + history

@@ -129,6 +129,10 @@ Rules enforced in services (need data from several tables): review only after `c
 - **005 owner-drafts-and-uploads** (#31): `venue_drafts` (one autosaved wizard draft per owner and listing, jsonb
   ≤ 256 KB) and `media_uploads` (files uploaded before the listing exists, attached on submit).
 - Still pending: #21 invitation `[Design]` columns and `rsvps.party_size` (with the invitations phase).
+- **Files:** `venue_images.image_url`, `halls.floor_plan_url` and `walkthrough_assets.file_url` hold the path
+  `/uploads/<key>` (the API adds its origin). `media_uploads` tracks every upload and which venue it was attached to.
+  Enum arrays (`supported_events event_type[]`) must be selected as `::text[]`, or node-postgres returns the raw
+  `{a,b}` string.
 - **Seed** (`npm run seed` in `server/`, code in `db/seeds/`): reads the client's mock catalogue
   (`client/src/features/venues/mockVenues.js`) at run time, so the site looks the same on real data. 20 approved
   venues + 3 pending, 1 rejected, 1 suspended (with halls, bridal suite, photos, menus + dishes, add-ons, slot

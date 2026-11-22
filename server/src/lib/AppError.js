@@ -17,3 +17,6 @@ export const forbidden = () => new AppError(403, 'FORBIDDEN', "Your account type
 
 export const accountSuspended = () =>
   new AppError(403, 'ACCOUNT_SUSPENDED', 'Your account has been suspended by an administrator. Contact support.')
+
+// 404 for something the caller may not see: not found, not theirs, or not public (never says which).
+export const notFoundError = (message = 'We couldn’t find that.') => new AppError(404, 'NOT_FOUND', message)

@@ -13,6 +13,11 @@ export const AUTH_RATE_LIMITS = Object.freeze({
   forgotPassword: { windowMs: 15 * MINUTE, limit: 10 },
   forgotPasswordPerEmail: { windowMs: 15 * MINUTE, limit: 3, by: 'email' },
   resetCode: { windowMs: 15 * MINUTE, limit: 30 },
+  // Venues API (Phase 2): public reads, owner writes / uploads, admin writes. Per IP.
+  publicRead: { windowMs: 15 * MINUTE, limit: 1500 },
+  ownerWrite: { windowMs: 15 * MINUTE, limit: 600 },
+  uploads: { windowMs: 60 * MINUTE, limit: 400 },
+  adminWrite: { windowMs: 15 * MINUTE, limit: 600 },
 })
 
 const RATE_LIMITED_MESSAGES = {

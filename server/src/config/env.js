@@ -46,6 +46,26 @@ const schema = z.object({
   SMTP_PORT: z.preprocess((v) => (v === '' ? undefined : v), int(587, { max: 65535 })),
   SMTP_USER: z.string().trim().default(''),
   SMTP_PASS: z.string().default(''),
+  // REQ-9 AI image detection (integrations/imageDetection.js). No user/secret = the fake detector (dev and tests).
+  IMAGE_DETECTION_PROVIDER: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['sightengine', 'fake']).default('sightengine'),
+  ),
+  SIGHTENGINE_API_USER: z.string().trim().default(''),
+  SIGHTENGINE_API_SECRET: z.string().trim().default(''),
+  IMAGE_DETECTION_TIMEOUT_MS: z.preprocess((v) => (v === '' ? undefined : v), int(10_000, { min: 1000, max: 60_000 })),
+  IMAGE_DETECTION_FLAG_THRESHOLD: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.coerce.number().min(0).max(1).default(0.8),
+  ),
+  IMAGE_DETECTION_GENUINE_THRESHOLD: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.coerce.number().min(0).max(1).default(0.3),
+  ),
+  // Where uploaded files are stored (local disk adapter) and the public origin used in file URLs. Defaults:
+  // server/uploads and the address the request came in on.
+  UPLOADS_DIR: z.string().trim().default(''),
+  PUBLIC_API_ORIGIN: z.preprocess((v) => (v === '' ? undefined : v), z.url().optional()),
   MAIL_FROM: z.preprocess(
     (v) => (v === '' ? undefined : v),
     z.string().trim().default('MarkieSharkie <no-reply@markiesharkie.pk>'),
@@ -102,6 +122,16 @@ export function parseEnv(raw) {
       loginLockMinutes: e.LOGIN_LOCK_MINUTES,
     }),
     slotHoldMinutes: e.SLOT_HOLD_MINUTES,
+    imageDetection: Object.freeze({
+      provider: e.SIGHTENGINE_API_USER && e.SIGHTENGINE_API_SECRET ? e.IMAGE_DETECTION_PROVIDER : 'fake',
+      apiUser: e.SIGHTENGINE_API_USER,
+      apiSecret: e.SIGHTENGINE_API_SECRET,
+      timeoutMs: e.IMAGE_DETECTION_TIMEOUT_MS,
+      flagThreshold: e.IMAGE_DETECTION_FLAG_THRESHOLD,
+      genuineThreshold: Math.min(e.IMAGE_DETECTION_GENUINE_THRESHOLD, e.IMAGE_DETECTION_FLAG_THRESHOLD),
+    }),
+    uploadsDir: e.UPLOADS_DIR,
+    publicApiOrigin: e.PUBLIC_API_ORIGIN ? e.PUBLIC_API_ORIGIN.replace(/\/$/, '') : null,
     mail: Object.freeze({
       host: e.SMTP_HOST,
       port: e.SMTP_PORT,

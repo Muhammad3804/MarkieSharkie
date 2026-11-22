@@ -239,12 +239,13 @@ export const FLOOR_PLAN_MAX_BYTES = 10 * 1024 * 1024
 // 3D walkthrough per hall. `upload` is REQ-11 (walkthrough_assets); generate and link are UI-only extras.
 export const WALKTHROUGH_MODES = [
   { value: 'generate', label: 'Generate from dimensions', description: 'We build a 3D model of the room from its size and layout.' },
-  { value: 'upload', label: 'Upload a 3D model or 360° photo', description: '.glb or .gltf up to 50 MB, or a 360° JPEG up to 20 MB.' },
+  { value: 'upload', label: 'Upload a 3D model or 360° photo', description: 'A .glb 3D model up to 50 MB, or a 360° JPEG up to 20 MB.' },
   { value: 'link', label: 'Paste a 360° or Matterport link', description: 'A virtual tour you already have online.' },
   { value: 'skip', label: 'Skip for now', description: 'Customers see your photos. You can add a walkthrough later.' },
 ]
-// docs/api-and-security.md: 3D .glb/.gltf ≤ 50 MB, 360 JPEG ≤ 20 MB.
+// docs/api-and-security.md: 3D .glb ≤ 50 MB, 360 JPEG ≤ 20 MB. .gltf isn't accepted: it needs separate buffer /
+// texture files and can't be checked by its content (the server reads each file's first bytes, D8).
 export const WALKTHROUGH_FILES = [
-  { assetType: 'model_3d', extensions: ['.glb', '.gltf'], maxBytes: 50 * 1024 * 1024 },
+  { assetType: 'model_3d', extensions: ['.glb'], maxBytes: 50 * 1024 * 1024 },
   { assetType: 'panorama_360', extensions: ['.jpg', '.jpeg'], maxBytes: 20 * 1024 * 1024 },
 ]

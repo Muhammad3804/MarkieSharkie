@@ -12,6 +12,10 @@ import { notFound } from './middleware/notFound.js'
 import { AUTH_RATE_LIMITS } from './middleware/rateLimit.js'
 import { authRouter } from './modules/auth/routes.js'
 import { usersRouter } from './modules/users/routes.js'
+import { venuesRouter } from './modules/venues/routes.js'
+import { ownerRouter } from './modules/owner/routes.js'
+import { adminRouter } from './modules/admin/routes.js'
+import { getStorage } from './integrations/storage.js'
 
 // GET /api/health -> { status: 'ok', db: 'up' } after a real SELECT 1; 503 { status: 'error', db: 'down' } otherwise.
 function healthRouter() {
@@ -46,7 +50,8 @@ const REQUEST_ID = /^[A-Za-z0-9-]{8,64}$/
 
 // The Express app without listen(), so tests can drive it with Supertest (docs/architecture.md).
 // Options exist for tests: a logger writing to a buffer, and rate limits that don't trip during a test file.
-export function createApp({ logger = defaultLogger, rateLimits = AUTH_RATE_LIMITS } = {}) {
+export function createApp({ logger = defaultLogger, rateLimits: overrides = AUTH_RATE_LIMITS } = {}) {
+  const rateLimits = { ...AUTH_RATE_LIMITS, ...overrides }
   const app = express()
 
   app.set('trust proxy', env.trustProxy) // TRUST_PROXY; needed for correct client IPs behind a proxy (rate limits)
@@ -80,10 +85,34 @@ export function createApp({ logger = defaultLogger, rateLimits = AUTH_RATE_LIMIT
   app.use(express.json({ limit: '1mb' }))
   app.use(cookieParser())
 
+  // Uploaded and seed files (photos, floor plans, walkthroughs). Random names, no directory listing, no dotfiles,
+  // nosniff (helmet) so a file is never run as something else. CORP cross-origin so the PWA on another origin can
+  // show the images; files are served as downloads unless they are images.
+  app.use(
+    '/uploads',
+    (_req, res, next) => {
+      res.set('Cross-Origin-Resource-Policy', 'cross-origin')
+      next()
+    },
+    express.static(getStorage().root, {
+      index: false,
+      dotfiles: 'deny',
+      fallthrough: true,
+      maxAge: '7d',
+      immutable: true,
+      setHeaders: (res, file) => {
+        if (!/\.(jpe?g|png|webp)$/i.test(file)) res.set('Content-Disposition', 'attachment')
+      },
+    }),
+  )
+
   const mounts = [
     ['/api', healthRouter()],
     ['/api/auth', authRouter({ rateLimits })],
     ['/api', usersRouter()],
+    ['/api', venuesRouter({ rateLimits })],
+    ['/api/owner', ownerRouter({ rateLimits })],
+    ['/api/admin', adminRouter({ rateLimits })],
   ]
   for (const [prefix, router] of mounts) app.use(prefix, router)
   app.locals.routes = listRoutes(mounts)
