@@ -53,8 +53,9 @@ const BADGE_TONES = {
   under_review: 'bg-info-bg text-info',
   suspended: 'bg-surface text-muted-warm ring-1 ring-line',
   removed: 'bg-surface text-muted-warm ring-1 ring-line',
+  withdrawn: 'bg-surface text-muted-warm ring-1 ring-line',
 }
-const BADGE_ICONS = { pending: 'clock', changes_requested: 'message-edit', approved: 'check', live: 'check', active: 'check', resolved: 'check', rejected: 'x', flagged: 'alert', open: 'alert', under_review: 'eye', suspended: 'ban', removed: 'trash' }
+const BADGE_ICONS = { pending: 'clock', changes_requested: 'message-edit', approved: 'check', live: 'check', active: 'check', resolved: 'check', rejected: 'x', flagged: 'alert', open: 'alert', under_review: 'eye', suspended: 'ban', removed: 'trash', withdrawn: 'x' }
 
 // Status pill with an icon, so the state is never colour alone.
 export function StatusBadge({ status, label }) {

@@ -42,12 +42,13 @@ export function listingToDraft(listing) {
       widthFt: hall.widthFt,
       ceilingFt: hall.ceilingFt,
       description: hall.description,
-      floorPlan: hall.floorPlan ? { fileId: planId, fileName: hall.floorPlan.type === 'application/pdf' ? 'floor-plan.pdf' : 'floor-plan.jpg', type: hall.floorPlan.type, size: 0 } : null,
+      // uploadId: a file that is already on the server, waiting in a pending edit (owner editor); sent back as is.
+      floorPlan: hall.floorPlan ? { fileId: planId, fileName: hall.floorPlan.type === 'application/pdf' ? 'floor-plan.pdf' : 'floor-plan.jpg', type: hall.floorPlan.type, size: 0, uploadId: hall.floorPlan.uploadId ?? null } : null,
       zones: hall.zones,
       walkthrough: {
         mode: hall.walkthrough.mode,
         url: hall.walkthrough.url ?? '',
-        file: hall.walkthrough.file ? { fileId: walkId, fileName: hall.walkthrough.file.assetType === 'model_3d' ? 'walkthrough.glb' : 'walkthrough.jpg', assetType: hall.walkthrough.file.assetType, size: 0 } : null,
+        file: hall.walkthrough.file ? { fileId: walkId, fileName: hall.walkthrough.file.assetType === 'model_3d' ? 'walkthrough.glb' : 'walkthrough.jpg', assetType: hall.walkthrough.file.assetType, size: 0, uploadId: hall.walkthrough.file.uploadId ?? null } : null,
       },
     }
   })

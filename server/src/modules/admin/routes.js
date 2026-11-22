@@ -17,6 +17,8 @@ import {
   imagesQuerySchema,
   listVenuesQuerySchema,
   rejectBodySchema,
+  revisionParamsSchema,
+  revisionsQuerySchema,
   suspendBodySchema,
   venueParamsSchema,
 } from './schemas.js'
@@ -65,6 +67,22 @@ export function adminRouter({ rateLimits }) {
     writes,
     validate({ params: venueParamsSchema, body: emptyBodySchema }),
     asyncHandler(controller.unsuspend),
+  )
+
+  // Edits to live venues (REQ-5 "changed venue goes to Admin approval", srs-alignment #35).
+  router.get('/revisions', validate({ query: revisionsQuerySchema }), asyncHandler(controller.listRevisions))
+  router.get('/revisions/:id', validate({ params: revisionParamsSchema }), asyncHandler(controller.getRevision))
+  router.post(
+    '/revisions/:id/approve',
+    writes,
+    validate({ params: revisionParamsSchema, body: emptyBodySchema }),
+    asyncHandler(controller.approveRevision),
+  )
+  router.post(
+    '/revisions/:id/reject',
+    writes,
+    validate({ params: revisionParamsSchema, body: rejectBodySchema }),
+    asyncHandler(controller.rejectRevision),
   )
 
   router.get('/images', validate({ query: imagesQuerySchema }), asyncHandler(controller.listImages))

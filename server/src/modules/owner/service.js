@@ -7,8 +7,8 @@ import { detectFileType, UPLOAD_RULES } from '../../lib/fileType.js'
 import { logger } from '../../lib/logger.js'
 import { validationError } from '../../lib/validation.js'
 import { countPendingImages, queueVerification } from '../venues/imageVerification.js'
-import { absolute, toListing } from '../venues/mappers.js'
-import { loadVenueBundle } from '../venues/repository.js'
+import { absolute } from '../venues/mappers.js'
+import { intOrNull, money, paisa } from './money.js'
 import * as repo from './repository.js'
 
 // Venue owner's listings (REQ-5, REQ-6, REQ-8, REQ-11, EUC-04 to 08). Every venue read or write checks that the
@@ -75,13 +75,6 @@ export async function upload(ownerId, { kind, file }, { origin }) {
 }
 
 // ---------------------------------------------------------------- submit / resubmit (REQ-5 -> admin approval)
-
-const paisa = (text) => {
-  const [whole, fraction = ''] = String(text).split('.')
-  return Number(whole) * 100 + Number(fraction.padEnd(2, '0').slice(0, 2))
-}
-const money = (p) => `${Math.floor(p / 100)}.${String(p % 100).padStart(2, '0')}`
-const intOrNull = (text) => (text === '' || text === undefined || text === null ? null : Number(text))
 
 // The venue row from the validated body. Derived columns are computed here, never taken from the client:
 // capacity = largest hall, base_price = cheapest package per head, venue_type from the halls' settings.
@@ -308,15 +301,10 @@ export async function listMyVenues(ownerId, { origin }) {
       submittedAt: r.submitted_at,
       reviewedAt: r.reviewed_at,
       coverUrl: r.cover_url ? absolute(origin, r.cover_url) : null,
+      revision: r.revision, // latest edit of a live venue: { id, status, submittedAt, decidedAt, note } or null
       photoChecks: Object.fromEntries(PHOTO_STATUSES.map((s) => [s, r.photo_checks?.[s] ?? 0])),
     })),
   }
-}
-
-export async function getMyVenue(ownerId, venueId, { origin }) {
-  if (!(await repo.isOwner(pool, { venueId, ownerId }))) throw notYours()
-  const bundle = await loadVenueBundle(pool, venueId, { publishedOnly: false })
-  return { listing: toListing(bundle, origin) }
 }
 
 // REQ-9 "service down -> owner asked to retry later": checks the photos still pending again.

@@ -204,7 +204,7 @@ function paginate(rows, page) {
 export const APPROVAL_STATUSES = ['pending', 'changes_requested', 'approved', 'rejected']
 
 // Sidebar badges are read synchronously (navCounts); every server answer that has the numbers refreshes this.
-const cachedCounts = { pending: 0, images: 0, loaded: false, loading: false }
+const cachedCounts = { pending: 0, images: 0, edits: 0, loaded: false, loading: false }
 const changed = () => notifyStoreChange() // admin pages refetch on store changes (features/admin/hooks.js)
 
 export function approvalCounts() {
@@ -507,6 +507,7 @@ export async function listAudit({ q, action, page }) {
 function applyStats(stats) {
   cachedCounts.pending = stats.kpis.pendingApprovals
   cachedCounts.images = stats.kpis.flaggedImages
+  cachedCounts.edits = stats.kpis.pendingEdits ?? 0
   cachedCounts.loaded = true
 }
 
@@ -528,6 +529,7 @@ export function navCounts() {
   return {
     approvals: cachedCounts.pending,
     images: cachedCounts.images,
+    edits: cachedCounts.edits,
     reports: state.disputes.filter((d) => d.status === 'open').length + state.reports.filter((r) => r.status === 'open').length,
   }
 }
@@ -626,4 +628,39 @@ export async function testImageDetection(file) {
   const result = await apiFetch('/admin/image-detection/test', { method: 'POST', body: form })
   changed() // the audit log has a new row
   return result
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Edits to live venues (REQ-5 "changed venue goes to Admin approval", srs-alignment #35)
+// ---------------------------------------------------------------------------------------------------------------
+export const REVISION_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn']
+
+// GET /api/admin/revisions -> { rows, total, page, pageCount, pageSize, counts }
+export async function listRevisions({ status = 'pending', page = 1 } = {}) {
+  const data = await apiFetch(`/admin/revisions?${query({ status, page, pageSize: PAGE_SIZE })}`)
+  cachedCounts.edits = data.counts.pending
+  return data
+}
+
+// GET /api/admin/revisions/:id -> the revision with old versus new per changed field, or null.
+export async function getRevision(id) {
+  try {
+    const { revision } = await apiFetch(`/admin/revisions/${encodeURIComponent(id)}`)
+    return revision
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
+  }
+}
+
+export async function approveRevision(id) {
+  await apiFetch(`/admin/revisions/${encodeURIComponent(id)}/approve`, { method: 'POST', body: {} })
+  cachedCounts.edits = Math.max(0, cachedCounts.edits - 1)
+  changed()
+}
+
+export async function rejectRevision(id, reason) {
+  await apiFetch(`/admin/revisions/${encodeURIComponent(id)}/reject`, { method: 'POST', body: { reason } })
+  cachedCounts.edits = Math.max(0, cachedCounts.edits - 1)
+  changed()
 }

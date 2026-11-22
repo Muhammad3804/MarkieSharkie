@@ -1,6 +1,6 @@
-import { useId, useState } from 'react'
+import { useContext, useId, useState } from 'react'
 import HostIcon from './icons.jsx'
-import { useWizard } from './WizardContext.js'
+import { HeadingLevelContext, useWizard } from './WizardContext.js'
 import { newId } from './draft.js'
 import { fieldId, inputClass } from './fieldStyles.js'
 
@@ -8,13 +8,15 @@ import { fieldId, inputClass } from './fieldStyles.js'
 // are linked with aria-describedby. Error ids are derived from the field id: `${id}-error`.
 
 export function StepHeading({ title, subtitle, eyebrow }) {
+  // The wizard shows one step per page (h1); the listing editor stacks several steps under its own h1 (h2).
+  const Heading = useContext(HeadingLevelContext) === 2 ? 'h2' : 'h1'
   return (
     <header className="mb-8 sm:mb-10">
       {eyebrow && <p className="mb-3 text-[15px] font-medium text-muted-warm">{eyebrow}</p>}
       {/* Focused after each step change (HostWizard) so screen readers announce the new question. */}
-      <h1 tabIndex={-1} data-step-heading className="font-heading text-[28px] font-semibold leading-tight text-balance text-ink-strong outline-none sm:text-[36px]">
+      <Heading tabIndex={-1} data-step-heading className="font-heading text-[28px] font-semibold leading-tight text-balance text-ink-strong outline-none sm:text-[36px]">
         {title}
-      </h1>
+      </Heading>
       {subtitle && <p className="mt-3 max-w-[60ch] text-[16px] leading-relaxed text-muted-warm sm:text-[18px]">{subtitle}</p>}
     </header>
   )

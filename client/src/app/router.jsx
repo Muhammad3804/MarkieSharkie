@@ -3,7 +3,7 @@ import AuthProvider from '../features/auth/AuthProvider.jsx'
 import RequireAuth from '../features/auth/RequireAuth.jsx'
 import RequireRole from '../features/auth/RequireRole.jsx'
 import PublicLayout from './layouts/PublicLayout.jsx'
-import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, ProfileRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
+import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, ProfileRoute, MyListingsRoute, ListingEditorRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
 import Landing from '../pages/Landing.jsx'
 import SearchRedirect from './SearchRedirect.jsx'
 import HostResumeRedirect from './HostResumeRedirect.jsx'
@@ -37,6 +37,23 @@ export const router = createBrowserRouter([
               <RequireAuth intent="profile">
                 <ProfileRoute />
               </RequireAuth>
+            ),
+          },
+          // Venue owner's listings (EUC-04, EUC-07): status, edit a live venue, deactivate.
+          {
+            path: '/owner/listings',
+            element: (
+              <RequireRole role="venue_owner" intent="host">
+                <MyListingsRoute />
+              </RequireRole>
+            ),
+          },
+          {
+            path: '/owner/listings/:id/edit/:section?',
+            element: (
+              <RequireRole role="venue_owner" intent="host">
+                <ListingEditorRoute />
+              </RequireRole>
             ),
           },
           // Customer's own bookings (moves into /app with role dashboards).
@@ -100,6 +117,8 @@ export const router = createBrowserRouter([
           { index: true, element: <AdminPageRoute page="overview" /> },
           { path: 'approvals', element: <AdminPageRoute page="approvals" /> },
           { path: 'approvals/:id', element: <AdminPageRoute page="review" /> },
+          { path: 'edits', element: <AdminPageRoute page="edits" /> },
+          { path: 'edits/:id', element: <AdminPageRoute page="editReview" /> },
           { path: 'images', element: <AdminPageRoute page="images" /> },
           { path: 'venues', element: <AdminPageRoute page="venues" /> },
           { path: 'users', element: <AdminPageRoute page="users" /> },

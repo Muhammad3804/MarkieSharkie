@@ -128,6 +128,12 @@ Rules enforced in services (need data from several tables): review only after `c
   tables `bridal_suites`, `venue_slot_templates` (lunch / dinner times), `venue_cancellation_tiers`.
 - **005 owner-drafts-and-uploads** (#31): `venue_drafts` (one autosaved wizard draft per owner and listing, jsonb
   ≤ 256 KB) and `media_uploads` (files uploaded before the listing exists, attached on submit).
+- **006 venue-edits-and-revisions** (#35): `venue_revisions` (an owner's edit of a live venue waiting for the
+  admin: `changes` / `previous` jsonb, status pending / approved / rejected / withdrawn, at most one pending per venue
+  via the partial unique index `venue_revisions_one_pending`), `owner_activity_log` (owner actions; admin_audit_log
+  needs an admin), `menu_packages.archived_at` and `add_ons.archived_at` (replaced or removed rows kept for bookings;
+  public queries filter `archived_at IS NULL`) and `bookings.menu_price_per_head` (price snapshot at booking time).
+  Has a working `-- Down Migration` section (tested on the test DB).
 - Still pending: #21 invitation `[Design]` columns and `rsvps.party_size` (with the invitations phase).
 - **Files:** `venue_images.image_url`, `halls.floor_plan_url` and `walkthrough_assets.file_url` hold the path
   `/uploads/<key>` (the API adds its origin). `media_uploads` tracks every upload and which venue it was attached to.

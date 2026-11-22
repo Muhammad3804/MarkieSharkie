@@ -128,7 +128,7 @@ export class SubmitError extends Error {
 
 // The wizard draft -> the server's submission body (same paths as the wizard fields, so a server field error
 // matches a field). Files are referenced by the upload ids from `ids`.
-function toSubmission(draft, ids) {
+export function toSubmission(draft, ids) {
   const v = draft.venue
   const rules = draft.bookingRules
   return {

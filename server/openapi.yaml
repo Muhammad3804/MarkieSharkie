@@ -956,6 +956,321 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /owner/venues/{id}/edit:
+    put:
+      tags: [Owner]
+      operationId: editLiveVenue
+      summary: Edit a live venue (EUC-04, EUC-07)
+      description: |
+        Approved venues only (otherwise 409 `INVALID_STATUS`). Live at once: headline, directions, landmark, parking, house rules,
+        Google Maps link, hosting since, custom menu note, photos (new ones pass the AI check first), menu packages, add-ons.
+        Needs admin approval (REQ-5): name, type, address, map pin, events, amenities, description, halls, bridal suite,
+        booking rules -> one pending revision per venue (replaced by a newer proposal, withdrawn when everything matches the
+        live values again). Packages / add-ons used by a booking are archived and replaced, never changed. A hall with
+        bookings can't be removed (400). Logged in owner_activity_log. Another owner's venue is 404.
+      x-srs: [REQ-5, REQ-6, REQ-9, EUC-04, EUC-07]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingEdit' }
+      responses:
+        '200':
+          description: Saved. `applied` went live now; `needsApproval` waits in the pending revision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EditResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/revision:
+    get:
+      tags: [Owner]
+      operationId: getVenueRevision
+      summary: Latest edit request for the venue and its status
+      x-srs: [REQ-5]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The latest revision with old versus new values, or null.
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties: { revision: { oneOf: [{ $ref: '#/components/schemas/Revision' }, { type: 'null' }] } },
+                }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Owner]
+      operationId: withdrawVenueRevision
+      summary: Withdraw the pending edit request
+      x-srs: [REQ-5]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204':
+          description: Withdrawn.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/deactivate:
+    post:
+      tags: [Owner]
+      operationId: deactivateVenue
+      summary: Deactivate a live venue (REQ-5)
+      x-srs: [REQ-5, EUC-04]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string, maxLength: 300 } } }
+      responses:
+        '200':
+          description: Hidden from search, its page and new bookings. Confirmed bookings stay valid.
+          content:
+            application/json:
+              schema: { type: object, properties: { venue: { type: object }, changed: { type: boolean } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/reactivate:
+    post:
+      tags: [Owner]
+      operationId: reactivateVenue
+      summary: Reactivate a deactivated venue (REQ-5)
+      x-srs: [REQ-5, EUC-04]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '200':
+          description: Public again (unless an admin has suspended it).
+          content:
+            application/json:
+              schema: { type: object, properties: { venue: { type: object }, changed: { type: boolean } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/menus:
+    post:
+      tags: [Owner]
+      operationId: createMenuPackage
+      summary: Add a menu package to a live venue (REQ-6)
+      x-srs: [REQ-6, EUC-07]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuBody' }
+      responses:
+        '201':
+          description: Created; the venue base price is recomputed.
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties: { menu: { type: object, properties: { menuId: { type: string, format: uuid } } } },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/menus/{menuId}:
+    put:
+      tags: [Owner]
+      operationId: updateMenuPackage
+      summary: Change a menu package (REQ-6)
+      x-srs: [REQ-6, EUC-07]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: menuId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuBody' }
+      responses:
+        '200':
+          description: Saved. When a booking uses the package it is archived and replaced (replacedMenuId), so bookings keep their package.
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    { menu: { type: object }, replacedMenuId: { type: [string, 'null'] }, changed: { type: boolean } },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Owner]
+      operationId: deleteMenuPackage
+      summary: Remove a menu package (archived when a booking uses it)
+      x-srs: [REQ-6, EUC-07]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: menuId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204':
+          description: Removed. The last package can’t be removed (409 LAST_MENU).
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/add-ons:
+    post:
+      tags: [Owner]
+      operationId: createAddOn
+      summary: Add an add-on to a live venue (REQ-6)
+      x-srs: [REQ-6, EUC-07]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddOnBody' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties: { addOn: { type: object, properties: { addOnId: { type: string, format: uuid } } } },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/venues/{id}/add-ons/{addOnId}:
+    put:
+      tags: [Owner]
+      operationId: updateAddOn
+      summary: Change an add-on (archived and replaced when a booking uses it)
+      x-srs: [REQ-6, EUC-07]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: addOnId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddOnBody' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      addOn: { type: object },
+                      replacedAddOnId: { type: [string, 'null'] },
+                      changed: { type: boolean },
+                    },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Owner]
+      operationId: deleteAddOn
+      summary: Remove an add-on (archived when a booking uses it)
+      x-srs: [REQ-6, EUC-07]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: addOnId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204':
+          description: Removed.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /admin/venues:
     get:
       tags: [Admin]
@@ -1188,6 +1503,114 @@ paths:
       responses:
         '204':
           description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/revisions:
+    get:
+      tags: [Admin]
+      operationId: adminListRevisions
+      summary: Edits to live venues waiting for approval (REQ-5)
+      x-srs: [REQ-5, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - {
+            in: query,
+            name: status,
+            required: false,
+            schema: { type: string, enum: [pending, approved, rejected, withdrawn] },
+          }
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: Rows with the venue, owner, sections changed and counts per status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/revisions/{id}:
+    get:
+      tags: [Admin]
+      operationId: adminGetRevision
+      summary: 'One edit request, old versus new for every changed field'
+      x-srs: [REQ-5]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The revision with its changes ({{ section, label, before, after, afterUrl? }}).
+          content:
+            application/json:
+              schema: { type: object, properties: { revision: { $ref: '#/components/schemas/Revision' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/revisions/{id}/approve:
+    post:
+      tags: [Admin]
+      operationId: adminApproveRevision
+      summary: Approve an edit (applied to the live venue in one transaction)
+      description: |
+        409 `INVALID_STATUS` when the revision isn't pending or the venue isn't approved; 409 `HALL_IN_USE` when a hall\nthe edit removes has bookings by now; 409 `FILE_GONE` when an uploaded file is no longer available.
+      x-srs: [REQ-5, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '204':
+          description: Applied; halls are updated in place, so slots and bookings stay attached. Audited.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/revisions/{id}/reject:
+    post:
+      tags: [Admin]
+      operationId: adminRejectRevision
+      summary: Reject an edit with a reason (the live venue is unchanged)
+      x-srs: [REQ-5, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '204':
+          description: Rejected and audited; the owner sees the reason.
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
@@ -1594,6 +2017,70 @@ components:
         Numbers are sent as text like the form fields. capacity, base price and venue type are computed by the server.
       required: [venue, halls, venueImages, menuPackages, bookingRules]
       additionalProperties: true
+    ListingEdit:
+      type: object
+      description: |
+        The ListingSubmission shape, plus references to what is already on the server: venueImages items carry either
+        imageId (kept photo) or uploadId (new); halls carry their hallId (a new hall uses any client id),
+        keepFloorPlan, and walkthrough { mode: upload, keep: true } or { mode: upload, uploadId }; menuPackages carry
+        menuId and addOns addOnId when they already exist.
+      required: [venue, halls, venueImages, menuPackages, bookingRules]
+      additionalProperties: true
+    EditResult:
+      type: object
+      properties:
+        venueId: { type: string, format: uuid }
+        applied: { type: array, items: { type: string }, description: What went live now. }
+        needsApproval: { type: array, items: { type: string }, description: Changed fields waiting for the admin. }
+        revision: { type: [object, 'null'] }
+        revisionAction: { type: string, enum: [none, created, replaced, withdrawn] }
+    Revision:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, withdrawn] }
+        submittedAt: { type: string, format: date-time }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        note: { type: [string, 'null'] }
+        changes:
+          type: array
+          items:
+            type: object
+            properties:
+              section: { type: string }
+              label: { type: string }
+              before: { type: string }
+              after: { type: string }
+              afterUrl: { type: string }
+      additionalProperties: true
+    MenuBody:
+      type: object
+      required: [name, pricePerHead, minGuests, sections]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        pricePerHead: { type: string, description: 'Rupees as text, e.g. "2500" or "2500.50".' }
+        minGuests: { type: string }
+        isCustomizable: { type: boolean }
+        sections:
+          type: array
+          items:
+            {
+              type: object,
+              properties:
+                {
+                  name: { type: string },
+                  items: { type: array, items: { type: object, properties: { name: { type: string } } } },
+                },
+            }
+    AddOnBody:
+      type: object
+      required: [type, name, price]
+      properties:
+        type: { type: string, enum: [sound_system, smd] }
+        name: { type: string }
+        description: { type: string }
+        price: { type: string }
     SubmittedVenue:
       type: object
       properties:
@@ -1617,6 +2104,11 @@ components:
         reviewedAt: { type: [string, 'null'], format: date-time }
         coverUrl: { type: [string, 'null'] }
         photoChecks: { type: object, additionalProperties: { type: integer } }
+        revision:
+          {
+            type: [object, 'null'],
+            description: 'Latest edit of the live venue: { id, status, submittedAt, decidedAt, note }.',
+          }
     AdminVenueList:
       type: object
       properties:
@@ -1680,6 +2172,12 @@ components:
         - UPLOAD_LIMIT
         - BAD_UPLOAD
         - DETECTOR_UNAVAILABLE
+        - NO_PENDING_CHANGES
+        - HALL_IN_USE
+        - FILE_GONE
+        - LAST_MENU
+        - TOO_MANY_MENUS
+        - TOO_MANY_ADD_ONS
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR

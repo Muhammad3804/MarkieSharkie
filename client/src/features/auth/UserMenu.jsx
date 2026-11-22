@@ -64,6 +64,11 @@ export default function UserMenu({ user, onLogout }) {
               Admin dashboard
             </Link>
           )}
+          {user.role === 'venue_owner' && (
+            <Link to="/owner/listings" onClick={() => setOpen(false)} className={itemClass}>
+              My listings
+            </Link>
+          )}
           <Link to="/me" onClick={() => setOpen(false)} className={itemClass}>
             Profile
           </Link>

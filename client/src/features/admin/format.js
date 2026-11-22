@@ -35,6 +35,7 @@ export const STATUS_LABELS = {
   open: 'Open',
   under_review: 'Under review',
   resolved: 'Resolved',
+  withdrawn: 'Withdrawn',
 }
 
 export const ROLE_LABELS = { customer: 'Customer', venue_owner: 'Venue owner', decorator: 'Decorator', admin: 'Admin' }
@@ -48,6 +49,8 @@ export const ACTION_LABELS = {
   'venue.suspend': 'Suspended venue',
   'venue.unsuspend': 'Unsuspended venue',
   'venue.submit': 'Submitted listing',
+  'venue.revision_approve': 'Approved edits to a live venue',
+  'venue.revision_reject': 'Rejected edits to a live venue',
   'image.keep': 'Kept flagged image',
   'image.remove': 'Removed flagged image',
   'image.detection_test': 'Tested the AI image check',

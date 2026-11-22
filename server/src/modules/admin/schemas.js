@@ -52,3 +52,13 @@ export const auditQuerySchema = z
     pageSize: z.coerce.number().int().min(1).max(50).default(10),
   })
   .strict()
+
+// Edits to live venues waiting for approval (REQ-5, srs-alignment #35).
+export const revisionParamsSchema = z.object({ id: z.uuid({ error: 'Unknown change request.' }) }).strict()
+export const revisionsQuerySchema = z
+  .object({
+    status: z.enum(['pending', 'approved', 'rejected', 'withdrawn']).optional(),
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  })
+  .strict()

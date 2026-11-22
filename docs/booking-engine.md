@@ -105,6 +105,12 @@ Three ways, all needed:
 - **Block/unblock** (REQ-17, EUC-13): lock slot row; only `available -> blocked` and `blocked -> available`.
 - **Confirm/reject request** (REQ-21, EUC-15): lock booking + slot. Reject = booking `cancelled` (reason "Rejected by venue"), slot `available`, notify customer.
 - **Offline booking** (REQ-23, EUC-17): lock slot; must be `available` (EUC-17 6.1 otherwise 409 "slot taken, pick another"); insert booking `source='offline'`, `status='confirmed'`, `client_name`, `client_phone`; slot `booked`.
+- **Deactivated venue** (REQ-5, srs-alignment #35): `venues.is_active = false` -> no new holds, requests or
+  quotations (check it with the venue row locked). Confirmed bookings stay valid; requested / held ones stay with the
+  owner to accept or reject (they are not cancelled automatically).
+- **Price snapshot**: when a booking is created, store `bookings.menu_price_per_head` (the package's price at that
+  moment) and `booking_add_ons.unit_price`. Packages and add-ons a booking points at are never changed afterwards
+  (editing archives them and creates new rows), so totals and receipts never move.
 - **Create slots**: owner defines slots per date (e.g. Lunch 12:00-16:00, Dinner 19:00-23:00). The exclusion constraint rejects overlaps. Midnight end = `24:00`. Slots that cross midnight are not supported.
 
 ## Payments (REQ-25, REQ-26, EUC-19)

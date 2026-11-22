@@ -294,7 +294,8 @@ CREATE TABLE menu_packages (
   price_per_head  numeric(10, 2) NOT NULL CHECK (price_per_head >= 0),
   is_customizable boolean        NOT NULL DEFAULT false,
   min_guests      int            NOT NULL DEFAULT 1 CHECK (min_guests > 0),
-  sort_order      smallint       NOT NULL DEFAULT 0                          -- [Design] #30
+  sort_order      smallint       NOT NULL DEFAULT 0,                         -- [Design] #30
+  archived_at     timestamptz                                                -- [Design] #35 (migration 006): replaced or removed; kept for bookings
 );
 CREATE INDEX menu_packages_venue_idx ON menu_packages(venue_id);
 
@@ -315,7 +316,8 @@ CREATE TABLE add_ons (
   name         text           NOT NULL,
   description  text           NOT NULL DEFAULT '',
   price        numeric(12, 2) NOT NULL CHECK (price >= 0),
-  is_available boolean        NOT NULL DEFAULT true
+  is_available boolean        NOT NULL DEFAULT true,
+  archived_at  timestamptz                                                   -- [Design] #35 (migration 006): replaced or removed; kept for bookings
 );
 CREATE INDEX add_ons_venue_idx ON add_ons(venue_id);
 
@@ -374,6 +376,39 @@ CREATE TABLE media_uploads (
 );
 CREATE INDEX media_uploads_owner_idx ON media_uploads (owner_id, created_at);
 
+-- [Design] srs-alignment #35 (migration 006): REQ-5 "a changed venue goes to Admin approval before customers see
+-- it". Edits to a live venue's approval fields wait here; the live version stays public until an admin approves.
+CREATE TABLE venue_revisions (
+  revision_id  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id     uuid NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
+  owner_id     uuid NOT NULL REFERENCES venue_owners(user_id),
+  status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'withdrawn')),
+  changes      jsonb NOT NULL,                                   -- proposed values (the fields that need approval)
+  previous     jsonb NOT NULL,                                   -- the live values when it was (re)submitted
+  admin_note   text,                                             -- reason when rejected
+  submitted_at timestamptz NOT NULL DEFAULT now(),
+  decided_at   timestamptz,
+  decided_by   uuid REFERENCES admins(user_id),
+  CONSTRAINT venue_revisions_size CHECK (pg_column_size(changes) + pg_column_size(previous) <= 524288),
+  CONSTRAINT venue_revisions_decided CHECK (
+    status NOT IN ('approved', 'rejected') OR (decided_by IS NOT NULL AND decided_at IS NOT NULL)
+  )
+);
+CREATE UNIQUE INDEX venue_revisions_one_pending ON venue_revisions (venue_id) WHERE status = 'pending';
+CREATE INDEX venue_revisions_queue_idx ON venue_revisions (status, submitted_at);
+
+-- [Design] #35: owner actions (live edits, deactivate / reactivate). admin_audit_log.admin_id must be an admin.
+CREATE TABLE owner_activity_log (
+  log_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id     uuid NOT NULL REFERENCES venue_owners(user_id),
+  action       text NOT NULL,                                    -- e.g. 'venue.edit', 'venue.deactivate'
+  target_table text NOT NULL,
+  target_id    uuid NOT NULL,
+  details      jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX owner_activity_log_target_idx ON owner_activity_log (target_table, target_id);
+
 -- =====================================================================
 -- Time slots and bookings (double-booking prevention: REQ-20, NFR-2)
 -- =====================================================================
@@ -422,6 +457,7 @@ CREATE TABLE bookings (
   qr_check_in_enabled boolean        NOT NULL DEFAULT false,                 -- [SRS] REQ-40 (mirrors invitation.qr_enabled)
   updated_at          timestamptz    NOT NULL DEFAULT now(),                 -- [SRS] audit of status changes
   hall_id             uuid,                                                  -- [Design] nullable: NULL = whole venue / no halls listed
+  menu_price_per_head numeric(10, 2) CHECK (menu_price_per_head >= 0),       -- [Design] #35 (migration 006): price snapshot at booking time
   -- The booked hall must belong to the booked venue (composite FK; skipped when hall_id is NULL).
   CONSTRAINT bookings_hall_same_venue FOREIGN KEY (venue_id, hall_id) REFERENCES halls(venue_id, hall_id),
   CONSTRAINT bookings_party CHECK (

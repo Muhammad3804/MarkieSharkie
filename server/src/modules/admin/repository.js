@@ -193,7 +193,8 @@ export async function dashboardNumbers(db) {
        (SELECT count(*) FROM users WHERE deleted_at IS NULL AND role = 'decorator')::int AS decorators,
        (SELECT count(*) FROM bookings
          WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'Asia/Karachi') AT TIME ZONE 'Asia/Karachi')::int AS bookings_this_month,
-       (SELECT count(*) FROM venue_images WHERE verification_status = 'flagged')::int AS flagged_images`,
+       (SELECT count(*) FROM venue_images WHERE verification_status = 'flagged')::int AS flagged_images,
+       (SELECT count(*) FROM venue_revisions WHERE status = 'pending')::int AS pending_edits`,
   )
   return rows[0]
 }

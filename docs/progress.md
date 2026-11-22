@@ -559,6 +559,26 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Owners edit live venues, menus and add-ons; deactivate (EUC-04, EUC-07, REQ-5, REQ-6), Part C.**
+  Migration **006** (`venue_revisions`, `owner_activity_log`, `archived_at` on `menu_packages` / `add_ons`,
+  `bookings.menu_price_per_head`). Policy in srs-alignment #35: REQ-5 fields wait in a pending revision while the live
+  version stays public; headline, directions, house rules, Maps link, photos, menus and add-ons go live at once;
+  packages / add-ons a booking uses are archived and replaced, never changed. Server: `owner/editService.js`,
+  `editRepository.js`, `revisionModel.js` (one comparable shape for body and live rows, old-vs-new diff, overlay of a
+  pending edit for the editor), `money.js`; owner routes `PUT /owner/venues/:id/edit`, `GET/DELETE .../revision`,
+  `POST .../deactivate|reactivate`, menu and add-on CRUD; admin `GET /admin/revisions[/:id]`,
+  `POST /admin/revisions/:id/approve|reject` (audited, halls updated in place, new halls get slots, new slot times
+  rebuild free future slots); `/admin/stats` has `pendingEdits`; archived rows hidden everywhere. Tests:
+  `tests/owner-edits.test.js` (16). Client: `/owner/listings` (My listings: status badges, edit, withdraw waiting
+  edits, deactivate / reactivate with a confirm dialog, edit and resubmit), `/owner/listings/:id/edit/:section`
+  (the wizard's steps grouped in 7 sections, each marked "goes live at once" / "needs approval", one Save, footer
+  says what went live and what was sent for approval), admin "Live venue edits" list and old-vs-new review with
+  approve / reject, "My listings" in the owner's avatar menu. `StepHeading` renders h2 inside the editor
+  (`HeadingLevelContext`); `RequireRole`'s 403 text now names the right account type.
+  **Environment:** iCloud evicted the client `node_modules` that `npm install` created in the synced folder; it was
+  reinstalled outside iCloud (scratchpad) and copied into `client/node_modules.nosync/node_modules`. The broken copies
+  are in `client/node_modules.broken2.nosync/` and `client/node_modules.old.nosync/` (safe to delete).
+
 - 2026-11-22: **3D and 360° walkthrough viewers (EUC-06, REQ-11), Part B.** Uploaded walkthroughs now open in the
   browser. `features/venues/walkthrough/Walkthrough.jsx` (small, no three.js) checks WebGL and HEADs the file (refuses
   > 50 MB .glb / > 20 MB JPEG or a wrong type before downloading), then lazy-loads `WalkthroughViewer.jsx`: a .glb

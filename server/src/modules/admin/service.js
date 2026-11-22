@@ -7,6 +7,9 @@ import { detectFileType, UPLOAD_RULES } from '../../lib/fileType.js'
 import { logger } from '../../lib/logger.js'
 import { absolute, toListing, toVenueDetail } from '../venues/mappers.js'
 import { generateSlots, loadVenueBundle } from '../venues/repository.js'
+import * as edits from '../owner/editRepository.js'
+import { applyRevision, removeFiles } from '../owner/editService.js'
+import { revisionDiff } from '../owner/revisionModel.js'
 import * as repo from './repository.js'
 
 // Admin venue moderation (REQ-7, REQ-9, REQ-10, srs-alignment #18 / #29). Each decision locks the venue row,
@@ -249,6 +252,7 @@ export async function getStats() {
       usersByRole: { customer: n.customers, venue_owner: n.venue_owners, decorator: n.decorators },
       bookingsThisMonth: n.bookings_this_month,
       flaggedImages: n.flagged_images,
+      pendingEdits: n.pending_edits, // edits to live venues waiting for approval (srs-alignment #35)
     },
     weeks: weeks.map((w) => ({ week: w.week, submitted: w.submitted, approved: w.approved })),
     oldPending: old.map((r) => ({ id: r.venue_id, name: r.name, submittedAt: iso(r.submitted_at) })),
@@ -343,4 +347,107 @@ export async function testImageDetection(adminId, file) {
     details: { provider: result.provider, score: result.score, verdict, durationMs },
   })
   return result
+}
+
+// ---------------------------------------------------------------- edits to live venues (REQ-5, srs-alignment #35)
+
+const revisionNotFound = () => notFoundError('We couldn’t find that change request.')
+
+function toRevisionRow(r, origin) {
+  const diff = revisionDiff(r.previous, r.changes, origin)
+  return {
+    id: r.revision_id,
+    venueId: r.venue_id,
+    venueName: r.venue_name,
+    city: r.city,
+    ownerName: r.owner_name,
+    status: r.status,
+    submittedAt: iso(r.submitted_at),
+    decidedAt: iso(r.decided_at),
+    note: r.admin_note,
+    changeCount: diff.length,
+    sections: [...new Set(diff.map((d) => d.section))],
+  }
+}
+
+export async function listRevisions(query, { origin }) {
+  const rows = await edits.listRevisions(pool, {
+    status: query.status,
+    limit: query.pageSize,
+    offset: (query.page - 1) * query.pageSize,
+  })
+  const total = rows[0]?.total ?? 0
+  const counts = await edits.revisionCounts(pool)
+  return {
+    rows: rows.map((r) => toRevisionRow(r, origin)),
+    total,
+    page: query.page,
+    pageSize: query.pageSize,
+    pageCount: Math.max(1, Math.ceil(total / query.pageSize)),
+    counts: Object.fromEntries(
+      ['pending', 'approved', 'rejected', 'withdrawn'].map((s) => [s, counts.find((c) => c.status === s)?.n ?? 0]),
+    ),
+  }
+}
+
+// Old versus new for every changed field, plus the venue as it is live now.
+export async function getRevision(id, { origin }) {
+  const r = await edits.findRevision(pool, id)
+  if (!r) throw revisionNotFound()
+  return {
+    revision: {
+      ...toRevisionRow(r, origin),
+      venueStatus: r.approval_status,
+      venueActive: r.is_active,
+      ownerEmail: r.owner_email,
+      changes: revisionDiff(r.previous, r.changes, origin),
+    },
+  }
+}
+
+async function decideRevision(adminId, id, decide) {
+  let removed = []
+  await withTransaction(async (client) => {
+    const rev = await edits.lockRevision(client, id)
+    if (!rev) throw revisionNotFound()
+    if (rev.status !== 'pending')
+      throw new AppError(
+        409,
+        'INVALID_STATUS',
+        `This change request is ${rev.status}, so it can’t be decided now. Refresh the page.`,
+      )
+    const venue = await edits.lockVenue(client, rev.venue_id)
+    removed = (await decide(client, rev, venue)) ?? []
+  })
+  removeFiles(removed)
+}
+
+export async function approveRevision(adminId, id) {
+  await decideRevision(adminId, id, async (client, rev, venue) => {
+    if (venue.approval_status !== 'approved') throw invalidStatus(venue.name, venue.approval_status)
+    const labels = revisionDiff(rev.previous, rev.changes).map((d) => d.label)
+    const { removedUrls } = await applyRevision(client, rev)
+    await edits.setRevisionStatus(client, rev.revision_id, { status: 'approved', adminId })
+    await repo.insertAudit(client, {
+      adminId,
+      action: 'venue.revision_approve',
+      targetTable: 'venues',
+      targetId: rev.venue_id,
+      details: { revisionId: rev.revision_id, changes: labels },
+    })
+    return removedUrls
+  })
+}
+
+export async function rejectRevision(adminId, id, { reason }) {
+  await decideRevision(adminId, id, async (client, rev) => {
+    await edits.setRevisionStatus(client, rev.revision_id, { status: 'rejected', adminId, note: reason })
+    await repo.insertAudit(client, {
+      adminId,
+      action: 'venue.revision_reject',
+      targetTable: 'venues',
+      targetId: rev.venue_id,
+      details: { revisionId: rev.revision_id, reason },
+    })
+  })
 }

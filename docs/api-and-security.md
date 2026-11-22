@@ -20,7 +20,7 @@
 | Me | `GET /me/searches`, `GET /me/bookings` | customer (REQ-4) |
 | Venues (public) | **Built:** `GET /venues/landing`, `GET /venues` (search, saves a customer's history), `GET /venues/:id`, `GET /venues/:id/availability?from&to`, `GET /stats`. Planned: `GET /venues/:id/reviews`, `POST /venues/compare` | public (optional customer token) |
 | Recommendations | `GET /recommendations` | customer |
-| Owner venues | **Built:** `GET/PUT/DELETE /owner/draft`, `POST /owner/uploads` (multipart), `GET/POST /owner/venues`, `GET/PUT /owner/venues/:id` (resubmit), `POST /owner/venues/:id/images/verify`. Planned: edit a live venue, deactivate, stage photos, slots (create/block/unblock) | venue_owner (own venues; another owner's id is 404) |
+| Owner venues | **Built:** `GET/PUT/DELETE /owner/draft`, `POST /owner/uploads` (multipart), `GET/POST /owner/venues`, `GET/PUT /owner/venues/:id` (resubmit), `POST /owner/venues/:id/images/verify`; live venues (2026-11-22, #35): `PUT /owner/venues/:id/edit`, `GET/DELETE /owner/venues/:id/revision`, `POST /owner/venues/:id/deactivate|reactivate`, `POST /owner/venues/:id/menus`, `PUT/DELETE /owner/venues/:id/menus/:menuId`, `POST /owner/venues/:id/add-ons`, `PUT/DELETE /owner/venues/:id/add-ons/:addOnId`. Planned: stage photos, slots (create/block/unblock) | venue_owner (own venues; another owner's id is 404) |
 | Holds and bookings | `POST /slots/:id/hold`, `DELETE /slots/:id/hold`, `POST /bookings`, `POST /bookings/:id/cancel`, `PUT /bookings/:id/add-ons`, `PUT /bookings/:id/menu` | customer |
 | Owner bookings | `GET /owner/bookings`, `POST /owner/bookings/:id/accept|confirm|reject`, `POST /owner/bookings/offline` | venue_owner |
 | Quotations | `POST /quotations`, `POST /quotations/:id/accept|reject|counter`, `GET /quotations` | customer, venue_owner |
@@ -81,6 +81,17 @@
 - **AI check test (demo):** `GET /admin/image-detection` (which detector, thresholds) and
   `POST /admin/image-detection/test` (one JPEG / PNG ≤ 5 MB through the same detector and rules; nothing stored but
   an audit row; 30 an hour per IP because it may call the paid API).
+- **Editing a live venue (EUC-04, EUC-07, srs-alignment #35):** approved venues only (409 otherwise). Live at
+  once: headline, directions, landmark, parking, house rules, Google Maps link, hosting since, custom menu note,
+  photos (new ones still pass the AI check), menu packages, add-ons. The REQ-5 fields (name, type, address, pin,
+  events, amenities, description, halls, bridal suite, booking rules) go into one pending `venue_revisions` row; the
+  live version stays public until `POST /admin/revisions/:id/approve` applies it in one transaction (halls updated in
+  place, so slots and bookings stay attached) or `/reject` (reason required). Packages / add-ons a booking uses are
+  archived and replaced, never changed. A hall with bookings can't be removed. Every id in an edit (photos, files,
+  packages, add-ons, uploads) must belong to that venue / owner. Owner actions go to `owner_activity_log`; admin
+  decisions to `admin_audit_log`.
+- **Deactivate (REQ-5):** `is_active = false` hides the venue from search, its page and new bookings; confirmed
+  bookings stay valid; requests already made stay with the owner (docs/booking-engine.md).
 - **Admin writes:** lock the venue row, check the transition (409 `INVALID_STATUS`), change, write `admin_audit_log`
   (who, what, when, reason / note / checklist) in one transaction. Bulk approve is all or nothing.
 - **Rate limits (per IP):** public reads 1500 / 15 min, owner writes 600 / 15 min, uploads 400 / hour, admin writes

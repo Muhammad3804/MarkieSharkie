@@ -269,6 +269,10 @@ export async function listOwnerVenues(db, ownerId) {
             v.suspension_reason, v.submitted_at, v.reviewed_at, v.created_at,
             (SELECT i.image_url FROM venue_images i WHERE i.venue_id = v.venue_id
               ORDER BY i.is_cover DESC, i.sort_order LIMIT 1) AS cover_url,
+            (SELECT jsonb_build_object('id', r.revision_id, 'status', r.status, 'submittedAt', r.submitted_at,
+                                       'decidedAt', r.decided_at, 'note', r.admin_note)
+               FROM venue_revisions r WHERE r.venue_id = v.venue_id
+              ORDER BY r.submitted_at DESC, r.revision_id DESC LIMIT 1) AS revision,
             (SELECT jsonb_object_agg(s, n) FROM (
                SELECT verification_status::text AS s, count(*)::int AS n FROM venue_images i
                 WHERE i.venue_id = v.venue_id GROUP BY 1) x) AS photo_checks

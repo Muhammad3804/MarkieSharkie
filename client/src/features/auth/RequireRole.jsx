@@ -14,6 +14,8 @@ export default function RequireRole({ role, intent = 'default', fullScreen = fal
   )
 }
 
+const ROLE_AUDIENCE = { admin: 'MarkieSharkie admins', venue_owner: 'venue owner accounts', decorator: 'decorator accounts', customer: 'customer accounts' }
+
 function RoleGate({ role, fullScreen, children }) {
   const { user } = useAuth()
   if (user?.role === role) return children
@@ -24,7 +26,7 @@ function RoleGate({ role, fullScreen, children }) {
         <p className="text-[13px] font-semibold uppercase tracking-wide text-primary">403</p>
         <h1 className="mt-2 text-balance font-heading text-[26px] font-semibold leading-tight text-ink-strong">You don’t have access to this page</h1>
         <p className="mx-auto mt-2 max-w-[34ch] text-pretty text-[15px] leading-relaxed text-muted-warm">
-          This page is for MarkieSharkie admins. You’re logged in as {user?.name}.
+          This page is for {ROLE_AUDIENCE[role] ?? 'another kind of account'}. You’re logged in as {user?.name}.
         </p>
         <Link
           to="/"

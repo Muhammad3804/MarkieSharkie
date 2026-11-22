@@ -101,6 +101,9 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `pages/VenueDetail.jsx` | Venue page with 5 tabs: Overview, Halls, Menu, Availability, Reviews, plus the booking panel. | `useVenue`, `components/venue/*` |
 | `features/venues/useVenue.js` | Hook: loads one venue by id (loading / not-found / error). | `api/venues.js` |
 | `components/venue/*` | Pieces of the venue page: `Gallery` (hero photos), `HallCard` (size, floor plan, zones, "View in 3D"), `MenuCard` (dishes by section), `AvailabilityCalendar`, `BookingSidebar` (date/time/hall/guests/menu + live total), `ReviewsSection`, `LocationSection` (Google Maps embed), `Lightbox` (full-screen photos)... | `VenueDetail` |
+| `pages/owner/MyListings.jsx` | `/owner/listings`: the owner's listings with status, edit, withdraw edits, deactivate / reactivate. | `api/owner.js` |
+| `pages/owner/ListingEditor.jsx` | `/owner/listings/:id/edit/:section`: edit a live venue with the wizard's steps; says what goes live and what needs approval. | `api/owner.js`, `features/host/steps/*` |
+| `pages/admin/VenueEdits.jsx`, `VenueEditReview.jsx` | Admin "Live venue edits": list and old-versus-new review with approve / reject (REQ-5). | `api/admin.js` |
 | `pages/Profile.jsx` | `/me` profile (EUC-03): edit details per role, past searches, my bookings; admins read-only. | `api/profile.js`, `features/profile/rules.js` |
 | `pages/VenuePhotos.jsx` | Full photo gallery per hall, opens the lightbox. | `useVenue`, `Lightbox` |
 | `features/venues/walkthrough/Walkthrough.jsx`, `WalkthroughViewer.jsx` | Uploaded walkthrough viewer (REQ-11): WebGL + file checks, then the lazy .glb viewer or 360° panorama viewer. | `HallCard`, admin `ApprovalReview` |

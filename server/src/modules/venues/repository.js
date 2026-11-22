@@ -164,13 +164,16 @@ export async function loadVenueBundle(db, venueId, { publishedOnly = true } = {}
         ORDER BY i.sort_order, i.image_id`,
       [venueId, publishedOnly],
     ),
-    db.query('SELECT * FROM menu_packages WHERE venue_id = $1 ORDER BY sort_order, menu_id', [venueId]),
+    // Archived packages and add-ons (replaced or removed, kept for old bookings, migration 006) are never shown.
+    db.query('SELECT * FROM menu_packages WHERE venue_id = $1 AND archived_at IS NULL ORDER BY sort_order, menu_id', [
+      venueId,
+    ]),
     db.query(
       `SELECT mi.* FROM menu_items mi JOIN menu_packages m USING (menu_id)
-        WHERE m.venue_id = $1 ORDER BY mi.sort_order, mi.item_id`,
+        WHERE m.venue_id = $1 AND m.archived_at IS NULL ORDER BY mi.sort_order, mi.item_id`,
       [venueId],
     ),
-    db.query('SELECT * FROM add_ons WHERE venue_id = $1 ORDER BY type, add_on_id', [venueId]),
+    db.query('SELECT * FROM add_ons WHERE venue_id = $1 AND archived_at IS NULL ORDER BY type, add_on_id', [venueId]),
     db.query('SELECT * FROM bridal_suites WHERE venue_id = $1', [venueId]),
     db.query('SELECT * FROM venue_slot_templates WHERE venue_id = $1 ORDER BY start_time', [venueId]),
     db.query('SELECT * FROM venue_cancellation_tiers WHERE venue_id = $1 ORDER BY from_days DESC', [venueId]),

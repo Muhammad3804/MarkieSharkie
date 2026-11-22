@@ -60,3 +60,20 @@ export async function detectionTest(req, res) {
   noStore(res)
   res.json(await service.testImageDetection(req.user.id, req.file))
 }
+
+export async function listRevisions(req, res) {
+  noStore(res)
+  res.json(await service.listRevisions(req.query, { origin: requestOrigin(req) }))
+}
+export async function getRevision(req, res) {
+  noStore(res)
+  res.json(await service.getRevision(req.params.id, { origin: requestOrigin(req) }))
+}
+export async function approveRevision(req, res) {
+  await service.approveRevision(req.user.id, req.params.id)
+  res.status(204).end()
+}
+export async function rejectRevision(req, res) {
+  await service.rejectRevision(req.user.id, req.params.id, req.body)
+  res.status(204).end()
+}
