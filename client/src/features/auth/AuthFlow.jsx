@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { LogoMark } from '../../components/ui/Logo.jsx'
-import { RESEND_SECONDS, RESET_CODE_MINUTES, logInWithPassword, requestPasswordReset, resetPassword, signUp } from '../../api/auth.js'
+import { RESEND_SECONDS, RESET_CODE_MINUTES, RESET_UNAVAILABLE, logInWithPassword, requestPasswordReset, resetPassword, signUp } from '../../api/auth.js'
 import { bioError, businessNameError, cityError, emailError, identifierError, nameError, parseIdentifier, passwordError, phoneError } from '../../lib/accountRules.js'
 import { formatPkMobileIntl } from '../../lib/phone.js'
 import { CITIES } from '../host/options.js'
@@ -103,7 +103,7 @@ export default function AuthFlow({ intent, busy, run, login }) {
 
         {view === 'password' && (
           <>
-            <PasswordStep identifier={identifier} busy={busy} login={login} onForgot={() => go('forgot')} />
+            <PasswordStep identifier={identifier} busy={busy} login={login} onForgot={() => setNotice({ tone: 'info', text: RESET_UNAVAILABLE })} />
             <p className="text-center text-[14px] text-muted-warm">
               New to MarkieSharkie?{' '}
               <button type="button" onClick={() => go('signup')} className={`${linkButton} min-h-11 text-ink-strong`}>
@@ -237,8 +237,9 @@ function PasswordStep({ identifier, busy, login, onForgot }) {
       input?.focus()
       input?.select()
     } else if (code === 'ACCOUNT_LOCKED') {
-      setAlert({ text: message, reset: true })
-      focusId('auth-locked-reset')
+      // REQ-2: 15-minute lock after 5 wrong passwords; the message says how long is left.
+      setAlert({ text: message })
+      focusId('auth-password')
     } else if (code === 'VALIDATION_ERROR' && details) {
       if (details.password) setError(details.password)
       else setAlert({ text: details.identifier ?? message })
@@ -273,17 +274,7 @@ function PasswordStep({ identifier, busy, login, onForgot }) {
           Forgot password?
         </button>
       </div>
-      <FormAlert
-        action={
-          alert?.reset && (
-            <button id="auth-locked-reset" type="button" onClick={onForgot} className={`${linkButton} min-h-11 self-start text-[14px]`}>
-              Reset your password
-            </button>
-          )
-        }
-      >
-        {alert?.text}
-      </FormAlert>
+      <FormAlert>{alert?.text}</FormAlert>
       <SubmitButton loading={busy === 'password'} loadingText="Logging in…">
         Log in
       </SubmitButton>
@@ -363,7 +354,7 @@ function SignupStep({ intent, initial, busy, login, onIdentifier, onRegistered }
     phone: phoneError(values.phone),
     city: cityError(values.city),
     businessName: businessNameError(values.businessName),
-    contactNumber: phoneError(values.contactNumber),
+    contactNumber: values.contactNumber.trim() ? phoneError(values.contactNumber) : 'Enter the number customers can call about your venue.',
     bio: bioError(values.bio),
     password: passwordError(values.password),
     confirm: !values.confirm ? 'Type your password again.' : values.confirm !== values.password ? 'Passwords don’t match.' : '',

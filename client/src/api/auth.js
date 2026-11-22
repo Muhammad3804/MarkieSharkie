@@ -254,7 +254,7 @@ export async function signOut() {
 
 // --- Not on the server yet ----------------------------------------------------------------------------------------
 
-const RESET_UNAVAILABLE = 'Password reset isn’t available yet. Contact support to reset your password.'
+export const RESET_UNAVAILABLE = 'Password reset isn’t available yet. Contact support to reset your password.'
 
 // POST /api/auth/password/forgot (REQ-2, not built on the server yet).
 export async function requestPasswordReset() {

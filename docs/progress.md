@@ -553,6 +553,8 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   endpoints), playwright at 375 and 1512 (signup of all 3 roles, DB rows + argon2id hashes, reload, logout, wrong
   password / unknown email, duplicate, validation, the 3 triggers, keep-me-logged-in off, forced 401, cross-tab
   logout), client lint + build, server tests 182/182. No server changes.
+  Polish: "Forgot password?" shows the not-available note in place (no dead reset form), the 423 lock message
+  has no reset link, the business contact number has its own empty-field message.
 - 2026-11-22: node_modules (and client/dist) moved into `*.nosync/` folders with symlinks, so iCloud Drive doesn't sync
   them: `client/node_modules -> node_modules.nosync/node_modules` (the real path must contain `/node_modules/` or Vite
   skips pre-bundling and the dev app is blank). `.gitignore` covers the symlinks and `*.nosync`
