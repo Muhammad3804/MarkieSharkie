@@ -6,7 +6,16 @@ import { withTransaction } from '../../db/withTransaction.js'
 import { AppError, accountSuspended } from '../../lib/AppError.js'
 import { mapUserUniqueViolation, takenError } from '../../lib/pgErrors.js'
 import * as repo from './repository.js'
-import { generateRefreshToken, hashRefreshToken, signAccessToken } from './tokens.js'
+import { sendPasswordResetCode } from '../../integrations/mailer.js'
+import { logger } from '../../lib/logger.js'
+import {
+  generateRefreshToken,
+  generateResetCode,
+  hashRefreshToken,
+  hashResetCode,
+  resetCodeMatches,
+  signAccessToken,
+} from './tokens.js'
 
 // NFR-4 "hashed passwords": argon2id (docs/api-and-security.md "Authentication").
 const HASH_OPTIONS = { type: argon2.argon2id }
@@ -156,11 +165,13 @@ export async function login({ identifier, password }, { userAgent = null } = {})
 
   if (!user.isActive) throw accountSuspended() // EUC-02 4.2: blocked by an admin
 
-  // EUC-02 step 5: reset the counter and create the session in one transaction.
-  return withTransaction(async (client) => {
+  // EUC-02 step 5: reset the counter, stamp last_login_at and create the session in one transaction.
+  // firstLogin: last_login_at was empty before this login (the client shows "Welcome to MarkieSharkie").
+  const session = await withTransaction(async (client) => {
     await repo.recordSuccessfulLogin(client, user.id)
     return issueSession(client, user, { userAgent })
   })
+  return { ...session, firstLogin: user.lastLoginAt === null }
 }
 
 // ---------------------------------------------------------------- refresh (REQ-2 session + 30-min inactivity)
@@ -212,4 +223,120 @@ export async function refresh(refreshToken, { userAgent = null } = {}) {
 export async function logout(refreshToken) {
   if (!refreshToken) return
   await repo.revokeRefreshTokenByHash(pool, hashRefreshToken(refreshToken))
+}
+
+// ---------------------------------------------------------------- seed admin (npm run seed:admin)
+
+// Idempotent: creates the admin if the email is free; an existing admin is left alone unless resetPassword is set
+// (then only the password changes and its sessions end). An email that belongs to another role is refused.
+export async function ensureAdmin(input, { resetPassword = false } = {}) {
+  const existing = await repo.findUserRoleByEmail(pool, input.email)
+  if (!existing) {
+    const admin = await createAdmin(input)
+    return { status: 'created', admin }
+  }
+  if (existing.role !== 'admin') {
+    throw new AppError(409, 'EMAIL_TAKEN', 'This email belongs to a non-admin account. Use another SEED_ADMIN_EMAIL.')
+  }
+  if (!resetPassword) return { status: 'exists', admin: { id: existing.id, email: input.email } }
+  const passwordHash = await hashPassword(input.password)
+  await withTransaction(async (client) => {
+    await repo.updatePassword(client, { userId: existing.id, passwordHash })
+    await repo.revokeAllRefreshTokens(client, existing.id)
+  })
+  return { status: 'password_reset', admin: { id: existing.id, email: input.email } }
+}
+
+// ---------------------------------------------------------------- password reset by emailed code (REQ-2)
+
+export const RESET_RULES = Object.freeze({ codeMinutes: 10, maxAttempts: 5, resendSeconds: 30 })
+
+export const RESET_REQUESTED_MESSAGE =
+  'If an account uses this email, we sent it a 6-digit code. It expires in 10 minutes.'
+
+const codeInvalid = (attemptsLeft) =>
+  new AppError(
+    400,
+    'RESET_CODE_INVALID',
+    attemptsLeft === undefined
+      ? 'That code isn’t right. Check the email and try again.'
+      : `That code isn’t right. ${attemptsLeft} ${attemptsLeft === 1 ? 'try' : 'tries'} left.`,
+    attemptsLeft === undefined ? undefined : { attemptsLeft },
+  )
+const codeExpired = () =>
+  new AppError(400, 'RESET_CODE_EXPIRED', 'This code has expired or was already used. Ask for a new code.')
+const codeLocked = () =>
+  new AppError(423, 'RESET_CODE_LOCKED', 'Too many wrong codes. Ask for a new code to try again.')
+
+// Only accounts that can log in get a code (deleted and suspended ones get the same generic answer, nothing sent).
+const canReset = (user) => user && !user.deletedAt && user.isActive
+
+// POST /auth/forgot-password. The answer is the same whether or not the email has an account (no probing). The
+// email is sent without awaiting it, so the response time doesn't reveal it either; a send failure is logged
+// without the code. A second request within 30 s returns the same answer without sending a new code.
+export async function requestPasswordReset({ email }) {
+  const response = {
+    message: RESET_REQUESTED_MESSAGE,
+    expiresInMinutes: RESET_RULES.codeMinutes,
+    resendAfterSeconds: RESET_RULES.resendSeconds,
+  }
+  const user = await repo.findLoginUserByEmail(pool, email)
+  if (!canReset(user)) return response
+
+  const since = await repo.secondsSinceLastResetCode(pool, user.id)
+  if (since !== null && since < RESET_RULES.resendSeconds) return response
+
+  const code = generateResetCode()
+  await withTransaction(async (client) => {
+    await repo.invalidateResetCodes(client, user.id)
+    await repo.insertResetCode(client, {
+      userId: user.id,
+      codeHash: hashResetCode(user.id, code),
+      minutes: RESET_RULES.codeMinutes,
+    })
+  })
+  sendPasswordResetCode({ to: user.email, name: user.name, code, minutes: RESET_RULES.codeMinutes }).catch((err) => {
+    logger.error({ err: { message: err.message, code: err.code } }, 'password reset email could not be sent')
+  })
+  return response
+}
+
+// Checks { email, code } inside the caller's transaction. Wrong guesses must stay counted, so instead of throwing
+// (which would roll back the count) it returns { error }; the caller throws after commit.
+async function checkResetCode(client, { email, code }) {
+  const user = await repo.findLoginUserByEmail(client, email)
+  if (!canReset(user)) return { error: codeInvalid() }
+  const row = await repo.findLatestResetCodeForUpdate(client, user.id)
+  if (!row) return { error: codeInvalid() }
+  if (row.attempts >= RESET_RULES.maxAttempts) return { error: codeLocked() }
+  if (row.usedAt || row.isExpired) return { error: codeExpired() }
+  if (!resetCodeMatches(user.id, code, row.codeHash)) {
+    const attempts = await repo.recordWrongResetCode(client, { resetId: row.id, maxAttempts: RESET_RULES.maxAttempts })
+    if (attempts >= RESET_RULES.maxAttempts) return { error: codeLocked() }
+    return { error: codeInvalid(RESET_RULES.maxAttempts - attempts) }
+  }
+  return { user, row }
+}
+
+// POST /auth/verify-reset-code: lets the form check the code before asking for the new password. Doesn't use it up.
+export async function verifyResetCode(input) {
+  const result = await withTransaction((client) => checkResetCode(client, input))
+  if (result.error) throw result.error
+  return { valid: true }
+}
+
+// POST /auth/reset-password: same code checks, then the new password (signup rules, argon2id), the code is spent
+// and every session of the account ends (refresh tokens revoked), so the person logs in again everywhere.
+export async function resetPassword({ email, code, newPassword }) {
+  const passwordHash = await hashPassword(newPassword)
+  const result = await withTransaction(async (client) => {
+    const checked = await checkResetCode(client, { email, code })
+    if (checked.error) return checked
+    await repo.updatePassword(client, { userId: checked.user.id, passwordHash })
+    await repo.markResetCodeUsed(client, checked.row.id)
+    await repo.revokeAllRefreshTokens(client, checked.user.id)
+    return checked
+  })
+  if (result.error) throw result.error
+  return { message: 'Password changed. Log in with your new password.' }
 }

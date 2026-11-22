@@ -35,3 +35,19 @@ export function verifyAccessToken(token) {
 export const generateRefreshToken = () => crypto.randomBytes(32).toString('base64url')
 
 export const hashRefreshToken = (token) => crypto.createHash('sha256').update(token, 'utf8').digest('hex')
+
+// REQ-2 password reset code: 6 digits from the OS CSPRNG (crypto.randomInt, uniform over 000000-999999).
+export const generateResetCode = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
+
+// Only an HMAC-SHA256 of the code is stored (password_reset_codes.code_hash). A 6-digit code is easy to brute-force
+// from a plain hash, so it is keyed with a server secret: a DB leak alone doesn't reveal codes. The user id is mixed
+// in so the same code for two accounts hashes differently.
+const RESET_KEY = crypto.createHash('sha256').update(`password-reset:${env.auth.jwtSecret}`).digest()
+export const hashResetCode = (userId, code) =>
+  crypto.createHmac('sha256', RESET_KEY).update(`${userId}:${code}`, 'utf8').digest('hex')
+
+export function resetCodeMatches(userId, code, storedHash) {
+  const actual = Buffer.from(hashResetCode(userId, code), 'hex')
+  const expected = Buffer.from(String(storedHash), 'hex')
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected)
+}

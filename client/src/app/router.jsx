@@ -1,6 +1,7 @@
 import { createBrowserRouter, Outlet } from 'react-router-dom'
 import AuthProvider from '../features/auth/AuthProvider.jsx'
 import RequireAuth from '../features/auth/RequireAuth.jsx'
+import RequireRole from '../features/auth/RequireRole.jsx'
 import PublicLayout from './layouts/PublicLayout.jsx'
 import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
 import Landing from '../pages/Landing.jsx'
@@ -78,10 +79,14 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
-      // Admin dashboard, own shell. TODO(auth): RequireRole('admin'), see app/adminRoutes.jsx.
+      // Admin dashboard, own shell. Admins only (REQ-3): signed out -> log in card, other roles -> 403.
       {
         path: '/admin',
-        element: <AdminShellRoute />,
+        element: (
+          <RequireRole role="admin" intent="admin" fullScreen>
+            <AdminShellRoute />
+          </RequireRole>
+        ),
         children: [
           { index: true, element: <AdminPageRoute page="overview" /> },
           { path: 'approvals', element: <AdminPageRoute page="approvals" /> },

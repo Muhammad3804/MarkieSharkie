@@ -14,7 +14,7 @@
 
 | Area | Routes | Who |
 |---|---|---|
-| Auth | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/forgot`, `/auth/password/reset` | public |
+| Auth | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot-password`, `/auth/verify-reset-code`, `/auth/reset-password` | public |
 | Me | `GET /me` | any user |
 | Me | `PATCH /me` | customer, venue_owner, decorator (EUC-03 actors, srs-alignment #24) |
 | Me | `GET /me/searches`, `GET /me/bookings` | customer (REQ-4) |
@@ -43,7 +43,18 @@
 - Login by email or phone. On wrong password: `failed_login_attempts++`; at 5 set `locked_until = now() + 15 min` → 423. Reset counter on success. Same generic error for unknown user and wrong password.
 - **Access token**: JWT, 15 min, payload `{ sub, role }`, sent as `Authorization: Bearer`.
 - **Refresh token**: random 256-bit, stored hashed in `refresh_tokens`, sent as `httpOnly; Secure; SameSite=Strict` cookie. Rotated on each refresh. Rejected if `last_used_at` older than **30 min** (inactivity, REQ-2) or revoked. Logout revokes it.
-- Password reset: 6-digit code, hashed, 10 min expiry, max 5 attempts, single use; revoke all refresh tokens after reset.
+- Password reset (built 2026-11-22): `POST /auth/forgot-password {email}` emails a 6-digit code (`crypto.randomInt`;
+  stored in `password_reset_codes` only as an HMAC-SHA256 keyed with a server secret; 10 min; single use; a new
+  request spends earlier codes; 30 s resend cooldown). Same 200 answer whether or not the email exists; rate limited
+  10 / 15 min per IP and 3 / 15 min per email. `POST /auth/verify-reset-code {email, code}` checks without spending;
+  `POST /auth/reset-password {email, code, newPassword}` (signup password rules) sets the argon2id hash, spends the
+  code, clears the login lock and revokes all refresh tokens. 5 wrong codes -> `RESET_CODE_LOCKED` (423); expired /
+  used / replaced -> `RESET_CODE_EXPIRED`; wrong (or unknown email) -> `RESET_CODE_INVALID` with `attemptsLeft`.
+  Email via nodemailer (`integrations/mailer.js`, SMTP_* in `.env`); without SMTP, development prints the code in the
+  server console and production refuses to send (never logs the code).
+- Login response has `firstLogin` (true when `users.last_login_at` was empty before), for the client's welcome toast.
+- First admin: `npm run seed:admin` (SEED_ADMIN_* in `.env`, idempotent; `-- --reset-password` to change the
+  password) or the interactive `npm run create-admin`.
 - Public registration only allows `customer`, `venue_owner`, `decorator`. Admins are created by an existing admin (REQ-1); the very first admin comes from a seed/CLI script (`npm run create-admin`), never from an API route.
 - Suspended (`is_active=false`) or deleted users: block at login **and** in the auth middleware on every request (REQ-3).
 

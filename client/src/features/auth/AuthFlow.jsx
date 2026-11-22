@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { LogoMark } from '../../components/ui/Logo.jsx'
-import { RESEND_SECONDS, RESET_CODE_MINUTES, RESET_UNAVAILABLE, logInWithPassword, requestPasswordReset, resetPassword, signUp } from '../../api/auth.js'
+import { logInWithPassword, requestPasswordReset, resetPassword, signUp, verifyResetCode } from '../../api/auth.js'
 import { bioError, businessNameError, cityError, emailError, identifierError, nameError, parseIdentifier, passwordError, phoneError } from '../../lib/accountRules.js'
 import { formatPkMobileIntl } from '../../lib/phone.js'
 import { CITIES } from '../host/options.js'
@@ -13,15 +13,16 @@ import { loginIntent } from './intents.js'
 //   password "Welcome back": password, Keep me logged in, Forgot password?, "New here? Create an account"
 //   signup   account type (customer / venue owner / decorator, REQ-1), name, email, mobile, city, the type's business
 //            fields, password + strength, confirm, terms
-// Google / Apple sign-in is hidden until the server supports it; password reset says it isn't available yet.
-//   forgot   confirm where the 6-digit code goes -> reset: code, new password (REQ-2 reset by one-time code)
+// Google / Apple sign-in is hidden until the server supports it.
+//   forgot   email -> code (6 boxes, resend timer; checked by the server) -> newPassword -> back to password with
+//            "Password changed" (REQ-2 reset by a one-time emailed code)
 // Every step after start has a back arrow (top left); the close X (top right) is LoginDialog's.
 // `run(kind, task)` (from LoginDialog) marks the modal busy and blocks closing; `login(kind, task)` also finishes
 // the login, so every method resumes the trigger's action the same way.
 
 const CITY_NAMES = CITIES.map((city) => city.value)
 const EMPTY_CODE = ['', '', '', '', '', '']
-const BACK_TO = { password: 'start', signup: 'start', forgot: 'password', reset: 'password' }
+const BACK_TO = { password: 'start', signup: 'start', forgot: 'password', code: 'forgot', newPassword: 'code' }
 
 const focusId = (id) => document.getElementById(id)?.focus()
 const linkButton = 'cursor-pointer rounded font-medium text-primary underline underline-offset-4 hover:text-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
@@ -33,7 +34,7 @@ const describeIdentifier = (text) => {
 export default function AuthFlow({ intent, busy, run, login }) {
   const [view, setView] = useState('start')
   const [identifier, setIdentifier] = useState('')
-  const [reset, setReset] = useState(null) // { sentTo, channel, demoCode, sentAt }
+  const [reset, setReset] = useState(null) // { email, sentAt, resendAfterSeconds, expiresInMinutes, code? }
   const [notice, setNotice] = useState(null) // { tone, text }
   const panel = useRef(null)
   const moveFocus = useRef(true) // also on first open: start at the phone / email field
@@ -56,8 +57,12 @@ export default function AuthFlow({ intent, busy, run, login }) {
     start: { title: 'Log in or sign up', subtitle: prompt },
     signup: { title: 'Create your account', subtitle: prompt },
     password: { title: 'Welcome back', subtitle: 'Enter your password to continue.' },
-    forgot: { title: 'Reset your password', subtitle: 'We’ll send you a 6-digit code to set a new password.' },
-    reset: { title: 'Enter your code', subtitle: reset ? `We sent a 6-digit code to ${reset.sentTo}. It expires in ${RESET_CODE_MINUTES} minutes.` : '' },
+    forgot: { title: 'Reset your password', subtitle: 'We’ll email you a 6-digit code to set a new password.' },
+    code: {
+      title: 'Enter your code',
+      subtitle: reset ? `If ${reset.email} has an account, we sent it a 6-digit code. It expires in ${reset.expiresInMinutes} minutes.` : '',
+    },
+    newPassword: { title: 'Choose a new password', subtitle: 'Use at least 8 characters, with letters and numbers.' },
   }[view]
 
   return (
@@ -103,7 +108,7 @@ export default function AuthFlow({ intent, busy, run, login }) {
 
         {view === 'password' && (
           <>
-            <PasswordStep identifier={identifier} busy={busy} login={login} onForgot={() => setNotice({ tone: 'info', text: RESET_UNAVAILABLE })} />
+            <PasswordStep identifier={identifier} busy={busy} login={login} onForgot={() => go('forgot')} />
             <p className="text-center text-[14px] text-muted-warm">
               New to MarkieSharkie?{' '}
               <button type="button" onClick={() => go('signup')} className={`${linkButton} min-h-11 text-ink-strong`}>
@@ -129,26 +134,45 @@ export default function AuthFlow({ intent, busy, run, login }) {
 
         {view === 'forgot' && (
           <ForgotStep
-            identifier={identifier}
+            initialEmail={parseIdentifier(identifier)?.kind === 'email' ? parseIdentifier(identifier).value : reset?.email ?? ''}
             busy={busy}
             run={run}
             onSent={(sent) => {
-              setReset({ ...sent, sentAt: Date.now() })
-              go('reset')
+              setReset({ email: sent.sentTo, expiresInMinutes: sent.expiresInMinutes, resendAfterSeconds: sent.resendAfterSeconds, sentAt: Date.now() })
+              go('code')
             }}
             onBack={() => go('password')}
           />
         )}
 
-        {view === 'reset' && reset && (
-          <ResetStep
-            identifier={identifier}
-            sent={reset}
+        {view === 'code' && reset && (
+          <CodeStep
+            reset={reset}
             busy={busy}
             run={run}
-            onResent={(sent) => setReset({ ...sent, sentAt: Date.now() })}
-            onDone={() => go('password', { message: { tone: 'success', text: 'Password changed. Log in with your new password.' } })}
-            onBack={() => go('password')}
+            onResent={(sent) => setReset((current) => ({ ...current, ...sent, code: undefined, problem: undefined, sentAt: Date.now() }))}
+            onVerified={(code) => {
+              setReset((current) => ({ ...current, code, problem: undefined }))
+              go('newPassword')
+            }}
+            onBack={() => go('forgot')}
+          />
+        )}
+
+        {view === 'newPassword' && reset?.code && (
+          <NewPasswordStep
+            reset={reset}
+            busy={busy}
+            run={run}
+            onDone={() => {
+              setIdentifier(reset.email)
+              setReset(null)
+              go('password', { message: { tone: 'success', text: 'Password changed. Log in with your new password.' } })
+            }}
+            onCodeProblem={(text) => {
+              setReset((current) => ({ ...current, code: undefined, problem: text }))
+              go('code')
+            }}
           />
         )}
       </div>
@@ -237,9 +261,9 @@ function PasswordStep({ identifier, busy, login, onForgot }) {
       input?.focus()
       input?.select()
     } else if (code === 'ACCOUNT_LOCKED') {
-      // REQ-2: 15-minute lock after 5 wrong passwords; the message says how long is left.
-      setAlert({ text: message })
-      focusId('auth-password')
+      // REQ-2: 15-minute lock after 5 wrong passwords. Resetting the password also lifts the lock.
+      setAlert({ text: message, reset: true })
+      focusId('auth-locked-reset')
     } else if (code === 'VALIDATION_ERROR' && details) {
       if (details.password) setError(details.password)
       else setAlert({ text: details.identifier ?? message })
@@ -274,7 +298,17 @@ function PasswordStep({ identifier, busy, login, onForgot }) {
           Forgot password?
         </button>
       </div>
-      <FormAlert>{alert?.text}</FormAlert>
+      <FormAlert
+        action={
+          alert?.reset && (
+            <button id="auth-locked-reset" type="button" onClick={onForgot} className={`${linkButton} min-h-11 self-start text-[14px]`}>
+              Reset your password
+            </button>
+          )
+        }
+      >
+        {alert?.text}
+      </FormAlert>
       <SubmitButton loading={busy === 'password'} loadingText="Logging in…">
         Log in
       </SubmitButton>
@@ -430,23 +464,53 @@ function SignupStep({ intent, initial, busy, login, onIdentifier, onRegistered }
   )
 }
 
-function ForgotStep({ identifier, busy, run, onSent, onBack }) {
-  const [error, setError] = useState('')
-  const kind = parseIdentifier(identifier)?.kind
+// REQ-2 reset step 1: the email the code goes to (prefilled when the person typed an email to log in).
+function ForgotStep({ initialEmail, busy, run, onSent, onBack }) {
+  const [email, setEmail] = useState(initialEmail)
+  const [touched, setTouched] = useState(false)
+  const [apiError, setApiError] = useState('')
+  const [alert, setAlert] = useState('')
+  const error = apiError || (touched ? emailError(email) : '')
+
   async function submit(event) {
     event.preventDefault()
-    const result = await run('forgot', () => requestPasswordReset(identifier))
+    setTouched(true)
+    setAlert('')
+    if (emailError(email)) return focusId('auth-reset-email')
+    const result = await run('forgot', () => requestPasswordReset(email))
     if (result.cancelled) return
-    if (result.error) return setError(result.error.message)
-    onSent(result.value)
+    if (!result.error) return onSent(result.value)
+    const { code, message, details } = result.error
+    if (code === 'VALIDATION_ERROR' && details?.email) {
+      setApiError(details.email)
+      focusId('auth-reset-email')
+    } else setAlert(code ? message : 'We couldn’t send the code. Try again.')
   }
+
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-4">
-      <p className="rounded-xl border border-line bg-surface px-4 py-3 text-[15px] text-ink">
-        We’ll send the code {kind === 'phone' ? 'by SMS to' : 'to'} <span className="font-semibold text-ink-strong">{describeIdentifier(identifier)}</span>.
-      </p>
-      <FormAlert>{error}</FormAlert>
-      <SubmitButton loading={busy === 'forgot'} loadingText="Sending…" data-autofocus>
+      <AuthField
+        id="auth-reset-email"
+        name="email"
+        label="Email"
+        type="email"
+        inputMode="email"
+        autoComplete="username"
+        autoCapitalize="none"
+        spellCheck={false}
+        placeholder="name@example.com"
+        hint="The email on your MarkieSharkie account"
+        value={email}
+        onChange={(event) => {
+          setEmail(event.target.value)
+          setApiError('')
+        }}
+        onBlur={() => email.trim() && setTouched(true)}
+        error={error}
+        data-autofocus
+      />
+      <FormAlert>{alert}</FormAlert>
+      <SubmitButton loading={busy === 'forgot'} loadingText="Sending…">
         Send code
       </SubmitButton>
       <button type="button" onClick={onBack} className={`${linkButton} mx-auto min-h-11 text-[14px]`}>
@@ -456,94 +520,138 @@ function ForgotStep({ identifier, busy, run, onSent, onBack }) {
   )
 }
 
-function ResetStep({ identifier, sent, busy, run, onResent, onDone, onBack }) {
-  const [code, setCode] = useState(EMPTY_CODE)
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const [touched, setTouched] = useState({})
-  const [apiErrors, setApiErrors] = useState({})
-  const [alert, setAlert] = useState('')
+// Seconds left before "Resend code" is allowed (counts down once a second).
+function useResendWait(sentAt, seconds) {
   const [now, setNow] = useState(() => Date.now())
-  const wait = Math.min(RESEND_SECONDS, Math.max(0, RESEND_SECONDS - Math.floor((now - sent.sentAt) / 1000)))
-
+  const wait = Math.min(seconds, Math.max(0, seconds - Math.floor((now - sentAt) / 1000)))
   useEffect(() => {
-    if (wait <= 0) return
+    if (wait <= 0) return undefined
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
-  }, [wait, sent.sentAt])
+  }, [wait, sentAt])
+  return wait
+}
 
-  const rules = {
-    code: code.join('').length === 6 ? '' : 'Enter all 6 digits.',
-    password: passwordError(password),
-    confirm: !confirm ? 'Type your new password again.' : confirm !== password ? 'Passwords don’t match.' : '',
-  }
-  const errorFor = (field) => apiErrors[field] || (touched[field] || submitted ? rules[field] : '')
+// REQ-2 reset step 2: the 6-digit code (6 boxes, auto-advance, paste), checked by the server before step 3.
+function CodeStep({ reset, busy, run, onResent, onVerified, onBack }) {
+  const [code, setCode] = useState(EMPTY_CODE)
+  const [submitted, setSubmitted] = useState(false)
+  // `reset.problem`: step 3 found the code expired, used or locked, so only a new code helps.
+  const [apiError, setApiError] = useState(reset.problem ?? '')
+  const [spent, setSpent] = useState(Boolean(reset.problem)) // expired / used / locked: only a new code helps
+  const [notice, setNotice] = useState('')
+  const wait = useResendWait(reset.sentAt, reset.resendAfterSeconds)
+  const complete = code.join('').length === 6
+  const error = apiError || (submitted && !complete ? 'Enter all 6 digits.' : '')
 
   async function submit(event) {
-    event.preventDefault()
+    event?.preventDefault()
     setSubmitted(true)
-    setAlert('')
-    const first = ['code', 'password', 'confirm'].find((field) => rules[field])
-    if (first) return focusId({ code: 'auth-code', password: 'auth-new-password', confirm: 'auth-new-confirm' }[first])
-    const result = await run('reset', () => resetPassword({ identifier, code: code.join(''), password }))
+    setNotice('')
+    if (!complete) return focusId('auth-code')
+    if (spent) return
+    const value = code.join('')
+    const result = await run('verify', () => verifyResetCode({ email: reset.email, code: value }))
     if (result.cancelled) return
-    if (!result.error) return onDone()
+    if (!result.error) return onVerified(value)
     const { code: errorCode, message } = result.error
-    if (errorCode === 'CODE_INVALID') {
-      setApiErrors({ code: message })
-      setCode(EMPTY_CODE)
-      focusId('auth-code')
-    } else if (errorCode === 'CODE_EXPIRED') {
-      setApiErrors({ code: message })
-      setCode(EMPTY_CODE)
-      // Resend appears once its wait is over; until then stay on the code.
+    setApiError(errorCode ? message : 'We couldn’t check the code. Try again.')
+    if (errorCode === 'RESET_CODE_EXPIRED' || errorCode === 'RESET_CODE_LOCKED') {
+      setSpent(true)
+      // Only a new code helps: go to Resend if it's offered, else stay in the code boxes (focus never drops to body).
       if (document.getElementById('auth-resend')) focusId('auth-resend')
       else focusId('auth-code')
-    } else if (errorCode === 'VALIDATION') {
-      setApiErrors({ password: message })
-      focusId('auth-new-password')
-    } else setAlert(message || 'We couldn’t reset your password. Try again.')
+    } else {
+      setCode(EMPTY_CODE)
+      focusId('auth-code')
+    }
   }
 
   async function resend() {
-    const result = await run('resend', () => requestPasswordReset(identifier))
+    const result = await run('resend', () => requestPasswordReset(reset.email))
     if (result.cancelled) return
-    if (result.error) return setAlert(result.error.message)
-    setApiErrors({})
+    if (result.error) return setApiError(result.error.message)
+    setApiError('')
+    setSpent(false)
+    setSubmitted(false)
     setCode(EMPTY_CODE)
-    setNow(Date.now())
+    setNotice(`We sent a new code to ${reset.email}. Earlier codes no longer work.`)
     onResent(result.value)
     focusId('auth-code')
   }
 
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-4">
-      <HiddenUsername value={identifier} />
-      <p className="rounded-xl border border-dashed border-outline-strong bg-surface px-4 py-3 text-[14px] text-ink">
-        Demo: no {sent.channel === 'phone' ? 'SMS' : 'email'} is sent. Your code is <span className="font-heading text-[16px] font-semibold tracking-[0.2em] text-ink-strong">{sent.demoCode}</span>
-      </p>
       <OtpInput
         id="auth-code"
         value={code}
         onChange={(next) => {
           setCode(next)
-          setApiErrors((current) => ({ ...current, code: '' }))
+          if (!spent) setApiError('')
         }}
-        error={errorFor('code')}
+        error={error}
       />
       <p className="-mt-2 text-[14px] text-muted-warm">
         {wait > 0 ? (
-          <span aria-live="off">Didn’t get it? You can resend in 0:{String(wait).padStart(2, '0')}</span>
+          <span>Didn’t get it? Check your spam folder, or resend in 0:{String(wait).padStart(2, '0')}</span>
         ) : (
           <>
             Didn’t get it?{' '}
-            <button id="auth-resend" type="button" onClick={resend} className={`${linkButton} min-h-11`}>
+            <button id="auth-resend" type="button" onClick={resend} aria-disabled={busy ? true : undefined} className={`${linkButton} min-h-11`}>
               {busy === 'resend' ? 'Sending…' : 'Resend code'}
             </button>
           </>
         )}
       </p>
+      <p role="status" className="text-[14px] text-success empty:hidden">
+        {notice}
+      </p>
+      {/* aria-disabled, not disabled: a disabled button would drop keyboard focus. submit() ignores it while spent. */}
+      <SubmitButton loading={busy === 'verify'} loadingText="Checking…" aria-disabled={spent || busy === 'verify' ? true : undefined}>
+        Continue
+      </SubmitButton>
+      <button type="button" onClick={onBack} className={`${linkButton} mx-auto min-h-11 text-[14px]`}>
+        Use a different email
+      </button>
+    </form>
+  )
+}
+
+// REQ-2 reset step 3: the new password (signup rules, strength meter, confirm). The server checks the code again.
+function NewPasswordStep({ reset, busy, run, onDone, onCodeProblem }) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [touched, setTouched] = useState({})
+  const [apiError, setApiError] = useState('')
+  const [alert, setAlert] = useState('')
+
+  const rules = {
+    password: passwordError(password),
+    confirm: !confirm ? 'Type your new password again.' : confirm !== password ? 'Passwords don’t match.' : '',
+  }
+  const errorFor = (field) => (field === 'password' && apiError) || (touched[field] || submitted ? rules[field] : '')
+
+  async function submit(event) {
+    event.preventDefault()
+    setSubmitted(true)
+    setAlert('')
+    const first = ['password', 'confirm'].find((field) => rules[field])
+    if (first) return focusId(first === 'password' ? 'auth-new-password' : 'auth-new-confirm')
+    const result = await run('reset', () => resetPassword({ email: reset.email, code: reset.code, newPassword: password }))
+    if (result.cancelled) return
+    if (!result.error) return onDone()
+    const { code, message, details } = result.error
+    if (code?.startsWith('RESET_CODE_')) return onCodeProblem(message)
+    if (code === 'VALIDATION_ERROR' && details?.newPassword) {
+      setApiError(details.newPassword)
+      focusId('auth-new-password')
+    } else setAlert(code ? message : 'We couldn’t reset your password. Try again.')
+  }
+
+  return (
+    <form noValidate onSubmit={submit} className="flex flex-col gap-4">
+      <HiddenUsername value={reset.email} />
       <PasswordField
         id="auth-new-password"
         name="new-password"
@@ -554,10 +662,11 @@ function ResetStep({ identifier, sent, busy, run, onResent, onDone, onBack }) {
         value={password}
         onChange={(event) => {
           setPassword(event.target.value)
-          setApiErrors((current) => ({ ...current, password: '' }))
+          setApiError('')
         }}
         onBlur={() => setTouched((current) => ({ ...current, password: current.password || Boolean(password) }))}
         error={errorFor('password')}
+        data-autofocus
       />
       <PasswordField
         id="auth-new-confirm"
@@ -573,9 +682,6 @@ function ResetStep({ identifier, sent, busy, run, onResent, onDone, onBack }) {
       <SubmitButton loading={busy === 'reset'} loadingText="Saving…">
         Reset password
       </SubmitButton>
-      <button type="button" onClick={onBack} className={`${linkButton} mx-auto min-h-11 text-[14px]`}>
-        Back to log in
-      </button>
     </form>
   )
 }

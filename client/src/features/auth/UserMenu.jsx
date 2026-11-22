@@ -59,6 +59,11 @@ export default function UserMenu({ user, onLogout }) {
             <p className="truncate text-[13px] text-muted-warm">{user.email}</p>
           </div>
           <div className="my-1 border-t border-line" />
+          {user.role === 'admin' && (
+            <Link to="/admin" onClick={() => setOpen(false)} className={itemClass}>
+              Admin dashboard
+            </Link>
+          )}
           <Link to="/bookings" onClick={() => setOpen(false)} className={itemClass}>
             My bookings
           </Link>

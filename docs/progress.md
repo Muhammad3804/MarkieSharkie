@@ -164,14 +164,17 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   single-use (srs-alignment #26). Login / logout in one tab reach the others (BroadcastChannel)
   - "Keep me logged in" off: the server always sets a 7-day cookie, so the client stores a session-only flag plus a
     browser-session cookie `ms_session_alive`; on the next browser start the session is ended instead of restored
-  - Google / Apple buttons hidden; "Forgot password?" says reset isn't available yet (no server routes)
+  - Google / Apple buttons hidden
+  - Password reset: `requestPasswordReset`, `verifyResetCode`, `resetPassword` (REQ-2, emailed 6-digit code). Modal
+    steps forgot (email) -> code (OtpInput, resend timer, server check) -> newPassword -> login with "Password changed"
+  - `WelcomeToast` after a modal login (`firstLogin` from the server); `RequireRole role="admin"` guards `/admin`
 - Modal: start (phone or email -> Continue, always to the password step: no account lookup, srs-alignment #23) ->
   "Welcome back" (password, Keep me logged in, Forgot password?, "New to MarkieSharkie? Create an account") or signup
   (account type: Book venues = `customer`, List my venue = `venue_owner` (+ business name, business contact number),
   Offer decor = `decorator` (+ business name, short description); the host trigger preselects venue owner). Server
   errors show under the matching field (400 / 409 `details`); wrong password and unknown account get the same message;
   423 lock, 403 suspended, 429 rate limit and network errors show as an alert
-- `RequireAuth` waits for the restore (`ready`) so a refresh doesn't flash the login card. `RequireRole` does not exist yet
+- `RequireAuth` waits for the restore (`ready`) so a refresh doesn't flash the login card
 - Triggers (`useRequireAuth()(intent, action)`, resumed after login or signup, dropped if the modal closes): "Check
   availability" (`BookingSidebar`), "Let’s get started" on `/host`, header "My bookings"
 - `src/lib/accountRules.js`: client field rules (plus `businessNameError`, `bioError`); the server's Zod rules decide
@@ -546,6 +549,16 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Admin seed, welcome toast, password reset by emailed code (REQ-1, REQ-2, REQ-3).** No migration
+  needed: `users.last_login_at` and `password_reset_codes` (code_hash, expires_at, used_at, attempts) were already in
+  001. Server: `npm run seed:admin` (`scripts/seedAdmin.js`, `ensureAdmin`), login returns `firstLogin`,
+  `POST /auth/forgot-password`, `/auth/verify-reset-code`, `/auth/reset-password`, per-email + per-IP rate limits,
+  `integrations/mailer.js` (nodemailer; dev console fallback), env `SMTP_*`, `MAIL_FROM`; `nodemailer` dependency;
+  OpenAPI + 27 new tests (209 total). Client: `WelcomeToast` ("Welcome to MarkieSharkie" / "Welcome back", Admin tag,
+  aria-live, 4 s, reduced motion), `RequireRole` on `/admin` (403 page for other roles), "Admin dashboard" in the
+  account menu for admins, 3-step reset (email -> 6-box code with resend timer -> new password) replacing the
+  "not available" note.
+
 - 2026-11-22: **Login and signup use the real server auth.** New `client/src/api/http.js`; `api/auth.js` mock replaced
   (register + login + refresh + logout + `/me`, access token in memory, refresh cookie httpOnly); signup has an
   account-type picker with the venue owner / decorator fields; session restore on load, 401 -> login modal,
@@ -697,9 +710,8 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ### Gaps and stubs
 
-- Server auth gaps found while wiring the client (no server change made): `/auth/login` has no `remember` (client
-  workaround above); no password reset routes (REQ-2); no OAuth (srs-alignment #22 is client-only now); `RequireRole`
-  and role-based dashboard links still to build
+- Server auth gaps: `/auth/login` has no `remember` (client workaround above); no OAuth (srs-alignment #22 is
+  client-only now). The /admin pages still use mock data and have no /api/admin routes yet (server must check role)
 
 - Server has auth + profile only (2026-11-21). The client is not wired to it yet: every page still uses the browser
   mocks in `client/src/api/*`

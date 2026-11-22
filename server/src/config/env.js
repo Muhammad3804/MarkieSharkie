@@ -40,6 +40,16 @@ const schema = z.object({
   // Express `trust proxy`: false (default, direct connections), true, a hop count, or a list like "loopback".
   TRUST_PROXY: z.string().trim().default('false'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // Password reset email (REQ-2). SMTP_HOST empty = no email: development logs the code instead, production refuses
+  // to send (integrations/mailer.js). An empty SMTP_PORT in .env means the default.
+  SMTP_HOST: z.string().trim().default(''),
+  SMTP_PORT: z.preprocess((v) => (v === '' ? undefined : v), int(587, { max: 65535 })),
+  SMTP_USER: z.string().trim().default(''),
+  SMTP_PASS: z.string().default(''),
+  MAIL_FROM: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().trim().default('MarkieSharkie <no-reply@markiesharkie.pk>'),
+  ),
 })
 
 function parseTrustProxy(value) {
@@ -92,6 +102,14 @@ export function parseEnv(raw) {
       loginLockMinutes: e.LOGIN_LOCK_MINUTES,
     }),
     slotHoldMinutes: e.SLOT_HOLD_MINUTES,
+    mail: Object.freeze({
+      host: e.SMTP_HOST,
+      port: e.SMTP_PORT,
+      user: e.SMTP_USER,
+      pass: e.SMTP_PASS,
+      from: e.MAIL_FROM,
+      configured: e.SMTP_HOST !== '',
+    }),
   })
 }
 

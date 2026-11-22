@@ -8,6 +8,9 @@ export const RELAXED_RATE_LIMITS = {
   register: { windowMs: 60_000, limit: 10_000 },
   login: { windowMs: 60_000, limit: 10_000 },
   refresh: { windowMs: 60_000, limit: 10_000 },
+  forgotPassword: { windowMs: 60_000, limit: 10_000 },
+  forgotPasswordPerEmail: { windowMs: 60_000, limit: 10_000, by: 'email' },
+  resetCode: { windowMs: 60_000, limit: 10_000 },
 }
 
 export function testApp(options = {}) {

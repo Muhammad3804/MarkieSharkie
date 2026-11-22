@@ -68,3 +68,18 @@ export const loginBodySchema = z
 
 // refresh / logout take the cookie only.
 export const emptyBodySchema = z.object({}).strict()
+
+// REQ-2 password reset by a 6-digit emailed code.
+const resetCodeSchema = z
+  .string({ error: 'Enter the 6-digit code from the email.' })
+  .trim()
+  .regex(/^\d{6}$/, 'Enter the 6-digit code from the email.')
+
+export const forgotPasswordBodySchema = z.object({ email: emailSchema }).strict()
+
+export const verifyResetCodeBodySchema = z.object({ email: emailSchema, code: resetCodeSchema }).strict()
+
+// Same password rules as signup (REQ-1).
+export const resetPasswordBodySchema = z
+  .object({ email: emailSchema, code: resetCodeSchema, newPassword: passwordSchema })
+  .strict()

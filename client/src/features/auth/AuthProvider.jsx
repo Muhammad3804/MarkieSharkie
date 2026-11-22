@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { getAuthSnapshot, onUnauthorized, restoreSession, signOut, subscribeAuth } from '../../api/auth.js'
 import { AuthContext } from './authContext.js'
 import LoginDialog from './LoginDialog.jsx'
+import WelcomeToast from './WelcomeToast.jsx'
 
 // The element that opened the modal is usually gone after logging in (the Log in button became the avatar, a
 // guard card became the page, a menu closed), so native focus restore lands on <body>. Move focus to the account
@@ -33,6 +34,9 @@ export default function AuthProvider({ children }) {
   // Logging in from another tab also closes it (nothing to resume there).
   const [login, setLogin] = useState(null)
   const pending = useRef(null)
+  // { id, name, role, first } after a login from the modal (first = the account's first ever login).
+  const [welcome, setWelcome] = useState(null)
+  const dismissWelcome = useCallback(() => setWelcome(null), [])
   const open = login !== null && login.pathname === pathname && !user
   // Read the path through a ref so openLogin (and the context value) stay stable across navigations.
   const path = useRef(pathname)
@@ -52,6 +56,7 @@ export default function AuthProvider({ children }) {
     const action = pending.current
     pending.current = null
     setLogin(null)
+    if (signedIn?.name) setWelcome({ id: Date.now(), name: signedIn.name, role: signedIn.role, first: Boolean(signedIn.firstLogin) })
     try {
       action?.(signedIn)
     } finally {
@@ -71,6 +76,7 @@ export default function AuthProvider({ children }) {
     <AuthContext value={value}>
       {children}
       <LoginDialog open={open} openKey={login?.id} intent={login?.intent} onClose={closeLogin} onSignedIn={completeLogin} />
+      <WelcomeToast welcome={welcome} onDismiss={dismissWelcome} />
     </AuthContext>
   )
 }

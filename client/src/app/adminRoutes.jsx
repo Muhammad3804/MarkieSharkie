@@ -1,9 +1,8 @@
 import { lazy, Suspense } from 'react'
 
 // /admin, lazy-loaded so none of the admin code ships with the public pages (route list in app/router.jsx).
-// TODO(auth): wrap AdminShellRoute in <RequireRole role="admin"> once auth exists: signed-out visitors go to the
-// login page, other roles get a 403 page. That guard is UI only; the server checks role = admin on every
-// /api/admin request.
+// app/router.jsx wraps AdminShellRoute in <RequireRole role="admin">: signed-out visitors get the log in card, other
+// roles a 403 page. That guard is UI only; the server must check role = admin on every /api/admin request.
 const AdminLayout = lazy(() => import('../features/admin/AdminLayout.jsx'))
 const PAGES = {
   overview: lazy(() => import('../pages/admin/Overview.jsx')),

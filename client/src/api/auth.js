@@ -10,8 +10,9 @@ import { ApiError, apiFetch, configureAuth, setAccessToken } from './http.js'
 //   GET  /api/me             -> { user }
 // The access token stays in memory (api/http.js); a page load gets a new one from the refresh cookie.
 //
-// Not on the server yet: Google / Apple sign-in and password reset (they throw NOT_AVAILABLE), and an account
-// lookup (srs-alignment #23: login gives one error for "no account" and "wrong password").
+//   POST /api/auth/forgot-password, /verify-reset-code, /reset-password -> REQ-2 reset by a 6-digit emailed code
+// Not on the server: Google / Apple sign-in, and an account lookup (srs-alignment #23: login gives one error for
+// "no account" and "wrong password").
 //
 // "Keep me logged in" off: the server always sets a 7-day cookie, so the client marks the login as "this browser
 // session only" (a localStorage flag plus a session cookie on this origin, which the browser drops when it closes).
@@ -211,7 +212,8 @@ export async function logInWithPassword({ identifier, password, remember = true 
   markSessionOnly(!remember)
   setSnapshot({ ready: true, user: toUser(data.user, data.homePath) })
   broadcast('login')
-  return snapshot.user
+  // firstLogin (the account had never logged in) picks the welcome message; it isn't kept on the session user.
+  return { ...snapshot.user, firstLogin: Boolean(data.firstLogin) }
 }
 
 // POST /api/auth/register, then log in with the same details. role: customer | venue_owner | decorator (REQ-1);
@@ -252,16 +254,43 @@ export async function signOut() {
   broadcast('logout')
 }
 
-// --- Not on the server yet ----------------------------------------------------------------------------------------
+// --- Password reset by emailed code (REQ-2) -----------------------------------------------------------------
 
-export const RESET_UNAVAILABLE = 'Password reset isn’t available yet. Contact support to reset your password.'
-
-// POST /api/auth/password/forgot (REQ-2, not built on the server yet).
-export async function requestPasswordReset() {
-  throw new AuthError('NOT_AVAILABLE', RESET_UNAVAILABLE)
+// POST /api/auth/forgot-password { email }. Same answer whether or not the email has an account.
+// -> { sentTo, expiresInMinutes, resendAfterSeconds }
+export async function requestPasswordReset(email) {
+  const clean = normalizeEmail(email)
+  const data = await apiFetch('/auth/forgot-password', { method: 'POST', body: { email: clean }, auth: false }).catch(rethrow)
+  return {
+    sentTo: clean,
+    expiresInMinutes: data?.expiresInMinutes ?? RESET_CODE_MINUTES,
+    resendAfterSeconds: data?.resendAfterSeconds ?? RESEND_SECONDS,
+  }
 }
 
-// POST /api/auth/password/reset (REQ-2, not built on the server yet).
-export async function resetPassword() {
-  throw new AuthError('NOT_AVAILABLE', RESET_UNAVAILABLE)
+// POST /api/auth/verify-reset-code { email, code }: checks the code without using it up.
+// Errors: RESET_CODE_INVALID (wrong; the message says how many tries are left), RESET_CODE_EXPIRED (expired, used or
+// replaced), RESET_CODE_LOCKED (5 wrong codes), VALIDATION_ERROR, RATE_LIMITED, NETWORK.
+export async function verifyResetCode({ email, code }) {
+  await apiFetch('/auth/verify-reset-code', {
+    method: 'POST',
+    body: { email: normalizeEmail(email), code: String(code ?? '') },
+    auth: false,
+  }).catch(rethrow)
+  return { valid: true }
+}
+
+// POST /api/auth/reset-password { email, code, newPassword }. Ends every session of the account (this tab's too).
+export async function resetPassword({ email, code, newPassword }) {
+  await apiFetch('/auth/reset-password', {
+    method: 'POST',
+    body: { email: normalizeEmail(email), code: String(code ?? ''), newPassword: String(newPassword ?? '') },
+    auth: false,
+  }).catch(rethrow)
+  if (snapshot.user) {
+    clearSessionFlags()
+    endSession()
+    broadcast('logout')
+  }
+  return { ok: true }
 }

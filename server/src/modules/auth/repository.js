@@ -15,6 +15,7 @@ function toLoginUser(row) {
     deletedAt: row.deleted_at,
     isLocked: row.is_locked,
     lockMinutesLeft: row.lock_minutes_left,
+    lastLoginAt: row.last_login_at,
   }
 }
 
@@ -87,7 +88,7 @@ export async function insertAdmin(db, { userId }) {
 // Lock state is computed by the database clock so app/DB clock skew can't shorten or extend a lock.
 export async function findLoginUserByEmail(db, email) {
   const { rows } = await db.query(
-    `SELECT user_id, name, email, phone, role, city, password_hash, is_active, deleted_at,
+    `SELECT user_id, name, email, phone, role, city, password_hash, is_active, deleted_at, last_login_at,
             (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
             CASE WHEN locked_until > now()
                  THEN ceil(extract(epoch FROM locked_until - now()) / 60)::int ELSE 0 END AS lock_minutes_left
@@ -100,7 +101,7 @@ export async function findLoginUserByEmail(db, email) {
 
 export async function findLoginUserByPhone(db, phone) {
   const { rows } = await db.query(
-    `SELECT user_id, name, email, phone, role, city, password_hash, is_active, deleted_at,
+    `SELECT user_id, name, email, phone, role, city, password_hash, is_active, deleted_at, last_login_at,
             (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
             CASE WHEN locked_until > now()
                  THEN ceil(extract(epoch FROM locked_until - now()) / 60)::int ELSE 0 END AS lock_minutes_left
@@ -205,4 +206,82 @@ export async function revokeRefreshTokenByHash(db, tokenHash) {
 
 export async function revokeAllRefreshTokens(db, userId) {
   await db.query('UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [userId])
+}
+
+// ---------------------------------------------------------------- password reset codes (REQ-2)
+
+// A new code replaces every earlier unused one (used_at marks it spent).
+export async function invalidateResetCodes(db, userId) {
+  await db.query('UPDATE password_reset_codes SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [userId])
+}
+
+export async function insertResetCode(db, { userId, codeHash, minutes }) {
+  const { rows } = await db.query(
+    `INSERT INTO password_reset_codes (user_id, code_hash, channel, expires_at)
+     VALUES ($1, $2, 'email', now() + make_interval(mins => $3::int))
+     RETURNING reset_id, expires_at`,
+    [userId, codeHash, minutes],
+  )
+  return { id: rows[0].reset_id, expiresAt: rows[0].expires_at }
+}
+
+// Seconds since the newest code for this user was issued (null if none): the resend cooldown.
+export async function secondsSinceLastResetCode(db, userId) {
+  const { rows } = await db.query(
+    `SELECT extract(epoch FROM now() - max(created_at))::float AS seconds FROM password_reset_codes WHERE user_id = $1`,
+    [userId],
+  )
+  return rows[0].seconds === null ? null : Number(rows[0].seconds)
+}
+
+// The newest code, row-locked so parallel guesses are counted one after another. Expiry uses the DB clock.
+export async function findLatestResetCodeForUpdate(db, userId) {
+  const { rows } = await db.query(
+    `SELECT reset_id, code_hash, attempts, used_at, (expires_at <= now()) AS is_expired
+       FROM password_reset_codes
+      WHERE user_id = $1
+      ORDER BY created_at DESC, reset_id DESC
+      LIMIT 1
+        FOR UPDATE`,
+    [userId],
+  )
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: row.reset_id,
+    codeHash: row.code_hash,
+    attempts: row.attempts,
+    usedAt: row.used_at,
+    isExpired: row.is_expired,
+  }
+}
+
+// One wrong guess. Reaching maxAttempts also spends the code (used_at), so it can never be guessed again.
+export async function recordWrongResetCode(db, { resetId, maxAttempts }) {
+  const { rows } = await db.query(
+    `UPDATE password_reset_codes
+        SET attempts = attempts + 1,
+            used_at = CASE WHEN attempts + 1 >= $2::int THEN now() ELSE used_at END
+      WHERE reset_id = $1
+  RETURNING attempts`,
+    [resetId, maxAttempts],
+  )
+  return rows[0].attempts
+}
+
+export async function markResetCodeUsed(db, resetId) {
+  await db.query('UPDATE password_reset_codes SET used_at = now() WHERE reset_id = $1', [resetId])
+}
+
+// New password; also clears the REQ-2 login lock, since the person just proved they own the email.
+export async function updatePassword(db, { userId, passwordHash }) {
+  await db.query(
+    `UPDATE users SET password_hash = $2, failed_login_attempts = 0, locked_until = NULL WHERE user_id = $1`,
+    [userId, passwordHash],
+  )
+}
+
+export async function findUserRoleByEmail(db, email) {
+  const { rows } = await db.query('SELECT user_id, role FROM users WHERE email = $1::citext', [email])
+  return rows[0] ? { id: rows[0].user_id, role: rows[0].role } : null
 }

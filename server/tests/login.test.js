@@ -29,6 +29,7 @@ describe('UC-02 / EUC-02 Log In (REQ-2, REQ-3, SYS-04)', () => {
         city: 'Faisalabad',
       },
       homePath: '/app',
+      firstLogin: true,
     })
     expect(JSON.stringify(res.body)).not.toMatch(/password|hash/i)
 
@@ -218,5 +219,43 @@ describe('UC-02 / EUC-02 Log In (REQ-2, REQ-3, SYS-04)', () => {
       expect(res.status).toBe(401)
       expect(res.body.error.code).toBe('INVALID_CREDENTIALS')
     })
+  })
+})
+
+describe('first-login flag (welcome message)', () => {
+  it('is true on the first login, false afterwards, and stamps users.last_login_at', async () => {
+    const agent = api()
+    const { body, user } = await register(agent, 'customer')
+    expect((await userRow(user.id)).last_login_at).toBeNull()
+
+    const first = await login(agent, body.email)
+    expect(first.status).toBe(200)
+    expect(first.body.firstLogin).toBe(true)
+    expect(first.body.user).toMatchObject({ name: body.name, role: 'customer' })
+    const stamped = (await userRow(user.id)).last_login_at
+    expect(stamped).toBeInstanceOf(Date)
+
+    const second = await login(agent, body.phone)
+    expect(second.body.firstLogin).toBe(false)
+    expect((await userRow(user.id)).last_login_at.getTime()).toBeGreaterThanOrEqual(stamped.getTime())
+  })
+
+  it('a failed login does not count as the first login', async () => {
+    const agent = api()
+    const { body } = await register(agent, 'customer')
+    await login(agent, body.email, 'Wrong12345')
+    const res = await login(agent, body.email)
+    expect(res.body.firstLogin).toBe(true)
+  })
+
+  it('refresh responses have no firstLogin', async () => {
+    const agent = api()
+    const { refreshToken } = await signedIn(agent, 'customer')
+    const res = await agent
+      .post('/api/auth/refresh')
+      .set('Cookie', `ms_refresh=${encodeURIComponent(refreshToken)}`)
+      .send({})
+    expect(res.status).toBe(200)
+    expect(res.body).not.toHaveProperty('firstLogin')
   })
 })

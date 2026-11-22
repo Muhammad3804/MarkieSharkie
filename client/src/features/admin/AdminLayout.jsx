@@ -11,7 +11,7 @@ import { ago } from './format.js'
 
 // Admin shell: collapsible sidebar (drawer below lg), top bar with search, notifications and the admin menu,
 // breadcrumb, then the page. Every section, tab and filter lives in the URL.
-// TODO(auth): the route is wrapped in RequireRole('admin') once auth exists (see app/router.jsx).
+// The route is wrapped in RequireRole('admin') (app/router.jsx): only admins get here.
 const NAV = [
   { to: '/admin', label: 'Overview', icon: 'dashboard', end: true },
   { to: '/admin/approvals', label: 'Venue approvals', icon: 'file-check', badge: 'approvals' },

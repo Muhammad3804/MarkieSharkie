@@ -196,12 +196,14 @@ paths:
               mobile: { value: { identifier: 0300-1234567, password: Shadi2025 } }
       responses:
         '200':
-          description: Logged in (EUC-02 steps 5-6). `homePath` is the role's dashboard.
+          description: |
+            Logged in (EUC-02 steps 5-6). `homePath` is the role's dashboard. `firstLogin` is true when the account had
+            never logged in before (`users.last_login_at` was empty); the client shows a welcome message.
           headers:
             Set-Cookie: { $ref: '#/components/headers/SetRefreshCookie' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SessionResponse' }
+              schema: { $ref: '#/components/schemas/LoginResponse' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401':
           description: '`INVALID_CREDENTIALS` (EUC-02 4.1). The user can try again.'
@@ -312,6 +314,119 @@ paths:
           headers:
             Set-Cookie: { $ref: '#/components/headers/ClearRefreshCookie' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: forgotPassword
+      summary: Email a 6-digit password reset code (REQ-2)
+      description: |
+        Sends a 6-digit code (crypto-random, stored only as a keyed hash, 10 minutes, single use, 5 tries) to the
+        account's email. A new code replaces every earlier one.
+
+        - The answer is **the same 200** whether or not the email has an account (no account probing). Deleted and
+          suspended accounts get the same answer and no email.
+        - Another request within 30 seconds returns the same answer without sending a new code.
+        - Without SMTP settings: development prints the code in the server console; production can't send.
+
+        Rate limited: 10 per 15 min per IP and 3 per 15 min per email address.
+      x-srs: [REQ-2, NFR-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { $ref: '#/components/schemas/Email' }
+            example: { email: ayesha@example.pk }
+      responses:
+        '200':
+          description: Always the same answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResetRequested' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/verify-reset-code:
+    post:
+      tags: [Auth]
+      operationId: verifyResetCode
+      summary: Check a password reset code before asking for the new password (REQ-2)
+      description: |
+        Same checks as `/auth/reset-password` but doesn't use the code up. A wrong code counts towards the 5 tries.
+        Rate limited: 30 per 15 min per IP.
+      x-srs: [REQ-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, code]
+              properties:
+                email: { $ref: '#/components/schemas/Email' }
+                code: { $ref: '#/components/schemas/ResetCode' }
+            example: { email: ayesha@example.pk, code: '482913' }
+      responses:
+        '200':
+          description: The code is right and still valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid]
+                properties:
+                  valid: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/ResetCodeRejected' }
+        '423': { $ref: '#/components/responses/ResetCodeLocked' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      summary: Set a new password with the emailed code (REQ-2)
+      description: |
+        Checks the code, saves the new password (same rules as registration, argon2id), uses the code up, clears the
+        login lock and revokes every refresh token of the account (all sessions end; this browser's cookie is cleared).
+        Rate limited: 30 per 15 min per IP.
+      x-srs: [REQ-2, NFR-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, code, newPassword]
+              properties:
+                email: { $ref: '#/components/schemas/Email' }
+                code: { $ref: '#/components/schemas/ResetCode' }
+                newPassword: { $ref: '#/components/schemas/Password' }
+            example: { email: ayesha@example.pk, code: '482913', newPassword: Shadi2026 }
+      responses:
+        '200':
+          description: Password changed.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/ClearRefreshCookie' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message]
+                properties:
+                  message: { type: string }
+        '400': { $ref: '#/components/responses/ResetCodeRejected' }
+        '423': { $ref: '#/components/responses/ResetCodeLocked' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me:
@@ -491,6 +606,30 @@ components:
       schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
 
   responses:
+    ResetCodeRejected:
+      description: |
+        `VALIDATION_ERROR` (bad email / code format / weak password), `RESET_CODE_INVALID` (wrong code; unknown email
+        too, so it can't be told apart; `details.attemptsLeft` when a code exists) or `RESET_CODE_EXPIRED` (expired,
+        already used, or replaced by a newer code).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            {
+              error:
+                {
+                  code: RESET_CODE_INVALID,
+                  message: That code isn’t right. 4 tries left.,
+                  details: { attemptsLeft: 4 },
+                },
+            }
+    ResetCodeLocked:
+      description: '`RESET_CODE_LOCKED`: 5 wrong codes. The code is spent; ask for a new one.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            { error: { code: RESET_CODE_LOCKED, message: Too many wrong codes. Ask for a new code to try again. } }
     ValidationError:
       description: '`VALIDATION_ERROR`: one or more fields are invalid or not allowed. Nothing was saved.'
       content:
@@ -571,6 +710,9 @@ components:
         - INVALID_CREDENTIALS
         - ACCOUNT_LOCKED
         - ACCOUNT_SUSPENDED
+        - RESET_CODE_INVALID
+        - RESET_CODE_EXPIRED
+        - RESET_CODE_LOCKED
         - SESSION_EXPIRED
         - UNAUTHENTICATED
         - FORBIDDEN
@@ -749,6 +891,30 @@ components:
         phone: { $ref: '#/components/schemas/PkMobile' }
         role: { $ref: '#/components/schemas/Role' }
         city: { type: string }
+    LoginResponse:
+      allOf:
+        - $ref: '#/components/schemas/SessionResponse'
+        - type: object
+          required: [firstLogin]
+          properties:
+            firstLogin:
+              type: boolean
+              description: True on the account's first ever login (users.last_login_at was empty before).
+    ResetRequested:
+      type: object
+      required: [message, expiresInMinutes, resendAfterSeconds]
+      properties:
+        message: { type: string }
+        expiresInMinutes: { type: integer, const: 10 }
+        resendAfterSeconds: { type: integer, const: 30 }
+      example:
+        message: If an account uses this email, we sent it a 6-digit code. It expires in 10 minutes.
+        expiresInMinutes: 10
+        resendAfterSeconds: 30
+    ResetCode:
+      type: string
+      pattern: '^[0-9]{6}$'
+      description: The 6-digit code from the email.
     SessionResponse:
       type: object
       required: [accessToken, user, homePath]
