@@ -49,8 +49,8 @@ Last updated: 2026-11-22
 - Phone: accepts `03XX-XXXXXXX`, `03XXXXXXXXX`, `+92 3XX XXXXXXX`, `+923XXXXXXXXX` (spaces / dashes anywhere),
   stores `+923XXXXXXXXX`. Field rules shared by register, PATCH /me and create-admin in `src/lib/validators.js`
 - Scripts: `migrate`, `migrate:test`, `migrate:create`, `db:check`, `create-admin` (interactive, hidden password;
-  also accepts piped input)
-- Tests: 12 files (182 tests) in `server/tests/` against `markiesharkie_test` (global setup guards + migrates; `TRUNCATE ...
+  also accepts piped input), `seed:admin` (from SEED_ADMIN_* in `.env`, idempotent, `-- --reset-password`)
+- Tests: 14 files (209 tests on 2026-11-22) in `server/tests/` against `markiesharkie_test` (global setup guards + migrates; `TRUNCATE ...
   CASCADE` before each test; files run one at a time). Test names carry the SRS ids
 - Windows notes: run npm from PowerShell or a normal terminal. Git Bash without `ComSpec` set can't run npm scripts
   or argon2's install script
@@ -549,6 +549,11 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Auth close-out audit (branch `feat/server-venues`, Part 1).** No code change. Lint, Prettier, 209/209
+  tests, client lint + build all pass. `.env.example` covers every variable the code reads (reset-code limits are
+  constants, not env); noted that `VITE_*` belong in `client/.env`. Stale TODOs fixed here and in `instructions.md`;
+  `seed:admin` added to the command lists; srs-alignment #27 (reset by email only, SMS later).
+
 - 2026-11-22: **Admin seed, welcome toast, password reset by emailed code (REQ-1, REQ-2, REQ-3).** No migration
   needed: `users.last_login_at` and `password_reset_codes` (code_hash, expires_at, used_at, attempts) were already in
   001. Server: `npm run seed:admin` (`scripts/seedAdmin.js`, `ensureAdmin`), login returns `firstLogin`,
@@ -713,31 +718,30 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - Server auth gaps: `/auth/login` has no `remember` (client workaround above); no OAuth (srs-alignment #22 is
   client-only now). The /admin pages still use mock data and have no /api/admin routes yet (server must check role)
 
-- Server has auth + profile only (2026-11-21). The client is not wired to it yet: every page still uses the browser
-  mocks in `client/src/api/*`
-- Auth server, not built yet (out of scope 2026-11-21): password reset by OTP (REQ-2, `password_reset_codes` exists),
-  change password, change email, account deletion with anonymisation (NFR-8, REQ-47), admin user management
-  (suspend / unblock / remove / create admin, with `admin_audit_log`), ownership helpers (come with venues/bookings)
-- Auth client TODO: swap `api/auth.js` for the API; replace the email-first "Welcome back / No account" step with one
-  phone-or-email + password step (srs-alignment #23); role picker + owner / decorator fields at signup; keep the access
-  token in memory and **single-flight refreshes across tabs** (srs-alignment #26); refresh while the user is active
-  (inactivity is measured from the last refresh); drop the token on logout; profile page (`/me`)
+- Server has auth + profile + password reset (2026-11-22). Login / signup / reset use it; every other page still
+  uses the browser mocks in `client/src/api/*`
+- Auth server, not built yet: reset code by SMS (REQ-2 "email or mobile"; only email is built), change password,
+  change email, account deletion with anonymisation (NFR-8, REQ-47), admin user management (suspend / unblock /
+  remove / create admin, with `admin_audit_log`), ownership helpers (come with venues/bookings)
+- Auth client leftovers (not built): one-step "phone or email + password" form (today: identifier, then password);
+  role-based redirect to `homePath` after login (`/app`, `/owner`, `/decorator` don't exist yet); profile page
+  (`/me`, REQ-4); `RequireRole` on `/host/new` (venue_owner) and the future role dashboards; refresh while the user
+  is active (inactivity counts from the last refresh, REQ-2). Done: in-memory token, single-flight refresh across tabs
+  (Web Lock, srs-alignment #26), role picker at signup, `RequireRole` on `/admin`
 - Deployment: the refresh cookie is SameSite=Strict, so the PWA and the API must be on the same site in production
   (e.g. `app.<domain>` + `api.<domain>`, or the API behind a rewrite on the PWA's domain). Set `TRUST_PROXY=1` behind
   one proxy so rate limits see real client IPs
 - Test suite is slow locally (~6 min): `TRUNCATE ... CASCADE` over the whole schema costs ~2.4 s per test on Docker
   Desktop for Windows (a DELETE-based reset measured ~45 ms). Kept TRUNCATE per the Phase 0 brief; revisit if it hurts
-- Seed script (build-plan Phase 0) not written
-- Login is a browser mock (srs-alignment #22): accounts, hashes, lockouts and reset codes live in this browser's
-  localStorage. No 30-min inactivity timeout (REQ-2), no profile page (REQ-4), Google / Apple are simulated; no roles (everyone is `customer`, so `/host/new` isn't venue_owner-only and `/admin` has no RequireRole);
-  Terms / Privacy are plain text (no pages). Log out doesn't clear this browser's booking drafts or release a live
-  hold. Real OAuth needs: the resume action persisted across the redirect (`{ intent, returnTo }`), a session
-  `loading` state (RequireAuth would flash), a timeout + distinct errors (popup closed / blocked / network), and the
-  access token in memory + refresh token in an httpOnly cookie (not localStorage)
-- Auth TODO(server): done 2026-11-21: argon2id, atomic `failed_login_attempts` UPDATE, rate limits on login /
-  register / refresh. Still open with OTP reset: `FOR UPDATE` on the reset code, rate limit on
-  `/auth/password/forgot`; `/auth/lookup` dropped (srs-alignment #23). Android Backspace in an empty code box
-  may not move back (needs `beforeinput`). The saved password-manager username is whatever was typed (email or mobile)
+- Seed script (build-plan Phase 0) not written (only `seed:admin`)
+- Login uses the server since 2026-11-22. Still open: Google / Apple are hidden (no OAuth); Terms / Privacy are plain
+  text (no pages); log out doesn't clear this browser's booking drafts or release a live hold (bookings are still a
+  mock). Real OAuth would need the resume action persisted across the redirect (`{ intent, returnTo }`) and nullable
+  `users.password_hash` / `users.phone` (srs-alignment #22(e))
+- Auth server hardening done: argon2id, atomic `failed_login_attempts` UPDATE, rate limits on login / register /
+  refresh / forgot-password (per IP and per email) / reset code checks, `FOR UPDATE` on the reset code row;
+  `/auth/lookup` dropped (srs-alignment #23). Android Backspace in an empty code box may not move back (needs
+  `beforeinput`). The saved password-manager username is whatever was typed (email or mobile)
 - Bookings made before login existed (customer `demo-customer`) no longer show on `/bookings`; Reset demo data or
   clear `markiesharkie:bookings`
 - `sendMessage` is a stub (no RAG backend, no assistant replies)
@@ -825,8 +829,9 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ### Next steps (suggested)
 
-- ~~Scaffold `server/`~~ done 2026-11-21 (Phase 0 + Phase 1 auth/profile API). Next on the server: seed script, OTP
-  password reset, then the venues module (Phase 2) with ownership checks
+- ~~Scaffold `server/`~~ done 2026-11-21 (Phase 0 + Phase 1 auth/profile API); OTP password reset done 2026-11-22.
+  Next on the server (branch `feat/server-venues`): seed script, then the venues module (Phase 2) with ownership
+  checks and image detection
 - Decide whether halls should be independently bookable (per-hall slots)
 - Venue search API (`GET /api/venues`) matching `searchVenues()` filters, plus search history
 - Booking engine on the server (slots per hall, holds with `SELECT ... FOR UPDATE`, quotations) with Vitest tests;
