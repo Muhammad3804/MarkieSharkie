@@ -69,7 +69,8 @@ Last updated: 2026-11-22
 - React Router 7 data router (`createBrowserRouter`), `motion` 14 (`motion/react`) for the chat morph
 - Leaflet 1.9 + OpenStreetMap tiles (no API key) for the Explore map and the host pin, lazy-loaded
 - three 0.187 + @react-three/fiber 9 for the hall 3D model (`features/venues/HallModel3D.jsx`), lazy-loaded. Uses three's
-  own `OrbitControls`/`EdgesGeometry` (drei removed: it added weight for two helpers)
+  own `OrbitControls`/`EdgesGeometry`. @react-three/drei 10.7.9 (added 2026-11-22) only in the uploaded-walkthrough viewer
+  (`features/venues/walkthrough/WalkthroughViewer.jsx`: `useGLTF`, `OrbitControls`, `Bounds`, `useProgress`), a lazy chunk
 - Zod 4 in the client for the host wizard's per-step validation (same library the server will use)
 - qrcode (QR PNG data URLs), lz-string (invitation card in the link hash), html-to-image (card PNG, lazy-loaded)
 - oxlint for linting. No test runner set up yet. playwright-cli used for manual browser checks
@@ -557,6 +558,21 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `useAuth` / `useRequireAuth` so the real auth can replace `api/auth.js`
 
 ## Changelog (newest first)
+
+- 2026-11-22: **3D and 360° walkthrough viewers (EUC-06, REQ-11), Part B.** Uploaded walkthroughs now open in the
+  browser. `features/venues/walkthrough/Walkthrough.jsx` (small, no three.js) checks WebGL and HEADs the file (refuses
+  > 50 MB .glb / > 20 MB JPEG or a wrong type before downloading), then lazy-loads `WalkthroughViewer.jsx`: a .glb
+  viewer (drei `useGLTF` without Draco/Meshopt so nothing comes from a CDN, `Bounds` fits any model, `OrbitControls`,
+  `useProgress` percentage) and a 360° viewer (equirectangular JPEG on the inside of a sphere, starts at the middle of
+  the photo, drag / touch to look, zoom = field of view). Buttons turn, zoom and reset for people who can't drag;
+  `frameloop="demand"`, no auto-rotate and no damping, so nothing moves on its own (reduced motion); closing disposes
+  geometries, materials, textures and the loader caches. Friendly messages for no WebGL, too large, missing and
+  damaged files. Venue page hall cards: "View in 3D" (.glb) or "360 view" (panorama); halls without an upload keep the
+  dimension-based `HallModel3D`. Admin review: "no viewer yet" replaced by a "Preview the 3D model / 360° view" toggle.
+  **Server fix:** the public venue detail didn't include the uploaded file per hall; `halls[].walkthrough.file`
+  (`{ url, assetType }`, null without an upload) added in `venues/mappers.js`, and `/uploads` serves `.glb` as
+  `model/gltf-binary`. Tests: `tests/walkthrough-viewer.test.js` (5). New client dependency `@react-three/drei`
+  (teammates run `npm install` in `client/`). Demo venue "Walkthrough Demo Banquet" (Faisalabad) in the dev DB.
 
 - 2026-11-22: **Profile page (EUC-03, REQ-4), Part A of the "finish partly-done use cases" brief.** New `/me`
   (`pages/Profile.jsx`, `api/profile.js`, `features/profile/rules.js`), linked as "Profile" in the avatar menu.

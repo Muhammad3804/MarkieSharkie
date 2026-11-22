@@ -3,6 +3,8 @@ import { lazy, Suspense, useState } from 'react'
 // One hall (Figma 65:1240), also used for the bridal suite. Size, layout and walkthrough are UI-only (the halls
 // table has name + capacity only, see mockVenues.js); the host wizard collects them.
 const HallModel3D = lazy(() => import('../../features/venues/HallModel3D.jsx'))
+// REQ-11 uploaded .glb / 360° JPEG viewer (its three.js chunk only loads when opened).
+const Walkthrough = lazy(() => import('../../features/venues/walkthrough/Walkthrough.jsx'))
 
 // Same grid as the wizard's layout step: cells 0-8, row 0 = back wall.
 const ZONE_LABELS = { stage: 'Stage', entrance: 'Entrance', seating: 'Seating' }
@@ -13,7 +15,10 @@ export default function HallCard({ hall }) {
   const zones = Object.entries(hall.zones ?? {}).filter(([key, cell]) => cell != null && ZONE_LABELS[key])
   const walkthrough = hall.walkthrough?.mode
   const tourUrl = walkthrough === 'link' && isHttps(hall.walkthrough.url) ? hall.walkthrough.url : null
-  const can3d = walkthrough === 'generate' && area && hall.ceilingFt
+  // The owner's uploaded file wins; without one, the model generated from the hall's size (srs-alignment #16).
+  const uploaded = walkthrough === 'upload' ? hall.walkthrough.file : null
+  const can3d = !uploaded && (walkthrough === 'generate' || walkthrough === 'upload') && area && hall.ceilingFt
+  const openLabel = uploaded?.assetType === 'panorama_360' ? '360 view' : 'View in 3D'
 
   return (
     <article aria-labelledby={`${hall.hallId}-name`} className="flex flex-col gap-4 rounded-[16px] border border-line bg-white p-5">
@@ -92,19 +97,23 @@ export default function HallCard({ hall }) {
 
       <p className="text-[13px] leading-[1.45] text-muted-warm">{hall.description}</p>
 
-      {can3d &&
+      {(uploaded || can3d) &&
         (show3d ? (
           <div className="flex flex-col gap-2">
-            <Suspense fallback={<div className="h-[300px] animate-pulse rounded-2xl bg-surface motion-reduce:animate-none" aria-label="Loading the 3D model" />}>
-              <HallModel3D name={hall.name} lengthFt={hall.lengthFt} widthFt={hall.widthFt} ceilingFt={hall.ceilingFt} zones={hall.zones} className="h-[300px]" />
+            <Suspense fallback={<div className="h-[300px] animate-pulse rounded-2xl bg-surface motion-reduce:animate-none" aria-label="Loading the 3D view" />}>
+              {uploaded ? (
+                <Walkthrough file={uploaded} name={hall.name} />
+              ) : (
+                <HallModel3D name={hall.name} lengthFt={hall.lengthFt} widthFt={hall.widthFt} ceilingFt={hall.ceilingFt} zones={hall.zones} className="h-[300px]" />
+              )}
             </Suspense>
-            {/* Closing frees the WebGL context (browsers allow only ~16 at once). */}
+            {/* Closing frees the WebGL context (browsers allow only ~16 at once), geometries and textures. */}
             <button
               type="button"
               onClick={() => setShow3d(false)}
-              className="w-fit cursor-pointer rounded-md px-1 text-[14px] font-medium text-ink underline underline-offset-4 hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+              className="min-h-11 w-fit cursor-pointer rounded-md px-1 text-[14px] font-medium text-ink underline underline-offset-4 hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
             >
-              Close 3D view<span className="sr-only"> of {hall.name}</span>
+              Close {uploaded?.assetType === 'panorama_360' ? '360 view' : '3D view'}<span className="sr-only"> of {hall.name}</span>
             </button>
           </div>
         ) : (
@@ -113,7 +122,7 @@ export default function HallCard({ hall }) {
             onClick={() => setShow3d(true)}
             className="inline-flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-full border border-ink-strong px-5 text-[14px] font-medium text-ink-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            View in 3D<span className="sr-only">: {hall.name}</span>
+            {openLabel}<span className="sr-only">: {hall.name}</span>
           </button>
         ))}
       {tourUrl && (

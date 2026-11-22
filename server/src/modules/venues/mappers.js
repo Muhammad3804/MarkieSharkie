@@ -89,7 +89,8 @@ export function toCard(row, origin) {
   }
 }
 
-function toHall(h, venueId, origin) {
+// asset: the hall's walkthrough_assets row (latest), only used when the owner chose 'upload' (REQ-11).
+function toHall(h, venueId, origin, asset = null) {
   return {
     hallId: h.hall_id,
     venueId,
@@ -105,7 +106,14 @@ function toHall(h, venueId, origin) {
     floorPlanUrl: h.floor_plan_url ? absolute(origin, h.floor_plan_url) : null,
     floorPlanType: h.floor_plan_type ?? 'image',
     zones: { stage: h.zone_stage, entrance: h.zone_entrance, seating: h.zone_seating },
-    walkthrough: { mode: h.walkthrough_mode, url: h.walkthrough_url ?? '' },
+    walkthrough: {
+      mode: h.walkthrough_mode,
+      url: h.walkthrough_url ?? '',
+      file:
+        h.walkthrough_mode === 'upload' && asset
+          ? { url: absolute(origin, asset.file_url), assetType: asset.asset_type }
+          : null,
+    },
     hallCharge: '0.00', // D5: no hall hire field; the menu price covers the hall
   }
 }
@@ -132,7 +140,8 @@ function toImage(image, { venueId, venueName, hallName, origin }) {
 export function toVenueDetail(bundle, { origin, reviews = [], ratingRows = [], bookedDates = [] }) {
   const { base: v } = bundle
   const id = v.venue_id
-  const halls = bundle.halls.map((h) => toHall(h, id, origin))
+  const assetByHall = new Map((bundle.walkthroughs ?? []).map((w) => [w.hall_id, w])) // ordered by upload: latest wins
+  const halls = bundle.halls.map((h) => toHall(h, id, origin, assetByHall.get(h.hall_id)))
   const hallName = new Map(halls.map((h) => [h.hallId, h.name]))
   const images = bundle.images.map((image) =>
     toImage(image, { venueId: id, venueName: v.name, hallName: hallName.get(image.hall_id), origin }),

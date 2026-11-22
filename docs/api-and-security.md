@@ -70,7 +70,8 @@
   or 360° JPEG ≤ 20 MB (415 / 413 otherwise). 128-bit random names under `venues/owner-<id>/`, 300 uploads a day per
   owner, at most 60 photos per listing. Stored through `integrations/storage.js` (local disk `server/uploads/`,
   git-ignored; S3 / Cloudinary can replace it). Served at `/uploads/*` with `nosniff`, no directory listing, no
-  dotfiles, CORP `cross-origin` (the PWA is on another origin), non-images as downloads. File URLs are unguessable
+  dotfiles, CORP `cross-origin` (the PWA is on another origin), non-images as downloads (`Content-Disposition:
+  attachment`; `.glb` as `model/gltf-binary` so the 3D viewer can fetch it). `../` paths are refused (tested). File URLs are unguessable
   but not secret: an unapproved listing's photos can be fetched by anyone who has the URL.
 - **AI image check (REQ-9, REQ-10):** after the submission commits, each photo goes to `integrations/imageDetection.js`
   (Sightengine `genai`; fake when no API user / secret). Score ≤ `IMAGE_DETECTION_GENUINE_THRESHOLD` → genuine,

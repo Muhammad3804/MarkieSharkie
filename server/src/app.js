@@ -101,6 +101,8 @@ export function createApp({ logger = defaultLogger, rateLimits: overrides = AUTH
       maxAge: '7d',
       immutable: true,
       setHeaders: (res, file) => {
+        // REQ-11 walkthroughs: the browser's 3D viewer fetches these; the right type instead of octet-stream.
+        if (/\.glb$/i.test(file)) res.set('Content-Type', 'model/gltf-binary')
         if (!/\.(jpe?g|png|webp)$/i.test(file)) res.set('Content-Disposition', 'attachment')
       },
     }),

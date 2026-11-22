@@ -22,7 +22,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
       deactivating it (REQ-5) still to do
 - [x] Image upload (content-checked) + AI detection adapter (Sightengine, fake without keys) + flagged queue (REQ-9, 10)
 - [x] Menus, menu items, add-ons (created with the listing; editing them after approval still to do)
-- [x] Walkthrough upload (.glb / 360° JPEG) stored per hall; viewer was already in the client. Stage photos still to do
+- [x] Walkthrough upload (.glb / 360° JPEG) stored per hall, shown in the browser (.glb viewer, 360° viewer, 2026-11-22). Stage photos still to do
 - [x] Public venue API: landing rows, search with the Explore filters, venue page, per-hall availability, stats
 
 ## Phase 3: Search and discovery (REQ-12 to REQ-15, EUC-09 to 12)

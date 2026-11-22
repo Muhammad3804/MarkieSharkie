@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { approveListings, getApproval, rejectListing, requestListingChanges } from '../../api/admin.js'
 import { useAdminData } from '../../features/admin/hooks.js'
@@ -277,6 +277,28 @@ function Review({ data }) {
   )
 }
 
+// REQ-11: the owner's uploaded .glb / 360° file in the same viewer the venue page uses, opened on demand (one WebGL
+// context at a time; closing frees it).
+const Walkthrough = lazy(() => import('../../features/venues/walkthrough/Walkthrough.jsx'))
+function WalkthroughPreview({ file, name }) {
+  const [open, setOpen] = useState(false)
+  const kind = file.assetType === 'panorama_360' ? '360° view' : '3D model'
+  return (
+    <div className="mt-2">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className={`inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[14px] font-medium text-ink-strong hover:bg-surface ${focusRing}`}>
+        {open ? `Close the ${kind}` : `Preview the ${kind}`}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <Suspense fallback={<div className="h-[340px] animate-pulse rounded-2xl bg-surface motion-reduce:animate-none" aria-label={`Loading the ${kind}`} />}>
+            <Walkthrough file={file} name={name} />
+          </Suspense>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DecisionBanner({ listing }) {
   if (listing.status === 'pending') return null
   const tone = { approved: 'border-success/30 bg-success-bg text-success', rejected: 'border-danger/30 bg-danger-bg text-danger', changes_requested: 'border-info/30 bg-info-bg text-info' }[listing.status]
@@ -482,14 +504,18 @@ function StandOutPhase({ draft, urls, aiScores }) {
           {halls.map((hall) => (
             <li key={hall.hallId} className="min-w-0">
               <span className="font-medium text-ink-strong">{hall.name}</span> · {label(WALKTHROUGH_MODES, hall.walkthrough.mode)}
-              {hall.walkthrough.mode === 'upload' && hall.walkthrough.file && ` (${hall.walkthrough.file.fileName}, no viewer yet)`}
+              {hall.walkthrough.mode === 'upload' && hall.walkthrough.file && (urls[hall.walkthrough.file.fileId] ? (
+                <WalkthroughPreview file={{ url: urls[hall.walkthrough.file.fileId], assetType: hall.walkthrough.file.assetType }} name={hall.name} />
+              ) : (
+                ' (file missing)'
+              ))}
               {hall.walkthrough.mode === 'link' && (
                 <a href={hall.walkthrough.url} target="_blank" rel="noopener noreferrer" className={`block break-all text-primary hover:underline ${focusRing}`}>{hall.walkthrough.url}</a>
               )}
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-[13px] text-muted-warm">Generated models open with “View in 3D” on each hall card above.</p>
+        <p className="mt-2 text-[13px] text-muted-warm">Generated models open with “View in 3D” on each hall card above; uploaded files open here and on the hall cards.</p>
       </Card>
 
       <Card title="Title and description">

@@ -1550,7 +1550,9 @@ components:
         The card fields plus tagline, address, lat/lng, venueType, supportedEvents, capacity, facilities, description,
         images, heroImages, gallery (per hall, by section), halls (size, floor plan, zones, walkthrough), menuPackages
         (with items), addOns, bookingTerms, bridalSuite, reviews, ratingCounts, bookedDates, host, parkingSpaces,
-        eventNotes. Same shape as the client's venue page expects.
+        eventNotes. Same shape as the client's venue page expects. Each hall's walkthrough is
+        { mode: generate|upload|link|skip, url, file } where file is { url, assetType: model_3d|panorama_360 } for an
+        uploaded .glb / 360° JPEG (REQ-11) and null otherwise.
       additionalProperties: true
     Availability:
       type: object

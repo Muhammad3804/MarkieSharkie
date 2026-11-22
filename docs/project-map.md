@@ -103,6 +103,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `components/venue/*` | Pieces of the venue page: `Gallery` (hero photos), `HallCard` (size, floor plan, zones, "View in 3D"), `MenuCard` (dishes by section), `AvailabilityCalendar`, `BookingSidebar` (date/time/hall/guests/menu + live total), `ReviewsSection`, `LocationSection` (Google Maps embed), `Lightbox` (full-screen photos)... | `VenueDetail` |
 | `pages/Profile.jsx` | `/me` profile (EUC-03): edit details per role, past searches, my bookings; admins read-only. | `api/profile.js`, `features/profile/rules.js` |
 | `pages/VenuePhotos.jsx` | Full photo gallery per hall, opens the lightbox. | `useVenue`, `Lightbox` |
+| `features/venues/walkthrough/Walkthrough.jsx`, `WalkthroughViewer.jsx` | Uploaded walkthrough viewer (REQ-11): WebGL + file checks, then the lazy .glb viewer or 360° panorama viewer. | `HallCard`, admin `ApprovalReview` |
 | `features/venues/HallModel3D.jsx` | 3D room built from a hall's length × width × ceiling, with stage/entrance/tables (Three.js). Lazy-loaded. | `HallCard`, wizard walkthrough step |
 | `features/venues/mockVenues.js` | Not read at runtime any more; `npm run seed` turns it into database rows | (done) |
 | `api/venues.js` | **Real:** `GET /api/venues/landing`, `/api/venues`, `/api/venues/:id`, `/api/stats` | (done 2026-11-22) |
