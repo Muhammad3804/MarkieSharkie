@@ -3,7 +3,7 @@
 Read this at the start of every session. Update it at the end of every task (changelog entry, plus Current state,
 Decisions and TODO if they changed) and commit it with the code.
 
-Last updated: 2026-11-21
+Last updated: 2026-11-22
 
 ## Current state
 
@@ -150,49 +150,31 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `EventNotes`, `HallCard`, `MenuCard`, `BookingSidebar`, `Lightbox`, `VenueDetailSkeleton`
 - Assets: `src/assets/venues/` (landing WebP), `assets/gallery/` (29 WebP), `assets/venue-detail/`, `assets/icons/`, `assets/brand/`
 
-### Login (frontend only, mock, srs-alignment #22)
+### Login (real server auth since 2026-11-22)
 
-- `src/api/auth.js`: mock auth (localStorage `markiesharkie:auth`, `{ version: 2, users, session, resetCodes }`).
-  Users shaped like `users` (`passwordHash` + `passwordSalt`, `failedLoginAttempts`, `lockedUntil`, `lastLoginAt`).
-  - Email or PK mobile + password: `lookupAccount`, `logInWithPassword` (5 wrong in a row -> locked 15 min, correct
-    password refused while locked, success resets), `signUp` (name, email, mobile, city, password; role `customer`;
-    duplicate email / mobile refused), `requestPasswordReset` + `resetPassword` (6-digit code, hashed, 10 min, 5 tries;
-    clears the lock; the mock returns `demoCode` because nothing is sent)
-  - Passwords: Web Crypto SHA-256 of `salt:password`, never plain text (server: argon2id). Web Crypto needs https or
-    localhost, so password login fails on a plain-http LAN address (`npm run dev -- --host`); Google / Apple still work
-  - Google / Apple: fully dummy, fixed users (Ayesha Khan, Hamza Ali)
-  - "Keep me logged in" off keeps the session in sessionStorage (`markiesharkie:auth-session`, ends with the browser)
-  - Seeded demo account: `demo@markiesharkie.pk` / `Demo@1234` (mobile `0300-1234567`, Faisalabad)
-- `src/lib/accountRules.js`: field rules shared by the modal and the mock API (`parseIdentifier`, `*Error`,
-  `passwordStrength`); plain JS so Zod stays out of the main bundle
-- `src/features/auth/`: `AuthProvider` (root route; session via `useSyncExternalStore`, the one `LoginDialog`, focus
-  after login), `authContext.js` (`useAuth`, `useRequireAuth`), `LoginDialog` (shell: native modal `<dialog>`,
-  full-screen sheet on phones, centred 560px card with 24px corners from sm, Esc / backdrop close, Tab wrap, `run` / `login` helpers that block
-  closing while a request runs and abandon it on close), `AuthFlow` (lazy, prefetched when idle: steps start ->
-  password / signup, forgot -> reset; back arrow top-left on every step after the first), `fields.jsx` (field, password with show / hide +
-  strength meter, 6-box code input with paste, checkbox, alerts), `RequireAuth`, `UserMenu`, `intents.js`,
-  `brandIcons.jsx`
-- Modal layout (Airbnb-style reference, our tokens): logo mark (tent, `LogoMark` in `components/ui/Logo.jsx`), "Log in
-  or sign up", the trigger's prompt (small, muted; `intents.js` `prompt`), one "Phone number or email" field with a
-  floating label (a mobile is shown as `+92 300 1234567` once the field is left), maroon gradient Continue
-  (`primary` -> `primary-bright`), "or", Google and Apple as 72px square icon buttons (aria-labels "Continue with
-  ..."), "New to MarkieSharkie? Sign up". Nothing else on the first screen. Known account -> "Welcome back"
-  password step; unknown -> "Create your account" with the email / mobile prefilled and "No account with this email
-  yet". No tabs Errors on blur, focus to the
-  first error on submit, Enter submits, loading state on every submit, correct `autocomplete` on every field (hidden
-  `username` next to passwords)
-- Buttons follow brand guidelines: Google white, `#747775` border, `#1F1F1F` Roboto Medium (Roboto 500 added to the
-  font link); Apple black with white system font. Tokens `google-*`, `apple`, `font-google`, `font-apple`, `shadow-modal`
-- Triggers (`useRequireAuth()(intent, action)`, resumed after login, dropped if the modal closes):
-  - "Check availability" (`BookingSidebar`): the slot check stays public (a taken slot shows alternatives without
-    login); a free slot asks to log in, then holds it and opens the flow with date / hall / guests / menu kept
-  - "Let’s get started" / "Continue" on `/host`: heading "Become a host", subtitle "Log in to list your venue", then `/host/new/...`
-  - Header "My bookings" while signed out: stays on the page, then `/bookings` (new-tab clicks pass through to the guard)
-- Bookings belong to the signed-in user: `api/bookings.js` `customerId()` replaces `DEMO_CUSTOMER` (holds, requests,
-  list, get, cancel; `UNAUTHENTICATED` when signed out). The booking draft prefills `hostName` from the account
-- Every login method (Google, Apple, password, signup) finishes through `login()` in `LoginDialog`, so all resume the
-  trigger the same way
-- Back / forward during a sign-in abandons it (no silent login on another page); a login in another tab closes the modal
+- `src/api/http.js`: the one fetch wrapper. Base `VITE_API_URL` (default `http://localhost:4000/api`; Vite reads
+  `.env` from `client/`, so the root `.env` value is not used), JSON, `credentials: 'include'`, `Authorization: Bearer`
+  from an **in-memory** access token, errors normalised to `ApiError { status, code, message, fieldErrors }`, one
+  refresh-and-retry on 401, then the auth layer's unauthorized handler
+- `src/api/auth.js`: `logInWithPassword` (`POST /auth/login`), `signUp` (`POST /auth/register` then login, so the
+  trigger still resumes; `REGISTERED_LOGIN_FAILED` sends the person to the login step), `signOut` (`POST /auth/logout`),
+  `restoreSession` (page load: `POST /auth/refresh` with the httpOnly cookie, then `GET /me`), `getSessionUser` (sync;
+  `userId` mirrors `id` for `api/bookings.js`), `subscribeAuth` / `getAuthSnapshot` (`{ ready, user }`),
+  `onUnauthorized`. Refresh runs once at a time (one promise per tab, Web Lock across tabs) because refresh tokens are
+  single-use (srs-alignment #26). Login / logout in one tab reach the others (BroadcastChannel)
+  - "Keep me logged in" off: the server always sets a 7-day cookie, so the client stores a session-only flag plus a
+    browser-session cookie `ms_session_alive`; on the next browser start the session is ended instead of restored
+  - Google / Apple buttons hidden; "Forgot password?" says reset isn't available yet (no server routes)
+- Modal: start (phone or email -> Continue, always to the password step: no account lookup, srs-alignment #23) ->
+  "Welcome back" (password, Keep me logged in, Forgot password?, "New to MarkieSharkie? Create an account") or signup
+  (account type: Book venues = `customer`, List my venue = `venue_owner` (+ business name, business contact number),
+  Offer decor = `decorator` (+ business name, short description); the host trigger preselects venue owner). Server
+  errors show under the matching field (400 / 409 `details`); wrong password and unknown account get the same message;
+  423 lock, 403 suspended, 429 rate limit and network errors show as an alert
+- `RequireAuth` waits for the restore (`ready`) so a refresh doesn't flash the login card. `RequireRole` does not exist yet
+- Triggers (`useRequireAuth()(intent, action)`, resumed after login or signup, dropped if the modal closes): "Check
+  availability" (`BookingSidebar`), "Let’s get started" on `/host`, header "My bookings"
+- `src/lib/accountRules.js`: client field rules (plus `businessNameError`, `bioError`); the server's Zod rules decide
 
 ### Landing page (`/`)
 
@@ -564,6 +546,17 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Login and signup use the real server auth.** New `client/src/api/http.js`; `api/auth.js` mock replaced
+  (register + login + refresh + logout + `/me`, access token in memory, refresh cookie httpOnly); signup has an
+  account-type picker with the venue owner / decorator fields; session restore on load, 401 -> login modal,
+  cross-tab login / logout. Google / Apple hidden, password reset "not available yet". Verified with curl (all 5
+  endpoints), playwright at 375 and 1512 (signup of all 3 roles, DB rows + argon2id hashes, reload, logout, wrong
+  password / unknown email, duplicate, validation, the 3 triggers, keep-me-logged-in off, forced 401, cross-tab
+  logout), client lint + build, server tests 182/182. No server changes.
+- 2026-11-22: node_modules (and client/dist) moved into `*.nosync/` folders with symlinks, so iCloud Drive doesn't sync
+  them: `client/node_modules -> node_modules.nosync/node_modules` (the real path must contain `/node_modules/` or Vite
+  skips pre-bundling and the dev app is blank). `.gitignore` covers the symlinks and `*.nosync`
+
 - 2026-11-21: **Server Phase 0 + Phase 1 (UC-01 to UC-04, EUC-01 to 03, REQ-1 to 4, NFR-4).** New `server/`:
   Zod env validation (refuses `change-me` / short JWT secrets), pg pool + `withTransaction`, AppError + error handler,
   validate / authenticate / requireRole / rate limits, helmet + strict CORS, redacting logs, `GET /api/health`.
@@ -701,6 +694,10 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 ## Open items / TODO
 
 ### Gaps and stubs
+
+- Server auth gaps found while wiring the client (no server change made): `/auth/login` has no `remember` (client
+  workaround above); no password reset routes (REQ-2); no OAuth (srs-alignment #22 is client-only now); `RequireRole`
+  and role-based dashboard links still to build
 
 - Server has auth + profile only (2026-11-21). The client is not wired to it yet: every page still uses the browser
   mocks in `client/src/api/*`

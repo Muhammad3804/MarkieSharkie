@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext } from 'react'
 
-// { user, openLogin(intent, action?), logout } from AuthProvider. `user` is the signed-in mock user or null.
+// { ready, user, openLogin(intent, action?), logout } from AuthProvider. `user` is the signed-in user (api/auth.js) or
+// null; `ready` is false while the session is being restored on page load.
 export const AuthContext = createContext(null)
 
 export function useAuth() {

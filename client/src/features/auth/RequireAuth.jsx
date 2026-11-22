@@ -8,8 +8,10 @@ import { loginIntent } from './intents.js'
 // "log in to continue" card that opens the login modal; once logged in, the page renders in place. UI only: the
 // server checks the access token on every request. `fullScreen` is for routes outside PublicLayout (no header).
 export default function RequireAuth({ intent = 'default', fullScreen = false, children }) {
-  const { user, openLogin } = useAuth()
+  const { ready, user, openLogin } = useAuth()
   if (user) return children
+  // Restoring the session after a refresh: don't flash the "log in" card at someone who is logged in.
+  if (!ready) return <section aria-busy="true" aria-label="Loading" className={fullScreen ? 'min-h-dvh bg-surface' : 'min-h-[60dvh]'} />
   const copy = loginIntent(intent)
   return (
     <section className={`grid place-items-center px-4 ${fullScreen ? 'min-h-dvh bg-surface py-10' : 'min-h-[60dvh] py-16'}`}>

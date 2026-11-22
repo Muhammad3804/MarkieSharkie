@@ -5,3 +5,10 @@
 
 node_modules/
 coverage/
+
+# iCloud .nosync trick: real folders are *.nosync, node_modules / dist are symlinks to them
+node_modules
+node_modules.nosync
+dist
+dist.nosync
+*.nosync

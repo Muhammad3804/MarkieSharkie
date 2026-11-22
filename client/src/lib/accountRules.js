@@ -67,3 +67,17 @@ export function passwordStrength(text) {
   score = Math.max(score, 1)
   return { score, label: ['', 'Weak', 'Fair', 'Good', 'Strong'][score] }
 }
+
+// REQ-1 role details (server: lib/validators.js businessNameSchema, bioSchema).
+export function businessNameError(text) {
+  const value = String(text ?? '').trim()
+  if (!value) return 'Enter your business name.'
+  if (value.length < 2) return 'Business name must be at least 2 characters.'
+  return value.length > 150 ? 'Business name must be 150 characters or fewer.' : ''
+}
+
+export function bioError(text) {
+  const value = String(text ?? '').trim()
+  if (!value) return 'Add a short description of your services.'
+  return value.length > 500 ? 'Keep the description to 500 characters or fewer.' : ''
+}

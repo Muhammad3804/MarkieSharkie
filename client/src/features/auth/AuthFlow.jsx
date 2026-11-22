@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { LogoMark } from '../../components/ui/Logo.jsx'
-import { AUTH_PROVIDERS, RESEND_SECONDS, RESET_CODE_MINUTES, logInWithPassword, lookupAccount, requestPasswordReset, resetPassword, signInWithProvider, signUp } from '../../api/auth.js'
-import { cityError, emailError, identifierError, nameError, parseIdentifier, passwordError, phoneError } from '../../lib/accountRules.js'
+import { RESEND_SECONDS, RESET_CODE_MINUTES, logInWithPassword, requestPasswordReset, resetPassword, signUp } from '../../api/auth.js'
+import { bioError, businessNameError, cityError, emailError, identifierError, nameError, parseIdentifier, passwordError, phoneError } from '../../lib/accountRules.js'
 import { formatPkMobileIntl } from '../../lib/phone.js'
 import { CITIES } from '../host/options.js'
-import { AppleMark, GoogleMark } from './brandIcons.jsx'
 import { AuthField, CheckboxField, FieldError, FormAlert, Notice, OtpInput, PasswordField, SelectField, SubmitButton } from './fields.jsx'
 import { loginIntent } from './intents.js'
 
 // What's inside the login modal (lazy-loaded by LoginDialog). One minimal column per step:
-//   start    logo mark, "Log in or sign up", the trigger's prompt, phone or email -> Continue, "or", Google / Apple
-//            icon buttons, "New to MarkieSharkie? Sign up". Continue -> password (account) or signup (none)
-//   password "Welcome back": password, Keep me logged in, Forgot password?
-//   signup   name, email, mobile, city, password + strength, confirm, terms
+//   start    logo mark, "Log in or sign up", the trigger's prompt, phone or email -> Continue,
+//            "New to MarkieSharkie? Sign up". Continue -> password (the server has no account lookup, srs-alignment #23)
+//   password "Welcome back": password, Keep me logged in, Forgot password?, "New here? Create an account"
+//   signup   account type (customer / venue owner / decorator, REQ-1), name, email, mobile, city, the type's business
+//            fields, password + strength, confirm, terms
+// Google / Apple sign-in is hidden until the server supports it; password reset says it isn't available yet.
 //   forgot   confirm where the 6-digit code goes -> reset: code, new password (REQ-2 reset by one-time code)
 // Every step after start has a back arrow (top left); the close X (top right) is LoginDialog's.
 // `run(kind, task)` (from LoginDialog) marks the modal busy and blocks closing; `login(kind, task)` also finishes
@@ -32,7 +33,6 @@ const describeIdentifier = (text) => {
 export default function AuthFlow({ intent, busy, run, login }) {
   const [view, setView] = useState('start')
   const [identifier, setIdentifier] = useState('')
-  const [account, setAccount] = useState(null) // lookup result for the password step
   const [reset, setReset] = useState(null) // { sentTo, channel, demoCode, sentAt }
   const [notice, setNotice] = useState(null) // { tone, text }
   const panel = useRef(null)
@@ -55,7 +55,7 @@ export default function AuthFlow({ intent, busy, run, login }) {
   const heading = {
     start: { title: 'Log in or sign up', subtitle: prompt },
     signup: { title: 'Create your account', subtitle: prompt },
-    password: { title: `Welcome back${account?.firstName ? `, ${account.firstName}` : ''}`, subtitle: 'Enter your password to continue.' },
+    password: { title: 'Welcome back', subtitle: 'Enter your password to continue.' },
     forgot: { title: 'Reset your password', subtitle: 'We’ll send you a 6-digit code to set a new password.' },
     reset: { title: 'Enter your code', subtitle: reset ? `We sent a 6-digit code to ${reset.sentTo}. It expires in ${RESET_CODE_MINUTES} minutes.` : '' },
   }[view]
@@ -91,19 +91,7 @@ export default function AuthFlow({ intent, busy, run, login }) {
 
         {view === 'start' && (
           <>
-            <IdentifierStep
-              identifier={identifier}
-              setIdentifier={setIdentifier}
-              busy={busy}
-              run={run}
-              onFound={(found) => {
-                setAccount(found)
-                go('password')
-              }}
-              onMissing={() => go('signup', { message: { tone: 'info', text: `No account with this ${parseIdentifier(identifier)?.kind === 'phone' ? 'mobile number' : 'email'} yet. Create one below, or go back and check for a typo.` } })}
-            />
-            <Divider />
-            <SocialButtons busy={busy} login={login} />
+            <IdentifierStep identifier={identifier} setIdentifier={setIdentifier} onContinue={() => go('password')} />
             <p className="text-center text-[14px] text-muted-warm">
               New to MarkieSharkie?{' '}
               <button type="button" onClick={() => go('signup')} className={`${linkButton} min-h-11 text-ink-strong`}>
@@ -113,13 +101,30 @@ export default function AuthFlow({ intent, busy, run, login }) {
           </>
         )}
 
-        {view === 'password' && <PasswordStep identifier={identifier} busy={busy} login={login} onForgot={() => go('forgot')} />}
+        {view === 'password' && (
+          <>
+            <PasswordStep identifier={identifier} busy={busy} login={login} onForgot={() => go('forgot')} />
+            <p className="text-center text-[14px] text-muted-warm">
+              New to MarkieSharkie?{' '}
+              <button type="button" onClick={() => go('signup')} className={`${linkButton} min-h-11 text-ink-strong`}>
+                Create an account
+              </button>
+            </p>
+          </>
+        )}
 
         {view === 'signup' && (
-          <>
-            <SignupStep initial={parseIdentifier(identifier)} busy={busy} login={login} onIdentifier={setIdentifier} />
-            <p className="rounded-xl bg-surface px-3 py-2 text-center text-[12px] text-muted-warm">Demo: accounts live in this browser only, and Google / Apple are simulated.</p>
-          </>
+          <SignupStep
+            intent={intent}
+            initial={parseIdentifier(identifier)}
+            busy={busy}
+            login={login}
+            onIdentifier={setIdentifier}
+            onRegistered={(email) => {
+              setIdentifier(email)
+              go('password', { message: { tone: 'success', text: 'Your account is ready. Log in to continue.' } })
+            }}
+          />
         )}
 
         {view === 'forgot' && (
@@ -151,83 +156,18 @@ export default function AuthFlow({ intent, busy, run, login }) {
   )
 }
 
-function Divider() {
-  return (
-    <div className="flex items-center gap-4 text-[14px] text-ink" aria-hidden="true">
-      <span className="h-px flex-1 bg-line" />
-      or
-      <span className="h-px flex-1 bg-line" />
-    </div>
-  )
-}
-
-// Icon-only sign-in buttons, as both brands allow: Google's colour "G" and Apple's black logo on white, same size
-// and shape. The accessible name says what each does.
-const PROVIDER_MARKS = { google: <GoogleMark size={24} />, apple: <AppleMark size={24} /> }
-
-function SocialButtons({ busy, login }) {
-  const [error, setError] = useState('')
-  async function signIn(provider) {
-    setError('')
-    const result = await login(provider, () => signInWithProvider(provider))
-    if (result.error) {
-      if (!result.error.code) console.error('[auth] sign-in failed', result.error)
-      setError(result.error.code ? result.error.message : `We couldn’t log you in with ${AUTH_PROVIDERS[provider].label}. Try again.`)
-    }
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex justify-center gap-4">
-        {['google', 'apple'].map((provider) => {
-          const loading = busy === provider
-          return (
-            <button
-              key={provider}
-              type="button"
-              onClick={() => signIn(provider)}
-              aria-label={`Continue with ${AUTH_PROVIDERS[provider].label}`}
-              aria-disabled={busy ? true : undefined}
-              className={`grid size-[72px] cursor-pointer place-items-center rounded-2xl border border-line bg-white text-apple transition-colors hover:border-outline-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${busy && !loading ? 'cursor-not-allowed opacity-50' : ''} ${loading ? 'cursor-wait' : ''}`}
-            >
-              {loading ? <span aria-hidden="true" className="size-6 animate-spin rounded-full border-2 border-ink-strong border-r-transparent motion-reduce:animate-none" /> : PROVIDER_MARKS[provider]}
-            </button>
-          )
-        })}
-      </div>
-      <p role="status" className="sr-only">
-        {busy === 'google' || busy === 'apple' ? `Logging you in with ${AUTH_PROVIDERS[busy].label}…` : ''}
-      </p>
-      <FormAlert>{error}</FormAlert>
-    </div>
-  )
-}
-
 // Hidden username next to a password, so password managers know which account the password belongs to.
 const HiddenUsername = ({ value }) => <input type="text" name="username" autoComplete="username" value={value} readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
 
-function IdentifierStep({ identifier, setIdentifier, busy, run, onFound, onMissing }) {
+function IdentifierStep({ identifier, setIdentifier, onContinue }) {
   const [touched, setTouched] = useState(false)
-  const [apiError, setApiError] = useState('')
-  const error = apiError || (touched ? identifierError(identifier) : '')
+  const error = touched ? identifierError(identifier) : ''
 
-  async function submit(event) {
+  function submit(event) {
     event.preventDefault()
     setTouched(true)
     if (identifierError(identifier)) return focusId('auth-identifier')
-    const result = await run('lookup', () => lookupAccount(identifier))
-    if (result.cancelled) return
-    if (result.error) {
-      setApiError(result.error.message)
-      return focusId('auth-identifier')
-    }
-    const found = result.value
-    if (!found.exists) return onMissing()
-    if (!found.hasPassword) {
-      const label = AUTH_PROVIDERS[found.provider]?.label ?? 'Google or Apple'
-      setApiError(`This account uses ${label}. Use the ${label} button below.`)
-      return focusId('auth-identifier')
-    }
-    onFound(found)
+    onContinue()
   }
 
   // Mobile numbers are shown in +92 format once the field is left (either format is accepted while typing).
@@ -253,11 +193,7 @@ function IdentifierStep({ identifier, setIdentifier, busy, run, onFound, onMissi
             spellCheck={false}
             placeholder=" "
             value={identifier}
-            readOnly={busy === 'lookup'}
-            onChange={(event) => {
-              setIdentifier(event.target.value)
-              setApiError('')
-            }}
+            onChange={(event) => setIdentifier(event.target.value)}
             onBlur={onBlur}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? 'auth-identifier-error' : undefined}
@@ -273,9 +209,7 @@ function IdentifierStep({ identifier, setIdentifier, busy, run, onFound, onMissi
         </div>
         <FieldError id="auth-identifier-error">{error}</FieldError>
       </div>
-      <SubmitButton loading={busy === 'lookup'} loadingText="Checking…">
-        Continue
-      </SubmitButton>
+      <SubmitButton>Continue</SubmitButton>
     </form>
   )
 }
@@ -295,18 +229,23 @@ function PasswordStep({ identifier, busy, login, onForgot }) {
     if (!password) return focusId('auth-password')
     const result = await login('password', () => logInWithPassword({ identifier, password, remember }))
     if (result.cancelled || !result.error) return
-    const { code, message } = result.error
-    if (code === 'WRONG_PASSWORD') {
+    const { code, message, details } = result.error
+    if (code === 'INVALID_CREDENTIALS') {
+      // Same message for an unknown account and a wrong password (EUC-02 4.1), so it doesn't say which was wrong.
       setError(message)
       const input = document.getElementById('auth-password')
       input?.focus()
       input?.select()
-    } else if (code === 'LOCKED') {
+    } else if (code === 'ACCOUNT_LOCKED') {
       setAlert({ text: message, reset: true })
       focusId('auth-locked-reset')
+    } else if (code === 'VALIDATION_ERROR' && details) {
+      if (details.password) setError(details.password)
+      else setAlert({ text: details.identifier ?? message })
     } else {
-      if (code !== 'NO_ACCOUNT' && code !== 'NO_PASSWORD' && code !== 'CRYPTO_UNAVAILABLE') console.error('[auth] login failed', result.error)
-      setAlert({ text: result.error instanceof Error && code ? message : 'We couldn’t log you in. Try again.' })
+      // ACCOUNT_SUSPENDED, RATE_LIMITED, NETWORK carry a message meant for the person.
+      if (!code) console.error('[auth] login failed', result.error)
+      setAlert({ text: code ? message : 'We couldn’t log you in. Try again.' })
     }
   }
 
@@ -352,14 +291,62 @@ function PasswordStep({ identifier, busy, login, onForgot }) {
   )
 }
 
-const SIGNUP_FIELDS = ['name', 'email', 'phone', 'city', 'password', 'confirm', 'terms']
+// REQ-1: the account type decides the extra fields (server: modules/auth/schemas.js registerBodySchema).
+const ROLES = [
+  { value: 'customer', label: 'Book venues', description: 'Find and book a venue for your event.' },
+  { value: 'venue_owner', label: 'List my venue', description: 'I own or manage a marquee or hall.' },
+  { value: 'decorator', label: 'Offer decor', description: 'I provide event decoration services.' },
+]
+const ROLE_FIELDS = {
+  customer: [],
+  venue_owner: ['businessName', 'contactNumber'],
+  decorator: ['businessName', 'bio'],
+}
+const BASE_FIELDS = ['name', 'email', 'phone', 'city']
+const signupFields = (role) => [...BASE_FIELDS, ...ROLE_FIELDS[role], 'password', 'confirm', 'terms']
+const FIELD_IDS = { businessName: 'auth-business-name', contactNumber: 'auth-contact-number', bio: 'auth-bio' }
+const fieldId = (field) => FIELD_IDS[field] ?? `auth-${field}`
 
-function SignupStep({ initial, busy, login, onIdentifier }) {
+function RoleField({ value, onChange, disabled }) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 block text-[14px] font-medium text-ink-strong">I want to</legend>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {ROLES.map((role) => (
+          <label
+            key={role.value}
+            className="flex min-h-11 cursor-pointer gap-3 rounded-xl border-[1.5px] border-line bg-white px-3.5 py-3 transition-colors hover:border-outline-strong has-checked:border-primary has-checked:bg-surface has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary sm:flex-col sm:gap-1"
+          >
+            <input
+              type="radio"
+              name="role"
+              value={role.value}
+              checked={value === role.value}
+              onChange={() => onChange(role.value)}
+              disabled={disabled}
+              className="mt-0.5 size-4 shrink-0 accent-primary sm:sr-only"
+            />
+            <span>
+              <span className="block text-[15px] font-semibold text-ink-strong">{role.label}</span>
+              <span className="block text-[13px] leading-snug text-muted-warm">{role.description}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function SignupStep({ intent, initial, busy, login, onIdentifier, onRegistered }) {
   const [values, setValues] = useState(() => ({
+    role: intent === 'host' ? 'venue_owner' : 'customer',
     name: '',
     email: initial?.kind === 'email' ? initial.value : '',
     phone: initial?.kind === 'phone' ? formatPkMobileIntl(initial.value) : '',
     city: '',
+    businessName: '',
+    contactNumber: '',
+    bio: '',
     password: '',
     confirm: '',
     terms: false,
@@ -368,12 +355,16 @@ function SignupStep({ initial, busy, login, onIdentifier }) {
   const [submitted, setSubmitted] = useState(false)
   const [apiErrors, setApiErrors] = useState({})
   const [alert, setAlert] = useState('')
+  const fields = signupFields(values.role)
 
   const rules = {
     name: nameError(values.name),
     email: emailError(values.email),
     phone: phoneError(values.phone),
     city: cityError(values.city),
+    businessName: businessNameError(values.businessName),
+    contactNumber: phoneError(values.contactNumber),
+    bio: bioError(values.bio),
     password: passwordError(values.password),
     confirm: !values.confirm ? 'Type your password again.' : values.confirm !== values.password ? 'Passwords don’t match.' : '',
     terms: values.terms ? '' : 'Accept the terms to create an account.',
@@ -393,31 +384,43 @@ function SignupStep({ initial, busy, login, onIdentifier }) {
     event.preventDefault()
     setSubmitted(true)
     setAlert('')
-    const first = SIGNUP_FIELDS.find((field) => rules[field])
-    if (first) return focusId(`auth-${first}`)
-    const result = await login('signup', () => signUp({ name: values.name, email: values.email, phone: values.phone, city: values.city, password: values.password }))
+    const first = fields.find((field) => rules[field])
+    if (first) return focusId(fieldId(first))
+    const { role, name, email, phone, city, businessName, contactNumber, bio, password } = values
+    const result = await login('signup', () => signUp({ role, name, email, phone, city, businessName, contactNumber, bio, password }))
     if (result.cancelled || !result.error) return
     const { code, message, details } = result.error
-    if (code === 'EMAIL_TAKEN' || code === 'PHONE_TAKEN') {
-      const field = code === 'EMAIL_TAKEN' ? 'email' : 'phone'
-      setApiErrors({ [field]: message })
-      focusId(`auth-${field}`)
-    } else if (code === 'VALIDATION' && details) {
-      setApiErrors(details)
-      const field = SIGNUP_FIELDS.find((name) => details[name])
-      if (field) focusId(`auth-${field}`)
+    if (code === 'REGISTERED_LOGIN_FAILED') return onRegistered(email.trim().toLowerCase())
+    // 400 VALIDATION_ERROR and 409 EMAIL_TAKEN / PHONE_TAKEN both carry per-field messages from the server.
+    const shown = details ? Object.fromEntries(Object.entries(details).filter(([field]) => fields.includes(field))) : {}
+    if (Object.keys(shown).length) {
+      setApiErrors(shown)
+      const field = fields.find((name) => shown[name])
+      if (field) focusId(fieldId(field))
+      if (Object.keys(shown).length < Object.keys(details).length) setAlert(message)
     } else {
-      if (code !== 'CRYPTO_UNAVAILABLE') console.error('[auth] signup failed', result.error)
+      // RATE_LIMITED, NETWORK, or anything unexpected.
+      if (!code) console.error('[auth] signup failed', result.error)
       setAlert(code ? message : 'We couldn’t create your account. Try again.')
     }
   }
 
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-4">
+      <RoleField value={values.role} onChange={(role) => setValues((current) => ({ ...current, role }))} disabled={busy === 'signup'} />
       <AuthField id="auth-name" name="name" label="Full name" autoComplete="name" autoCapitalize="words" value={values.name} onChange={set('name')} onBlur={blur('name')} error={errorFor('name')} data-autofocus />
       <AuthField id="auth-email" name="email" label="Email" type="email" inputMode="email" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="name@example.com" value={values.email} onChange={set('email')} onBlur={blur('email')} error={errorFor('email')} />
       <AuthField id="auth-phone" name="phone" label="Mobile number" type="tel" inputMode="tel" autoComplete="tel" placeholder="+92 300 1234567" hint="Pakistani mobile, like +92 300 1234567 or 0300-1234567" value={values.phone} onChange={set('phone')} onBlur={blur('phone')} error={errorFor('phone')} />
       <SelectField id="auth-city" name="city" label="City" autoComplete="address-level2" placeholder="Choose your city" options={CITY_NAMES} value={values.city} onChange={set('city')} onBlur={blur('city')} error={errorFor('city')} />
+      {values.role !== 'customer' && (
+        <AuthField id="auth-business-name" name="organization" label="Business name" autoComplete="organization" value={values.businessName} onChange={set('businessName')} onBlur={blur('businessName')} error={errorFor('businessName')} />
+      )}
+      {values.role === 'venue_owner' && (
+        <AuthField id="auth-contact-number" name="contact-number" label="Business contact number" type="tel" inputMode="tel" autoComplete="off" placeholder="+92 300 1234567" hint="The number customers call about your venue. Can be the same as your mobile." value={values.contactNumber} onChange={set('contactNumber')} onBlur={blur('contactNumber')} error={errorFor('contactNumber')} />
+      )}
+      {values.role === 'decorator' && (
+        <AuthField id="auth-bio" name="bio" label="About your services" autoComplete="off" maxLength={500} placeholder="Stage and floral decor for weddings and mehndis" hint="A short description customers see (up to 500 characters)" value={values.bio} onChange={set('bio')} onBlur={blur('bio')} error={errorFor('bio')} />
+      )}
       <PasswordField id="auth-password" name="new-password" label="Password" autoComplete="new-password" hint="At least 8 characters, with letters and numbers" meter value={values.password} onChange={set('password')} onBlur={blur('password')} error={errorFor('password')} />
       <PasswordField id="auth-confirm" name="confirm-password" label="Confirm password" autoComplete="new-password" value={values.confirm} onChange={set('confirm')} onBlur={blur('confirm')} error={errorFor('confirm')} />
       <CheckboxField

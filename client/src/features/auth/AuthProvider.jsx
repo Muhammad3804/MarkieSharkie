@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useLocation } from 'react-router-dom'
-import { getSessionUser, signOut } from '../../api/auth.js'
-import { subscribeMockStores } from '../../api/mockStore.js'
+import { getAuthSnapshot, onUnauthorized, restoreSession, signOut, subscribeAuth } from '../../api/auth.js'
 import { AuthContext } from './authContext.js'
 import LoginDialog from './LoginDialog.jsx'
 
@@ -24,9 +23,10 @@ function focusAfterLogin() {
 }
 
 // Holds the session and the one login modal. Mounted at the router root (app/router.jsx) so every page and the
-// header share it. The session lives in the auth mock store, so a log in or out in another tab shows up here too.
+// header share it. The session comes from the server (api/auth.js): restored from the refresh cookie on page load,
+// and a log in or out in another tab shows up here too. `ready` is false until that first restore has finished.
 export default function AuthProvider({ children }) {
-  const user = useSyncExternalStore(subscribeMockStores, getSessionUser, () => null)
+  const { ready, user } = useSyncExternalStore(subscribeAuth, getAuthSnapshot, getAuthSnapshot)
   const { pathname } = useLocation()
   // { id, intent, pathname } while the modal is open (id restarts the modal at its first step). It only counts as open on the page it was opened from, so
   // back / forward closes it and the pending action (which belonged to the old page) is dropped on close.
@@ -60,7 +60,13 @@ export default function AuthProvider({ children }) {
   }, [])
   const logout = useCallback(() => signOut(), [])
 
-  const value = useMemo(() => ({ user, openLogin, logout }), [user, openLogin, logout])
+  useEffect(() => {
+    restoreSession()
+  }, [])
+  // The session ended mid-use (refresh token expired or revoked): the user is already cleared, ask them to log in.
+  useEffect(() => onUnauthorized(() => openLogin('default')), [openLogin])
+
+  const value = useMemo(() => ({ ready, user, openLogin, logout }), [ready, user, openLogin, logout])
   return (
     <AuthContext value={value}>
       {children}
