@@ -36,8 +36,10 @@ export const billableGuests = (guests, menu) => Math.max(guests, menu?.minGuests
 // bookings.status (REQ-21) -> what the customer sees. "Expired" is a cancelled request the venue never answered
 // before the event (docs/booking-engine.md: cancelled, reason recorded), not its own status.
 export const EXPIRED_REASON = 'Expired: the venue did not respond before the event date'
+// closedAs comes from the server (srs-alignment #38): why a cancelled booking ended.
 export function bookingStatusView(booking) {
-  if (booking.status === 'cancelled' && booking.cancellationReason === EXPIRED_REASON) return BOOKING_STATUS_VIEWS.expired
+  if (booking.status === 'cancelled' && (booking.closedAs === 'expired' || booking.cancellationReason === EXPIRED_REASON)) return BOOKING_STATUS_VIEWS.expired
+  if (booking.status === 'cancelled' && booking.closedAs === 'rejected') return BOOKING_STATUS_VIEWS.rejected
   return BOOKING_STATUS_VIEWS[booking.status]
 }
 export const BOOKING_STATUS_VIEWS = {
@@ -47,6 +49,7 @@ export const BOOKING_STATUS_VIEWS = {
   completed: { key: 'completed', label: 'Completed', tone: 'neutral' },
   cancelled: { key: 'cancelled', label: 'Cancelled', tone: 'danger' },
   expired: { key: 'expired', label: 'Expired', tone: 'neutral' },
+  rejected: { key: 'rejected', label: 'Declined by venue', tone: 'danger' },
 }
 
 // Short reference for receipts and calls, from the booking UUID: "MS-7F3A9C".

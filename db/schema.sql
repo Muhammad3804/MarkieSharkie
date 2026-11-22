@@ -459,13 +459,28 @@ CREATE TABLE bookings (
   updated_at          timestamptz    NOT NULL DEFAULT now(),                 -- [SRS] audit of status changes
   hall_id             uuid,                                                  -- [Design] nullable: NULL = whole venue / no halls listed
   menu_price_per_head numeric(10, 2) CHECK (menu_price_per_head >= 0),       -- [Design] #35 (migration 006): price snapshot at booking time
+  -- [Design] #38 (migration 009): price + policy snapshot at booking time, why it closed, the recorded refund
+  hall_charge         numeric(12, 2) NOT NULL DEFAULT 0 CHECK (hall_charge >= 0),
+  billable_guests     int CHECK (billable_guests > 0),
+  advance_percent     smallint CHECK (advance_percent BETWEEN 0 AND 100),
+  advance_due         numeric(12, 2) NOT NULL DEFAULT 0 CHECK (advance_due >= 0),
+  policy_snapshot     jsonb,                                                 -- { policy, tiers: [{fromDays,toDays,percent}], note }
+  customer_notes      text CHECK (char_length(customer_notes) <= 500),
+  closed_as           text CHECK (closed_as IN ('cancelled', 'rejected', 'expired')),
+  refund_percent      smallint CHECK (refund_percent BETWEEN 0 AND 100),
+  refund_amount       numeric(12, 2) CHECK (refund_amount >= 0),
+  -- [Design] #38 (migration 010): the booking flow's event details
+  event_name          text CHECK (char_length(event_name) <= 80),
+  host_name           text CHECK (char_length(host_name) <= 60),
+  host_phone          text CHECK (host_phone ~ '^\+923[0-9]{9}$'),
   -- The booked hall must belong to the booked venue (composite FK; skipped when hall_id is NULL).
   CONSTRAINT bookings_hall_same_venue FOREIGN KEY (venue_id, hall_id) REFERENCES halls(venue_id, hall_id),
   CONSTRAINT bookings_party CHECK (
     (source = 'online'  AND customer_id IS NOT NULL)
     OR (source = 'offline' AND client_name IS NOT NULL AND client_phone IS NOT NULL)
   ),
-  CONSTRAINT bookings_cancel_reason CHECK (status <> 'cancelled' OR cancellation_reason IS NOT NULL)
+  CONSTRAINT bookings_cancel_reason CHECK (status <> 'cancelled' OR cancellation_reason IS NOT NULL),
+  CONSTRAINT bookings_closed_as_status CHECK ((status = 'cancelled') = (closed_as IS NOT NULL))
 );
 CREATE TRIGGER bookings_updated_at BEFORE UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- THE double-booking guard: at most one non-cancelled booking per slot, enforced by the database.
@@ -473,6 +488,19 @@ CREATE UNIQUE INDEX bookings_one_active_per_slot ON bookings(slot_id) WHERE stat
 CREATE INDEX bookings_customer_idx ON bookings(customer_id);
 CREATE INDEX bookings_venue_idx ON bookings(venue_id, status);
 CREATE INDEX bookings_hall_idx ON bookings(hall_id);
+
+-- [Design] #38 (migration 009): every booking status change, with who did it and when (NULL actor = system job).
+CREATE TABLE booking_events (
+  event_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id  uuid NOT NULL REFERENCES bookings(booking_id) ON DELETE CASCADE,
+  from_status booking_status,
+  to_status   booking_status NOT NULL,
+  actor_id    uuid REFERENCES users(user_id),
+  actor_role  text NOT NULL CHECK (actor_role IN ('customer', 'venue_owner', 'admin', 'system')),
+  reason      text,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX booking_events_booking_idx ON booking_events (booking_id, created_at);
 
 CREATE TABLE booking_add_ons (
   booking_id uuid           NOT NULL REFERENCES bookings(booking_id) ON DELETE CASCADE,

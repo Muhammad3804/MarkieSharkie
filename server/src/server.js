@@ -1,6 +1,7 @@
 import http from 'node:http'
 import { env } from './config/env.js' // validates env first; exits with a clear message if something is wrong
 import { createApp } from './app.js'
+import { startBookingJobs } from './modules/bookings/jobs.js'
 import { pool } from './db/pool.js'
 import { logger } from './lib/logger.js'
 
@@ -15,6 +16,7 @@ server.listen(env.port, async () => {
   } catch (err) {
     logger.warn({ err }, 'database is not reachable yet; is `docker compose up -d --wait db` running?')
   }
+  startBookingJobs() // REQ-18 hold release + expiring stale requests
 })
 
 let shuttingDown = false

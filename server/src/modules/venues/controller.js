@@ -25,7 +25,7 @@ export async function reviews(req, res) {
 
 export async function availability(req, res) {
   res.set('Cache-Control', 'no-store')
-  res.json(await service.getAvailability(req.params.id, req.query))
+  res.json(await service.getAvailability(req.params.id, req.query, { viewerId: req.user?.id ?? null }))
 }
 
 export async function stats(_req, res) {

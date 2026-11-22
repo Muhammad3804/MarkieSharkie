@@ -238,10 +238,14 @@ export async function fullyBookedDates(db, venueId, { days = 120 } = {}) {
 export async function findSlots(db, venueId, { from, to }) {
   const { rows } = await db.query(
     `SELECT t.slot_id, t.hall_id, to_char(t.date, 'YYYY-MM-DD') AS date, to_char(t.start_time, 'HH24:MI') AS start_time,
-            to_char(t.end_time, 'HH24:MI') AS end_time, t.status
-       FROM time_slots t
+            to_char(t.end_time, 'HH24:MI') AS end_time,
+            -- REQ-18 lazy release: a hold past held_until is free again, whatever the release job has done
+            CASE WHEN t.status = 'held' AND t.held_until <= now() THEN 'available' ELSE t.status::text END AS status,
+            CASE WHEN t.status = 'held' AND t.held_until > now() THEN t.held_by END AS held_by,
+            CASE WHEN t.status = 'held' AND t.held_until > now() THEN t.held_until END AS held_until
+       FROM time_slots t JOIN halls h ON h.hall_id = t.hall_id
       WHERE t.venue_id = $1 AND t.date BETWEEN $2::date AND $3::date
-      ORDER BY t.date, t.start_time, t.hall_id`,
+      ORDER BY t.date, t.start_time, h.sort_order, t.hall_id`,
     [venueId, from, to],
   )
   return rows

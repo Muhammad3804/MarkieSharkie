@@ -3,7 +3,7 @@ import AuthProvider from '../features/auth/AuthProvider.jsx'
 import RequireAuth from '../features/auth/RequireAuth.jsx'
 import RequireRole from '../features/auth/RequireRole.jsx'
 import PublicLayout from './layouts/PublicLayout.jsx'
-import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, ProfileRoute, MyListingsRoute, ListingEditorRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
+import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, ProfileRoute, MyListingsRoute, ListingEditorRoute, OwnerBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
 import Landing from '../pages/Landing.jsx'
 import SearchRedirect from './SearchRedirect.jsx'
 import HostResumeRedirect from './HostResumeRedirect.jsx'
@@ -45,6 +45,15 @@ export const router = createBrowserRouter([
             element: (
               <RequireRole role="venue_owner" intent="host">
                 <MyListingsRoute />
+              </RequireRole>
+            ),
+          },
+          // EUC-15: the owner's booking inbox (confirm / decline requests).
+          {
+            path: '/owner/bookings',
+            element: (
+              <RequireRole role="venue_owner" intent="host">
+                <OwnerBookingsRoute />
               </RequireRole>
             ),
           },

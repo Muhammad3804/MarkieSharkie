@@ -65,16 +65,23 @@ export default function UserMenu({ user, onLogout }) {
             </Link>
           )}
           {user.role === 'venue_owner' && (
-            <Link to="/owner/listings" onClick={() => setOpen(false)} className={itemClass}>
-              My listings
-            </Link>
+            <>
+              <Link to="/owner/bookings" onClick={() => setOpen(false)} className={itemClass}>
+                Booking requests
+              </Link>
+              <Link to="/owner/listings" onClick={() => setOpen(false)} className={itemClass}>
+                My listings
+              </Link>
+            </>
           )}
           <Link to="/me" onClick={() => setOpen(false)} className={itemClass}>
             Profile
           </Link>
-          <Link to="/bookings" onClick={() => setOpen(false)} className={itemClass}>
-            My bookings
-          </Link>
+          {user.role === 'customer' && (
+            <Link to="/bookings" onClick={() => setOpen(false)} className={itemClass}>
+              My bookings
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => {

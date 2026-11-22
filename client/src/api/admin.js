@@ -1,4 +1,3 @@
-import { resetBookings } from './bookings.js'
 import { resetInvitations } from './invitations.js'
 import { createMockStore, latency, notifyStoreChange } from './mockStore.js'
 import { getSessionUser } from './auth.js'
@@ -607,9 +606,8 @@ export async function searchAdmin(q) {
   return [...venues, ...users].slice(0, 8)
 }
 
-// Resets the demo-only admin data (users, disputes, reports) plus the demo bookings and invitations.
+// Resets the demo-only admin data (users, disputes, reports) plus the demo invitations. Bookings are on the server.
 export function resetDemoData() {
-  resetBookings()
   resetInvitations()
   store.reset()
 }

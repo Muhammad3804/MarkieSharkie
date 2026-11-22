@@ -12,8 +12,8 @@ import { formatAmount } from '../../../lib/money.js'
 
 const NEXT_STEPS = [
   ['The venue reviews your request', 'Usually within a day. Your slot stays reserved for you meanwhile.'],
-  ['Pay the advance', 'Once accepted, pay the advance to the venue directly. They record it here.'],
-  ['Your booking is confirmed', 'Then you can send invitations and book décor for the event.'],
+  ['The venue confirms it', 'You’ll see the status change in My bookings. Pay the advance to the venue directly, as agreed with them.'],
+  ['Send your invitations', 'Once it’s confirmed, you can invite your guests from My bookings.'],
 ]
 
 // /venues/:id/book/confirmation?ref=<bookingId>: the request is in, status "Pending owner approval" (REQ-19, REQ-21).

@@ -559,6 +559,22 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Booking engine on the server (EUC-14, 15, 16, 24, SYS-01), Part A of "make 9 mock use cases
+  real".** Migrations **009** (price + policy snapshot, `closed_as`, refund columns, `booking_events`) and **010**
+  (event name, host name, host phone); srs-alignment #38. Server `modules/bookings/` (routes, controller, service,
+  repository, schemas, pricing in paisa, jobs): `POST/DELETE /api/slots/:slotId/hold`, `POST/GET /api/bookings`,
+  `GET /api/bookings/:id`, `POST /api/bookings/:id/cancel`, `GET /api/owner/bookings`,
+  `POST /api/owner/bookings/:id/confirm|reject`; availability reads expired holds as free and marks the caller's own
+  hold (`heldByMe`), halls in display order; a 30 s job in `server.js` releases holds and settles past bookings
+  (also done lazily). Tests: `tests/bookings.test.js` (15: race for a slot, DB last line of defence, hold expiry +
+  job, own-hold swap, price snapshot after menu / add-on edits, validation, confirm / reject / cancel with refund
+  from the snapshot, illegal transitions, expiry, ownership). Client: `api/bookings.js` rewritten on the API (the
+  localStorage store, the per-tab hold tokens and the dev-only owner buttons are gone), `features/booking/hold.js`
+  keeps only a reference to the server hold, the calendar polls every 20 s and shows days without slots as "not open
+  for booking yet", "My bookings" shows declined / expired reasons and the recorded refund, new owner inbox
+  `/owner/bookings` (tabs, venue filter, confirm and decline with a reason). Owners going to /bookings land in their
+  inbox. The booking draft (unsent form) still autosaves to localStorage on purpose.
+
 - 2026-11-22: **Google reviews as a Maps link-out (EUC-30, REQ-43), Part E.** No Google API, key, billing or stored
   Google data (srs-alignment #37, a deviation from REQ-43). Migration **008** (`''` -> NULL and
   `venues_google_maps_url_check`; the column existed since 004; `google_place_id` / `google_reviews` untouched and

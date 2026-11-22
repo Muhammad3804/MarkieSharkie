@@ -29,6 +29,7 @@ export function venuesRouter({ rateLimits }) {
   router.get(
     '/venues/:id/availability',
     limiter,
+    optionalAuthenticate,
     validate({ params: venueIdParamsSchema, query: availabilityQuerySchema }),
     asyncHandler(controller.availability),
   )

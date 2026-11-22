@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { BookingError, cancelBooking, devOwnerAction, listMyBookings } from '../api/bookings.js'
-import { subscribeMockStores } from '../api/mockStore.js'
+import { Link, Navigate } from 'react-router-dom'
+import { useAuth } from '../features/auth/authContext.js'
+import { BookingError, cancelBooking, listMyBookings } from '../api/bookings.js'
 import { listMyInvitationSummaries } from '../api/invitations.js'
 import RsvpSummary from '../features/invitations/RsvpSummary.jsx'
 import StatusBadge from '../features/booking/StatusBadge.jsx'
@@ -12,14 +12,28 @@ import { daysBetween } from '../lib/days.js'
 import { formatEventDate, todayKey } from '../lib/format.js'
 import { formatAmount, formatPaisa, toPaisa } from '../lib/money.js'
 
-// /bookings: the customer's bookings with live status (REQ-21) and cancel with a reason (REQ-22).
-// Logged-in only (RequireAuth); moves into the /app dashboard with role dashboards. Until the owner dashboard is
-// built, development builds show the owner's accept / reject / record-advance actions on each booking.
+// /bookings: the customer's bookings from the server (GET /api/bookings) with live status (REQ-21) and cancel with a
+// reason (REQ-22). The venue owner confirms or rejects from /owner/bookings. Logged-in only (RequireAuth).
 const ACTIVE = ['requested', 'held', 'confirmed']
 const isUpcoming = (booking) => ACTIVE.includes(booking.status)
 const canCancel = (booking, today) => isUpcoming(booking) && daysBetween(today, booking.date) > 0
 
+// Venue owners see their venue's bookings in the owner inbox; other non-customer roles have no bookings.
 export default function MyBookings() {
+  const { user } = useAuth()
+  if (user?.role === 'venue_owner') return <Navigate to="/owner/bookings" replace />
+  if (user && user.role !== 'customer')
+    return (
+      <div className="page-container py-14">
+        <title>My bookings · MarkieSharkie</title>
+        <h1 className="font-heading text-[30px] font-bold text-ink-strong">My bookings</h1>
+        <p className="mt-2 max-w-[52ch] text-[16px] text-muted-warm">Bookings are made with a customer account. Log in as a customer to book a venue.</p>
+      </div>
+    )
+  return <CustomerBookings />
+}
+
+function CustomerBookings() {
   const [state, setState] = useState({ status: 'loading', bookings: [], invites: {} })
   const [version, setVersion] = useState(0)
   const [cancelling, setCancelling] = useState(null)
@@ -28,8 +42,12 @@ export default function MyBookings() {
   const reload = useCallback(() => setVersion((v) => v + 1), [])
   const [today] = useState(todayKey)
 
-  // Refresh after any change here or in another tab (e.g. the venue accepting).
-  useEffect(() => subscribeMockStores(reload), [reload])
+  // The venue may confirm or reject meanwhile: read again when the tab comes back into view.
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && reload()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [reload])
   useEffect(() => {
     let cancelled = false
     Promise.all([listMyBookings(), listMyInvitationSummaries()])
@@ -83,8 +101,8 @@ export default function MyBookings() {
       )}
       {state.status === 'ready' && state.bookings.length > 0 && (
         <>
-          <BookingList title="Upcoming" bookings={upcoming} invites={state.invites} today={today} onCancel={setCancelling} onNotice={setNotice} empty="No upcoming bookings." />
-          <BookingList title="Past and cancelled" bookings={past} invites={state.invites} today={today} onCancel={setCancelling} onNotice={setNotice} empty="Nothing here yet." />
+          <BookingList title="Upcoming" bookings={upcoming} invites={state.invites} today={today} onCancel={setCancelling} empty="No upcoming bookings." />
+          <BookingList title="Past and cancelled" bookings={past} invites={state.invites} today={today} onCancel={setCancelling} empty="Nothing here yet." />
         </>
       )}
 
@@ -94,7 +112,9 @@ export default function MyBookings() {
         onClose={() => setCancelling(null)}
         onCancelled={(booking) => {
           setCancelling(null)
-          setNotice(`${bookingReference(booking.bookingId)} cancelled. The venue has been told.`)
+          const refund = Number(booking.refundAmount) > 0 ? ` Refund recorded: ${formatAmount(booking.refundAmount, 'Rs.')} (${booking.refundPercent}%), paid back by the venue.` : ''
+          setNotice(`${bookingReference(booking.bookingId)} cancelled. The venue sees it in their bookings.${refund}`)
+          reload()
           // The Cancel button that opened the dialog is gone (the booking moved lists), so focus the notice.
           requestAnimationFrame(() => noticeRef.current?.focus())
         }}
@@ -104,7 +124,7 @@ export default function MyBookings() {
   )
 }
 
-function BookingList({ title, bookings, invites, today, onCancel, onNotice, empty }) {
+function BookingList({ title, bookings, invites, today, onCancel, empty }) {
   const id = useId()
   return (
     <section aria-labelledby={id} className="mt-10">
@@ -116,7 +136,7 @@ function BookingList({ title, bookings, invites, today, onCancel, onNotice, empt
       ) : (
         <ul className="mt-4 grid gap-4">
           {bookings.map((booking) => (
-            <BookingCard key={booking.bookingId} booking={booking} invite={invites[booking.bookingId]} today={today} onCancel={onCancel} onNotice={onNotice} />
+            <BookingCard key={booking.bookingId} booking={booking} invite={invites[booking.bookingId]} today={today} onCancel={onCancel} />
           ))}
         </ul>
       )}
@@ -124,7 +144,7 @@ function BookingList({ title, bookings, invites, today, onCancel, onNotice, empt
   )
 }
 
-function BookingCard({ booking, invite, today, onCancel, onNotice }) {
+function BookingCard({ booking, invite, today, onCancel }) {
   const slot = slotPreset(booking.slot)
   const reference = bookingReference(booking.bookingId)
   return (
@@ -185,19 +205,23 @@ function BookingCard({ booking, invite, today, onCancel, onNotice }) {
           </button>
         )}
       </div>
-      {import.meta.env.DEV && <DevOwnerActions booking={booking} onNotice={onNotice} />}
     </li>
   )
 }
 
 function StatusNote({ booking }) {
   const text = {
-    requested: 'Waiting for the venue to accept. Your slot is reserved meanwhile.',
+    requested: 'Waiting for the venue to confirm. Your slot is reserved meanwhile.',
     held: `Accepted. Pay the advance of ${formatAmount(booking.advanceDue, 'Rs.')} to the venue to confirm.`,
-    confirmed: `Advance of ${formatAmount(booking.advanceAmount, 'Rs.')} recorded. You’re all set.`,
+    confirmed: `Confirmed by the venue. The advance is ${formatAmount(booking.advanceDue, 'Rs.')} (${booking.advancePercent}%), paid to the venue directly.`,
     completed: 'This event has taken place.',
   }[booking.status]
-  if (booking.status === 'cancelled') return <p className="mt-3 text-[14px] text-muted-warm">Reason: {booking.cancellationReason}</p>
+  if (booking.status === 'cancelled') {
+    const refund = Number(booking.refundAmount) > 0 ? ` Refund recorded: ${formatAmount(booking.refundAmount, 'Rs.')} (${booking.refundPercent}%).` : ''
+    const lead = { rejected: 'The venue declined this request.', expired: 'The venue didn’t answer before the event date.', cancelled: 'You cancelled this booking.' }[booking.closedAs] ?? 'Cancelled.'
+    const reason = booking.closedAs === 'expired' ? '' : ` Reason: ${(booking.cancellationReason ?? '').replace(/^Rejected by the venue: /, '')}`
+    return <p className="mt-3 text-[14px] text-muted-warm">{lead}{reason}{refund}</p>
+  }
   return text ? <p className="mt-3 text-[14px] text-muted-warm">{text}</p> : null
 }
 
@@ -206,41 +230,6 @@ const primaryButton =
 
 const secondaryButton =
   'inline-flex min-h-11 cursor-pointer items-center rounded-xl border border-line px-4 text-[14px] font-semibold text-ink-strong transition-colors hover:border-ink-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
-
-// DEV ONLY: stands in for the owner dashboard (REQ-21, EUC-15) so the whole status path can be demoed.
-function DevOwnerActions({ booking, onNotice }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const actions = { requested: [['accept', 'Accept request'], ['reject', 'Reject']], held: [['advance', 'Record advance'], ['reject', 'Reject']] }[booking.status]
-  if (!actions) return null
-  async function run(action, label) {
-    setBusy(true)
-    setError('')
-    try {
-      await devOwnerAction(booking.bookingId, action)
-      onNotice(`Owner (dev): ${label.toLowerCase()} done for ${bookingReference(booking.bookingId)}.`)
-    } catch (err) {
-      setError(err instanceof BookingError ? err.message : 'That didn’t work.')
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-info/40 bg-info-bg/60 px-3 py-2">
-      <span className="text-[12px] font-semibold uppercase text-info">Owner (dev only)</span>
-      {actions.map(([action, label]) => (
-        <button key={action} type="button" disabled={busy} onClick={() => run(action, label)} className="min-h-9 cursor-pointer rounded-lg border border-info/40 bg-white px-3 text-[13px] font-medium text-info hover:bg-info-bg focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60">
-          {label}
-        </button>
-      ))}
-      {error && (
-        <span role="alert" className="text-[13px] text-danger">
-          {error}
-        </span>
-      )}
-    </div>
-  )
-}
 
 // Cancel with a required reason (REQ-22). Shows what the venue's policy returns; the policy never blocks cancelling.
 function CancelDialog({ booking, today, onClose, onCancelled }) {
@@ -261,7 +250,8 @@ function CancelDialog({ booking, today, onClose, onCancelled }) {
   }, [booking])
 
   const daysBefore = booking ? daysBetween(today, booking.date) : 0
-  const advancePaid = booking ? toPaisa(booking.advanceAmount) : 0
+  // Same rule as the server (bookings/pricing.js): a % of the advance, only once the venue has confirmed.
+  const advancePaid = booking && booking.status === 'confirmed' ? toPaisa(booking.advanceDue) : 0
   const refund = booking ? refundFor(booking.bookingTerms, advancePaid, daysBefore) : null
   const busy = state.status === 'working'
 
@@ -303,7 +293,7 @@ function CancelDialog({ booking, today, onClose, onCancelled }) {
           <div className="rounded-2xl bg-blush p-4 text-[15px]">
             <p className="font-semibold text-ink-strong">{policyInfo(booking.bookingTerms).label} cancellation policy</p>
             {advancePaid === 0 ? (
-              <p className="mt-1 text-ink">You haven’t paid an advance yet, so there’s nothing to refund.</p>
+              <p className="mt-1 text-ink">The venue hasn’t confirmed yet, so no advance is due and there’s nothing to refund.</p>
             ) : (
               <p className="mt-1 text-ink">
                 Cancelling {daysBefore} day{daysBefore === 1 ? '' : 's'} before the event returns {refund.percent}%: <strong className="tabular-nums">{formatPaisa(refund.paisa, 'Rs.')}</strong> of your {formatPaisa(advancePaid, 'Rs.')} advance.

@@ -128,7 +128,7 @@ export default function BookingSidebar({ venue, booking, onChange, availability 
     setChecking(true)
     const selection = { hallId: hall.hallId, date: booking.date, slot: booking.slot }
     try {
-      const result = await checkSlot({ venueId: venue.id, ...selection })
+      const result = await checkSlot({ venueId: venue.id, ...selection, halls: venue.halls })
       if (!result.available) {
         setStatus({ key: statusKey, kind: 'taken', message: takenMessage(result.status, hall, slot, booking.date), alternatives: result.alternatives })
         return

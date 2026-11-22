@@ -32,9 +32,9 @@ Protect the core differentiators first: booking engine (hold + no double booking
 
 ## Phase 4: Booking engine (REQ-16 to REQ-23, EUC-13 to 17)  ← most important
 - [ ] Slots CRUD, block/unblock
-- [ ] Hold / release / expire job, Socket.io live calendar
-- [ ] Book, owner accept/confirm/reject, cancel, offline booking
-- [ ] Concurrency tests from `docs/booking-engine.md`
+- [ ] Hold / release / expire job (done 2026-11-22), Socket.io live calendar (not yet: the calendar polls)
+- [ ] Book, owner confirm/reject, cancel (done 2026-11-22, #38), offline booking
+- [x] Concurrency tests from `docs/booking-engine.md` (`tests/bookings.test.js`)
 
 ## Phase 5: Quotations, payments, add-ons (REQ-24 to 26, 34, 35, EUC-18, 19, 24)
 - [ ] Quotation rounds + expiry job

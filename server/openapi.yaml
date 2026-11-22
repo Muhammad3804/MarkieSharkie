@@ -34,6 +34,8 @@ servers:
   - url: http://localhost:4000/api
     description: Local development
 tags:
+  - name: Bookings
+    description: Holds, bookings, cancellations and owner decisions (EUC-14, 15, 16, 24; docs/booking-engine.md).
   - name: Health
   - name: Auth
     description: UC-01 Register, UC-02 Log In, UC-03 Log Out (EUC-01, EUC-02)
@@ -745,6 +747,277 @@ paths:
                       averageRating: { type: [number, 'null'] },
                     },
                 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /slots/{slotId}/hold:
+    post:
+      tags: [Bookings]
+      operationId: holdSlot
+      summary: 'Hold a slot for the hold time (REQ-18, EUC-14)'
+      description: |
+        Customers only. Locks the slot row (SELECT ... FOR UPDATE). 409 SLOT_UNAVAILABLE when it is held by someone else or\nbooked, with details.alternatives { dates, halls } (EUC-14 2.1); 409 PAST_DATE; 404 when the venue isn't bookable.\nHold length: SLOT_HOLD_MINUTES (default 10). An expired hold counts as free.
+      x-srs: [REQ-16, REQ-18, REQ-20, EUC-14]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: slotId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '201':
+          description: Held (an own running hold is returned unchanged; other holds of this customer at the venue are released).
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      hold:
+                        {
+                          type: object,
+                          properties:
+                            {
+                              slotId: { type: string },
+                              hallId: { type: string },
+                              date: { type: string },
+                              slotType: { type: string },
+                              heldUntil: { type: string, format: date-time },
+                            },
+                        },
+                    },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Bookings]
+      operationId: releaseHold
+      summary: 'Give a held slot back'
+      x-srs: [REQ-18]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: slotId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204':
+          description: Released (no-op when it isn’t this customer’s hold).
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /bookings:
+    post:
+      tags: [Bookings]
+      operationId: createBooking
+      summary: 'Book a held slot (EUC-14, EUC-24, SYS-01)'
+      description: |
+        The customer's running hold is required (409 HOLD_EXPIRED). Checks capacity, minimum guests, a live menu and\navailable add-ons (400 with field errors). The server prices it in paisa and stores a snapshot (menu price per\nguest, billable guests, each add-on's unit price, hall charge, total, advance %, advance due, cancellation\npolicy), so later menu or price edits never change it. A race lost at the database is 409 SLOT_TAKEN.
+      x-srs: [REQ-19, REQ-20, REQ-34, REQ-35, EUC-14, EUC-24]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingRequest' }
+      responses:
+        '201':
+          description: Booking created as requested; the slot is booked.
+          content:
+            application/json:
+              schema: { type: object, properties: { booking: { $ref: '#/components/schemas/Booking' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [Bookings]
+      operationId: listMyBookings
+      summary: "The customer's bookings"
+      x-srs: [REQ-21, EUC-14]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: Newest event first.
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      data: { type: array, items: { $ref: '#/components/schemas/Booking' } },
+                      total: { type: integer },
+                    },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /bookings/{id}:
+    get:
+      tags: [Bookings]
+      operationId: getBooking
+      summary: 'One booking with its status history'
+      x-srs: [REQ-21]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 'For its customer or the owner of its venue (the owner also gets the customer’s contact). Anyone else: 404.'
+          content:
+            application/json:
+              schema: { type: object, properties: { booking: { $ref: '#/components/schemas/Booking' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /bookings/{id}/cancel:
+    post:
+      tags: [Bookings]
+      operationId: cancelBooking
+      summary: 'Cancel a booking (REQ-22, EUC-16)'
+      x-srs: [REQ-22, EUC-16]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '200':
+          description: Cancelled; the slot is free; refund % and amount recorded from the policy snapshot (no money moves).
+          content:
+            application/json:
+              schema: { type: object, properties: { booking: { $ref: '#/components/schemas/Booking' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/bookings:
+    get:
+      tags: [Bookings]
+      operationId: listOwnerBookings
+      summary: 'Booking requests and bookings for my venues (EUC-15)'
+      x-srs: [REQ-21, EUC-15]
+      security:
+        - bearerAuth: []
+      parameters:
+        - {
+            in: query,
+            name: status,
+            required: false,
+            schema: { type: string, enum: [requested, confirmed, closed, all] },
+          }
+        - { in: query, name: venueId, required: false, schema: { type: string, format: uuid } }
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: Rows with the customer’s contact, and counts per tab.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/bookings/{id}/confirm:
+    post:
+      tags: [Bookings]
+      operationId: confirmBooking
+      summary: 'Confirm a booking request (REQ-21)'
+      x-srs: [REQ-21, EUC-15]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '200':
+          description: Confirmed.
+          content:
+            application/json:
+              schema: { type: object, properties: { booking: { $ref: '#/components/schemas/Booking' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /owner/bookings/{id}/reject:
+    post:
+      tags: [Bookings]
+      operationId: rejectBooking
+      summary: 'Reject a booking request with a reason (EUC-15 3.1)'
+      x-srs: [REQ-21, EUC-15]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '200':
+          description: Rejected (status cancelled, closedAs rejected); the slot is free.
+          content:
+            application/json:
+              schema: { type: object, properties: { booking: { $ref: '#/components/schemas/Booking' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -2235,6 +2508,37 @@ components:
         Numbers are sent as text like the form fields. capacity, base price and venue type are computed by the server.
       required: [venue, halls, venueImages, menuPackages, bookingRules]
       additionalProperties: true
+    BookingRequest:
+      type: object
+      required: [slotId, eventType, guestCount, eventName, hostName, hostPhone]
+      properties:
+        slotId: { type: string, format: uuid }
+        eventType: { $ref: '#/components/schemas/EventType' }
+        guestCount: { type: integer }
+        menuPackageId: { type: [string, 'null'], format: uuid }
+        addOns:
+          {
+            type: array,
+            items:
+              {
+                type: object,
+                properties:
+                  { addOnId: { type: string, format: uuid }, quantity: { type: integer, minimum: 0, maximum: 4 } },
+              },
+          }
+        eventName: { type: string, maxLength: 80 }
+        hostName: { type: string, maxLength: 60 }
+        hostPhone: { $ref: '#/components/schemas/PkMobileInput' }
+        specialRequests: { type: string, maxLength: 500 }
+    Booking:
+      type: object
+      description: |
+        bookingId, venue / hall / date / slotType / times, status (requested, held, confirmed, completed, cancelled) and
+        closedAs (cancelled, rejected, expired) when cancelled, event details, guestCount and billableGuests, the price
+        snapshot (menuPricePerHead, hallCharge, addOns with unitPrice, totalAmount, advancePercent, advanceDue), the
+        policy snapshot, cancellationReason, refundPercent / refundAmount, events (history) on the detail, and the
+        customer's contact for the venue owner. Money is a decimal string.
+      additionalProperties: true
     ReviewDecision:
       type: object
       required: [reason]
@@ -2281,7 +2585,7 @@ components:
       required: [name, pricePerHead, minGuests, sections]
       properties:
         name: { type: string }
-        description: { type: string }
+        description: '{ type: string }'
         pricePerHead: { type: string, description: 'Rupees as text, e.g. "2500" or "2500.50".' }
         minGuests: { type: string }
         isCustomizable: { type: boolean }
@@ -2302,7 +2606,7 @@ components:
       properties:
         type: { type: string, enum: [sound_system, smd] }
         name: { type: string }
-        description: { type: string }
+        description: '{ type: string }'
         price: { type: string }
     SubmittedVenue:
       type: object
@@ -2402,6 +2706,11 @@ components:
         - TOO_MANY_MENUS
         - TOO_MANY_ADD_ONS
         - ALREADY_REPORTED
+        - SLOT_UNAVAILABLE
+        - SLOT_TAKEN
+        - HOLD_EXPIRED
+        - PAST_DATE
+        - INVALID_TRANSITION
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR

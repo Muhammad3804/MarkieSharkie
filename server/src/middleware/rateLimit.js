@@ -22,6 +22,8 @@ export const AUTH_RATE_LIMITS = Object.freeze({
   detectionTest: { windowMs: 60 * MINUTE, limit: 30 },
   // REQ-44: reporting reviews (one report per user per review is also enforced by the database).
   reviewReports: { windowMs: 60 * MINUTE, limit: 30 },
+  // Holds, bookings, cancels and owner decisions (EUC-14 to 16), per IP.
+  bookingWrite: { windowMs: 15 * MINUTE, limit: 300 },
 })
 
 const RATE_LIMITED_MESSAGES = {

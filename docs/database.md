@@ -139,6 +139,12 @@ Rules enforced in services (need data from several tables): review only after `c
 - **008 google-maps-url-check** (#37): `venues.google_maps_url` already existed (004); 008 turns empty strings into
   NULL and adds `venues_google_maps_url_check` (NULL or `https://…` ≤ 500 chars). `google_place_id` and the
   `google_reviews` table (ERD) stay untouched and unused. Down section tested.
+- **009 booking-engine** (#38): price and policy snapshot on `bookings` (`hall_charge`, `billable_guests`,
+  `advance_percent`, `advance_due`, `policy_snapshot` jsonb), `customer_notes`, `closed_as` (cancelled / rejected /
+  expired, required exactly when status = cancelled), `refund_percent`, `refund_amount`, and `booking_events`
+  (from / to status, actor, role, reason, time). Down section tested.
+- **010 booking-contact** (#38): `bookings.event_name`, `host_name`, `host_phone` (the booking flow's event details;
+  the host may not be the account holder). Down section tested.
 - Still pending: #21 invitation `[Design]` columns and `rsvps.party_size` (with the invitations phase).
 - **Files:** `venue_images.image_url`, `halls.floor_plan_url` and `walkthrough_assets.file_url` hold the path
   `/uploads/<key>` (the API adds its origin). `media_uploads` tracks every upload and which venue it was attached to.

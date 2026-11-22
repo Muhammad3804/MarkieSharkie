@@ -14,6 +14,7 @@ const MyBookings = lazy(() => import('../pages/MyBookings.jsx'))
 const Profile = lazy(() => import('../pages/Profile.jsx'))
 const MyListings = lazy(() => import('../pages/owner/MyListings.jsx'))
 const ListingEditor = lazy(() => import('../pages/owner/ListingEditor.jsx'))
+const OwnerBookings = lazy(() => import('../pages/owner/OwnerBookings.jsx'))
 const InvitationBuilder = lazy(() => import('../pages/InvitationBuilder.jsx'))
 const GuestInvitation = lazy(() => import('../pages/GuestInvitation.jsx'))
 
@@ -109,6 +110,14 @@ export function ListingEditorRoute() {
   return (
     <Suspense fallback={<div aria-busy="true" aria-label="Loading your listing" className="min-h-[60vh]" />}>
       <ListingEditor />
+    </Suspense>
+  )
+}
+
+export function OwnerBookingsRoute() {
+  return (
+    <Suspense fallback={<div aria-busy="true" aria-label="Loading bookings" className="min-h-[60vh]" />}>
+      <OwnerBookings />
     </Suspense>
   )
 }

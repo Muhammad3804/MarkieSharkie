@@ -103,7 +103,7 @@ Three ways, all needed:
 ## Owner actions
 
 - **Block/unblock** (REQ-17, EUC-13): lock slot row; only `available -> blocked` and `blocked -> available`.
-- **Confirm/reject request** (REQ-21, EUC-15): lock booking + slot. Reject = booking `cancelled` (reason "Rejected by venue"), slot `available`, notify customer.
+- **Confirm/reject request** (REQ-21, EUC-15, built 2026-11-22): lock slot, then booking. Confirm = `requested → confirmed` (srs-alignment #38: booking `held` waits for payments). Reject = `cancelled`, `closed_as = 'rejected'`, reason required ("Rejected by the venue: …"), slot `available`. TODO(notifications): notify the customer.
 - **Offline booking** (REQ-23, EUC-17): lock slot; must be `available` (EUC-17 6.1 otherwise 409 "slot taken, pick another"); insert booking `source='offline'`, `status='confirmed'`, `client_name`, `client_phone`; slot `booked`.
 - **Deactivated venue** (REQ-5, srs-alignment #35): `venues.is_active = false` -> no new holds, requests or
   quotations (check it with the venue row locked). Confirmed bookings stay valid; requested / held ones stay with the
@@ -131,7 +131,7 @@ Balance is always computed, never stored separately. No payment gateway, ever.
 
 ## Cancellation (REQ-22, EUC-16)
 
-Customer can cancel `requested | held | confirmed` bookings when `slot.date > today`. Reason required (DB check). Slot back to `available`. Notify owner. `completed` → 409.
+Customer can cancel `requested | held | confirmed` bookings when `slot.date > today`. Reason required (DB check). Slot back to `available`. `completed` → 409. Built 2026-11-22: `closed_as = 'cancelled'`; `refund_percent` from `policy_snapshot` tiers by days before the event; `refund_amount` = that % of `advance_due`, only if the booking was `confirmed` (recorded, never paid out). TODO(notifications): notify the owner.
 
 ## Scheduled jobs
 
@@ -144,6 +144,8 @@ Customer can cancel `requested | held | confirmed` bookings when `slot.date > to
 | refresh-google-reviews | daily | re-fetch for venues with `google_place_id` |
 
 Use `node-cron` in the API process for the FYP. Jobs must be idempotent (safe to run twice).
+
+**Built (2026-11-22):** `modules/bookings/jobs.js` runs every 30 s in the API process (`server.js`, not in tests): releases expired holds, turns unanswered `requested` bookings whose date has passed into `cancelled` / `closed_as = 'expired'`, and `confirmed` ones into `completed`, each with a `booking_events` row (actor `system`). The same settle runs lazily before every booking read and change, so correctness never waits for the timer.
 
 ## Tests that must exist
 

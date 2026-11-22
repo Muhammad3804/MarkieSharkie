@@ -160,7 +160,8 @@ const todayKarachi = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ka
 const addDays = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10)
 
 // Slots per hall (REQ-16 statuses) for the availability calendar. At most 92 days per request.
-export async function getAvailability(id, { from, to }) {
+// viewerId (optional login): the customer's own running hold comes back as heldByMe with its end time.
+export async function getAvailability(id, { from, to }, { viewerId = null } = {}) {
   if (!UUID.test(id)) throw notPublic()
   const base = await repo.findVenueBase(pool, id)
   if (!base || base.approval_status !== 'approved' || !base.is_active) throw notPublic()
@@ -178,6 +179,7 @@ export async function getAvailability(id, { from, to }) {
       endTime: slot.end_time,
       slotType: slot.start_time < '17:00' ? 'lunch' : 'dinner',
       status: slot.status,
+      ...(viewerId && slot.held_by === viewerId ? { heldByMe: true, heldUntil: slot.held_until.toISOString() } : {}),
     })
   }
   return { venueId: id, from: start, to: end, halls: [...halls].map(([hallId, list]) => ({ hallId, slots: list })) }

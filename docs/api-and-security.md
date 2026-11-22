@@ -21,8 +21,8 @@
 | Venues (public) | **Built:** `GET /venues/landing`, `GET /venues` (search, saves a customer's history), `GET /venues/:id`, `GET /venues/:id/availability?from&to`, `GET /venues/:id/reviews` (platform reviews + rating, hidden ones left out), `GET /stats`. Planned: `POST /venues/compare` | public (optional customer token) |
 | Recommendations | `GET /recommendations` | customer |
 | Owner venues | **Built:** `GET/PUT/DELETE /owner/draft`, `POST /owner/uploads` (multipart), `GET/POST /owner/venues`, `GET/PUT /owner/venues/:id` (resubmit), `POST /owner/venues/:id/images/verify`; live venues (2026-11-22, #35): `PUT /owner/venues/:id/edit`, `GET/DELETE /owner/venues/:id/revision`, `POST /owner/venues/:id/deactivate|reactivate`, `POST /owner/venues/:id/menus`, `PUT/DELETE /owner/venues/:id/menus/:menuId`, `POST /owner/venues/:id/add-ons`, `PUT/DELETE /owner/venues/:id/add-ons/:addOnId`. Planned: stage photos, slots (create/block/unblock) | venue_owner (own venues; another owner's id is 404) |
-| Holds and bookings | `POST /slots/:id/hold`, `DELETE /slots/:id/hold`, `POST /bookings`, `POST /bookings/:id/cancel`, `PUT /bookings/:id/add-ons`, `PUT /bookings/:id/menu` | customer |
-| Owner bookings | `GET /owner/bookings`, `POST /owner/bookings/:id/accept|confirm|reject`, `POST /owner/bookings/offline` | venue_owner |
+| Holds and bookings | **Built (2026-11-22, #38):** `POST /slots/:slotId/hold`, `DELETE /slots/:slotId/hold`, `POST /bookings` (menu + add-ons chosen up front, EUC-24), `GET /bookings`, `GET /bookings/:id` (customer or the venue's owner), `POST /bookings/:id/cancel`. Planned: `PUT /bookings/:id/add-ons` (change after booking) | customer |
+| Owner bookings | **Built:** `GET /owner/bookings`, `POST /owner/bookings/:id/confirm|reject`. Planned: `POST /owner/bookings/offline` (EUC-17), accept + advance with payments | venue_owner (own venues; others 404) |
 | Quotations | `POST /quotations`, `POST /quotations/:id/accept|reject|counter`, `GET /quotations` | customer, venue_owner |
 | Payments | `POST /bookings/:id/payments` (owner), `GET /bookings/:id/payments` (both) | |
 | Chatbot | `POST /chat/sessions`, `POST /chat/sessions/:id/messages`, `GET /chat/sessions` | customer |
@@ -90,6 +90,11 @@
   archived and replaced, never changed. A hall with bookings can't be removed. Every id in an edit (photos, files,
   packages, add-ons, uploads) must belong to that venue / owner. Owner actions go to `owner_activity_log`; admin
   decisions to `admin_audit_log`.
+- **Bookings (EUC-14, 15, 16, 24, SYS-01, srs-alignment #38):** customers hold and book, the venue's owner confirms
+  or rejects, the customer cancels. A booking is visible only to its customer and its venue's owner (404 for
+  anyone else); the owner also sees the customer's contact. Every change locks the slot row, then the booking row;
+  a lost race is 409 (`SLOT_UNAVAILABLE`, `SLOT_TAKEN`, `HOLD_EXPIRED`), an illegal change 409 `INVALID_TRANSITION`.
+  Prices are computed on the server in paisa and snapshotted. Writes are limited to 300 per 15 min per IP.
 - **Review moderation (REQ-44, EUC-34, srs-alignment #36):** reporting needs a login (admins can't; not your own
   review, 403; once per user per review, 409 `ALREADY_REPORTED`; 30 an hour per IP) and only works for reviews on a
   public venue page. A report sets `reviews.is_flagged`. The admin hides (soft: `removed_at`, `removed_by`,

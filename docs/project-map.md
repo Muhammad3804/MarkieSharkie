@@ -101,6 +101,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `pages/VenueDetail.jsx` | Venue page with 5 tabs: Overview, Halls, Menu, Availability, Reviews, plus the booking panel. | `useVenue`, `components/venue/*` |
 | `features/venues/useVenue.js` | Hook: loads one venue by id (loading / not-found / error). | `api/venues.js` |
 | `components/venue/*` | Pieces of the venue page: `Gallery` (hero photos), `HallCard` (size, floor plan, zones, "View in 3D"), `MenuCard` (dishes by section), `AvailabilityCalendar`, `BookingSidebar` (date/time/hall/guests/menu + live total), `ReviewsSection`, `LocationSection` (Google Maps embed), `Lightbox` (full-screen photos)... | `VenueDetail` |
+| `pages/owner/OwnerBookings.jsx` | `/owner/bookings`: the owner's booking inbox (EUC-15): confirm, decline with a reason. | `api/bookings.js` |
 | `pages/owner/MyListings.jsx` | `/owner/listings`: the owner's listings with status, edit, withdraw edits, deactivate / reactivate. | `api/owner.js` |
 | `pages/owner/ListingEditor.jsx` | `/owner/listings/:id/edit/:section`: edit a live venue with the wizard's steps; says what goes live and what needs approval. | `api/owner.js`, `features/host/steps/*` |
 | `pages/admin/Reviews.jsx` | Admin review moderation (REQ-44): reported / hidden / all, hide, keep, restore, delete with a reason. | `api/admin.js` |
@@ -119,9 +120,8 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `api/admin.js` | **Real:** approvals, review, decisions, live / suspended venues, flagged photos, KPIs, venue / photo audit log. **Still mock** in localStorage `markiesharkie:admin`: users, disputes, listing reports | `/api/admin/users`, disputes and reports modules |
 | `features/host/photoStore.js` | Files stay in **IndexedDB** `markiesharkie-host` until submit, which uploads them | (done; the files live on the server after submit) |
 | `features/wishlist/wishlist.js` | **localStorage** `markiesharkie:wishlist` | Customer wishlist API (not in the SRS, decide if we keep it) |
-| `api/bookings.js` | Slots (per hall), holds, booking requests, cancels and owner decisions in **localStorage** `markiesharkie:bookings`; seeded booked slots from `bookedDates`; demo customer; `navigator.locks` instead of `FOR UPDATE` | `/api/venues/:id/slots`, `/api/venues/:id/slots/:slotId/hold`, `/api/bookings`, owner booking endpoints + Socket.io `slot:updated` |
-| `features/booking/draft.js` | Booking draft in **localStorage** `markiesharkie:booking-drafts`, hold ref per tab in **sessionStorage** | Client-only draft is fine; the hold comes from the API |
-| `pages/MyBookings.jsx` | "Owner (dev only)" accept / reject / record advance buttons | Owner dashboard (`/owner`) |
+| `api/bookings.js` | **Real (2026-11-22):** availability, holds, bookings, cancel, owner inbox / confirm / reject on `/api` (Socket.io `slot:updated` still to do; the calendar polls) | (done) |
+| `features/booking/draft.js` | Booking draft (unsent form) in **localStorage** `markiesharkie:booking-drafts`, a reference to the server hold per tab in **sessionStorage** | (by design; the hold itself is on the server) |
 | `api/invitations.js` | Invitations, self-registered guests and RSVPs in **localStorage** `markiesharkie:invitations`; card carried in the link's `#c=` hash; demo customer | `POST /bookings/:id/invitation`, `GET /invitations/:id/rsvp-summary`, `GET /i/:token`, `POST /i/:token/rsvp` |
 | `components/venue/BookingSidebar.jsx` | "Report this listing" goes to the admin mock store | Report endpoint |
 | `components/venue/ReviewsSection.jsx` | Mock reviews and the 6 rating categories (categories aren't in the ERD) | Reviews API + Google reviews adapter |

@@ -63,11 +63,13 @@ const slotWords = (perSlot, label) => (perSlot.free === perSlot.total ? `${label
 
 // Memoized: a two-month view renders ~60 days, and typing in the booking panel shouldn't re-render them.
 const Day = memo(function Day({ dayKey, today, info, selected, tabbable, onSelect, onFocusDay, compact }) {
-  const past = info.state === 'past'
+  // 'closed' = the venue hasn't opened that date for booking yet (no slots); not selectable, like a past date.
+  const closed = info.state === 'closed'
+  const past = info.state === 'past' || closed
   const full = info.state === 'full'
   const isToday = dayKey === today
   const known = info.state !== 'unknown'
-  const detail = past ? 'past date' : !known ? 'loading availability' : `${DAY_STATES[info.state].label}: ${SLOT_PRESETS.map((s) => slotWords(info.perSlot[s.value], s.label)).join(', ')}`
+  const detail = closed ? 'not open for booking yet' : past ? 'past date' : !known ? 'loading availability' : `${DAY_STATES[info.state].label}: ${SLOT_PRESETS.map((s) => slotWords(info.perSlot[s.value], s.label)).join(', ')}`
   return (
     <button
       type="button"
