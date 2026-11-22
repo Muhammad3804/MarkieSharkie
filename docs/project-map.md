@@ -101,6 +101,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `pages/VenueDetail.jsx` | Venue page with 5 tabs: Overview, Halls, Menu, Availability, Reviews, plus the booking panel. | `useVenue`, `components/venue/*` |
 | `features/venues/useVenue.js` | Hook: loads one venue by id (loading / not-found / error). | `api/venues.js` |
 | `components/venue/*` | Pieces of the venue page: `Gallery` (hero photos), `HallCard` (size, floor plan, zones, "View in 3D"), `MenuCard` (dishes by section), `AvailabilityCalendar`, `BookingSidebar` (date/time/hall/guests/menu + live total), `ReviewsSection`, `LocationSection` (Google Maps embed), `Lightbox` (full-screen photos)... | `VenueDetail` |
+| `pages/Profile.jsx` | `/me` profile (EUC-03): edit details per role, past searches, my bookings; admins read-only. | `api/profile.js`, `features/profile/rules.js` |
 | `pages/VenuePhotos.jsx` | Full photo gallery per hall, opens the lightbox. | `useVenue`, `Lightbox` |
 | `features/venues/HallModel3D.jsx` | 3D room built from a hall's length × width × ceiling, with stage/entrance/tables (Three.js). Lazy-loaded. | `HallCard`, wizard walkthrough step |
 | `features/venues/mockVenues.js` | Not read at runtime any more; `npm run seed` turns it into database rows | (done) |

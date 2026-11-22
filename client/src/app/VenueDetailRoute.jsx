@@ -11,6 +11,7 @@ const HostWizard = lazy(() => import('../pages/HostWizard.jsx'))
 const HostSubmitted = lazy(() => import('../pages/HostSubmitted.jsx'))
 const BookingFlow = lazy(() => import('../pages/BookingFlow.jsx'))
 const MyBookings = lazy(() => import('../pages/MyBookings.jsx'))
+const Profile = lazy(() => import('../pages/Profile.jsx'))
 const InvitationBuilder = lazy(() => import('../pages/InvitationBuilder.jsx'))
 const GuestInvitation = lazy(() => import('../pages/GuestInvitation.jsx'))
 
@@ -82,6 +83,14 @@ export function MyBookingsRoute() {
   return (
     <Suspense fallback={<div aria-busy="true" aria-label="Loading your bookings" className="min-h-[60vh]" />}>
       <MyBookings />
+    </Suspense>
+  )
+}
+
+export function ProfileRoute() {
+  return (
+    <Suspense fallback={<div aria-busy="true" aria-label="Loading your profile" className="min-h-[60vh]" />}>
+      <Profile />
     </Suspense>
   )
 }

@@ -14,7 +14,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
 ## Phase 1: Auth and users (REQ-1 to REQ-4, EUC-01 to 03)
 - [ ] Register (role-specific fields), login (email or phone), lockout, refresh/logout, inactivity timeout, OTP reset (API done 2026-11-21 for all but OTP reset)
 - [ ] RBAC middleware + ownership helpers, suspended-user block (`authenticate`, `requireRole` and the suspended/deleted block done 2026-11-21; ownership helpers come with the venue/booking modules)
-- [ ] Profile page per role (API done 2026-11-21: `GET/PATCH /api/me`, `/api/me/searches`, `/api/me/bookings`; the client page is not built)
+- [x] Profile page per role (API 2026-11-21; client `/me` 2026-11-22. Change password while logged in still missing)
 
 ## Phase 2: Venues (REQ-5 to REQ-11, EUC-04 to 08)
 - [x] Owner submit / resubmit, drafts, approval workflow (approve, reject with reason, request changes, suspend,

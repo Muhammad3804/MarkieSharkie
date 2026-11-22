@@ -87,6 +87,7 @@ Last updated: 2026-11-22
 | `/venues/:id/photos` | `pages/VenuePhotos.jsx` | lazy; `?hall=` and `#photoId` select hall/photo |
 | `/host` | `pages/HostIntro.jsx` | lazy; "Become a host" landing, "Continue your listing" card when a draft exists |
 | `/host/submitted` | `pages/HostSubmitted.jsx` | lazy; "Pending verification" success screen |
+| `/me` | `pages/Profile.jsx` | lazy (`ProfileRoute`); EUC-03 profile for every role, edit via `PATCH /api/me` (admins read-only), customer past searches + bookings from `/api/me/searches`, `/api/me/bookings`; `RequireAuth`; linked from the avatar menu |
 | `/bookings` | `pages/MyBookings.jsx` | lazy; My bookings with status badges, cancel, dev-only owner actions; `RequireAuth` |
 
 Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
@@ -557,6 +558,17 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Profile page (EUC-03, REQ-4), Part A of the "finish partly-done use cases" brief.** New `/me`
+  (`pages/Profile.jsx`, `api/profile.js`, `features/profile/rules.js`), linked as "Profile" in the avatar menu.
+  Customers, venue owners and decorators edit name, mobile (+92), city and their role fields (owner: business name +
+  contact number; decorator: business name, service city, bio with a counter; customer: preferred city, event types,
+  usual guests, budget). Only changed fields are sent; inline errors use the same limits as the server; server field
+  errors (and `PHONE_TAKEN`) show under the field; success toast. Admins get a read-only card (srs-alignment #24).
+  Customers also see "Past searches" (with "Search again") and "My bookings" from the server, paginated, with empty
+  states. `api/auth.js` gained `updateSessionUser` so the header shows a new name at once. No server change; no
+  change-password section because the server has no endpoint for it (noted in TODO). Checked with playwright-cli at
+  375 and 1512 px for all four roles.
+
 - 2026-11-22: **Favicon.** Vite's default lightning-bolt `favicon.svg` replaced by the MarkieSharkie snow-globe tent
   (cropped from `src/assets/brand/logo.png`): `public/favicon-32.png`, `favicon-48.png`, `apple-touch-icon.png`
   (180, white background) and `icon-192.png` / `icon-512.png` ready for the PWA manifest.
@@ -763,12 +775,15 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 - Server has auth + profile + password reset (2026-11-22). Login / signup / reset use it; every other page still
   uses the browser mocks in `client/src/api/*`
+- Change password while logged in: no server endpoint (`POST /api/me/password` with the current password would be
+  needed); the profile page tells people to use "Forgot password?" for now
+- Explore saves the same search twice in development (React StrictMode runs the search effect twice), so
+  "Past searches" shows pairs locally; production builds save once
 - Auth server, not built yet: reset code by SMS (REQ-2 "email or mobile"; only email is built), change password,
   change email, account deletion with anonymisation (NFR-8, REQ-47), admin user management (suspend / unblock /
   remove / create admin, with `admin_audit_log`), ownership helpers (come with venues/bookings)
 - Auth client leftovers (not built): one-step "phone or email + password" form (today: identifier, then password);
-  role-based redirect to `homePath` after login (`/app`, `/owner`, `/decorator` don't exist yet); profile page
-  (`/me`, REQ-4); `RequireRole` on `/host/new` (venue_owner) and the future role dashboards; refresh while the user
+  role-based redirect to `homePath` after login (`/app`, `/owner`, `/decorator` don't exist yet); `RequireRole` on `/host/new` (venue_owner) and the future role dashboards; refresh while the user
   is active (inactivity counts from the last refresh, REQ-2). Done: in-memory token, single-flight refresh across tabs
   (Web Lock, srs-alignment #26), role picker at signup, `RequireRole` on `/admin`
 - Deployment: the refresh cookie is SameSite=Strict, so the PWA and the API must be on the same site in production

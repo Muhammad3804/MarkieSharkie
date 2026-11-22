@@ -191,6 +191,12 @@ export function restoreSession() {
   return restoring
 }
 
+// After PATCH /me: the header avatar and menus show the new name / phone / city right away. Profile data only;
+// the role and the tokens never change here.
+export function updateSessionUser(user) {
+  if (snapshot.user && user?.id === snapshot.user.id) setSnapshot({ user: toUser(user) })
+}
+
 // --- Login / signup / logout --------------------------------------------------------------------------------------
 
 function rethrow(error) {

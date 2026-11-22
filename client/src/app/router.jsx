@@ -3,7 +3,7 @@ import AuthProvider from '../features/auth/AuthProvider.jsx'
 import RequireAuth from '../features/auth/RequireAuth.jsx'
 import RequireRole from '../features/auth/RequireRole.jsx'
 import PublicLayout from './layouts/PublicLayout.jsx'
-import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
+import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, ProfileRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
 import Landing from '../pages/Landing.jsx'
 import SearchRedirect from './SearchRedirect.jsx'
 import HostResumeRedirect from './HostResumeRedirect.jsx'
@@ -30,6 +30,15 @@ export const router = createBrowserRouter([
           { path: '/venues/:id/photos', element: <VenuePhotosRoute /> },
           { path: '/host', element: <HostIntroRoute /> },
           { path: '/host/submitted', element: <HostSubmittedRoute /> },
+          // EUC-03 Manage Profile, every role (admins read-only).
+          {
+            path: '/me',
+            element: (
+              <RequireAuth intent="profile">
+                <ProfileRoute />
+              </RequireAuth>
+            ),
+          },
           // Customer's own bookings (moves into /app with role dashboards).
           {
             path: '/bookings',

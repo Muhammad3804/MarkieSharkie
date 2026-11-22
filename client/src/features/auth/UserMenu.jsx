@@ -64,6 +64,9 @@ export default function UserMenu({ user, onLogout }) {
               Admin dashboard
             </Link>
           )}
+          <Link to="/me" onClick={() => setOpen(false)} className={itemClass}>
+            Profile
+          </Link>
           <Link to="/bookings" onClick={() => setOpen(false)} className={itemClass}>
             My bookings
           </Link>
