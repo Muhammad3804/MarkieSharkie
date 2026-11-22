@@ -1,4 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { getVenueReviews } from '../../api/venues.js'
+import GoogleReviewsLink from './GoogleReviewsLink.jsx'
 import ReviewCard from './ReviewCard.jsx'
 import starOutlineIcon from '../../assets/icons/venue/star-outline.svg'
 import sparklesIcon from '../../assets/icons/venue/sparkles-sm.svg'
@@ -11,8 +13,12 @@ import tagIcon from '../../assets/icons/venue/tag.svg'
 const CATEGORY_ICONS = { Cleanliness: sparklesIcon, Accuracy: checkCircleIcon, 'Check-in': keyIcon, Communication: messageCircleIcon, Location: mapIcon, Value: tagIcon }
 
 // Reviews (Figma 46:126). The overall rating and the 5→1 breakdown come from the reviews table;
-// the six category scores are UI-only (not in the ERD, see mockVenues.js).
+// the six category scores are UI-only (not in the ERD, see mockVenues.js). The full list (no `limit`) loads more pages
+// from GET /api/venues/:id/reviews. "Read reviews on Google" is only a link (srs-alignment #37).
+const PAGE_SIZE = 10
+
 export default function ReviewsSection({ venue, limit, onShowAll }) {
+  const [more, setMore] = useState({ reviews: [], page: 1, status: 'idle' })
   const breakdown = useMemo(() => {
     const max = Math.max(1, ...Object.values(venue.ratingCounts))
     return [5, 4, 3, 2, 1].map((stars) => {
@@ -20,13 +26,31 @@ export default function ReviewsSection({ venue, limit, onShowAll }) {
       return { stars, count, width: Math.max(2, Math.round((90 * count) / max)), strong: venue.reviewCount > 0 && count / venue.reviewCount >= 0.1 }
     })
   }, [venue.ratingCounts, venue.reviewCount])
-  const shown = limit ? venue.reviews.slice(0, limit) : venue.reviews
+  // The venue response carries the newest 20; the reviews API pages through the rest.
+  const all = useMemo(() => {
+    const seen = new Set(venue.reviews.map((r) => r.reviewId))
+    return [...venue.reviews, ...more.reviews.filter((r) => !seen.has(r.reviewId))]
+  }, [venue.reviews, more.reviews])
+  const shown = limit ? all.slice(0, limit) : all
+
+  async function loadMore() {
+    setMore((m) => ({ ...m, status: 'loading' }))
+    try {
+      // Pages of 10 after the ones already shown.
+      const page = Math.floor(all.length / PAGE_SIZE) + 1
+      const data = await getVenueReviews(venue.id, { page, pageSize: PAGE_SIZE })
+      setMore((m) => ({ reviews: [...m.reviews, ...data.reviews], page, status: 'idle' }))
+    } catch {
+      setMore((m) => ({ ...m, status: 'error' }))
+    }
+  }
 
   if (venue.reviewCount === 0) {
     return (
       <section aria-labelledby="reviews-title" className="flex flex-col gap-2">
         <h2 id="reviews-title" className="font-heading text-[22px] font-bold text-ink-strong">No reviews yet</h2>
         <p className="text-[13px] text-muted-warm">Reviews appear here after hosts complete an event at this venue.</p>
+        <GoogleReviewsLink url={venue.googleMapsUrl} venueName={venue.name} />
       </section>
     )
   }
@@ -75,10 +99,28 @@ export default function ReviewsSection({ venue, limit, onShowAll }) {
           Show all {venue.reviewCount} reviews
         </button>
       ) : (
-        <p className="text-[13px] text-muted-warm">
-          Showing {shown.length} of {venue.reviewCount} reviews. The full list will load from the reviews API once it’s connected.
-        </p>
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-[13px] text-muted-warm" aria-live="polite">
+            Showing {shown.length} of {venue.reviewCount} reviews.
+          </p>
+          {shown.length < venue.reviewCount && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={more.status === 'loading'}
+              className="min-h-11 cursor-pointer rounded-[12px] border border-outline-strong px-4 text-[13px] font-semibold text-ink-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
+            >
+              {more.status === 'loading' ? 'Loading…' : 'Show more reviews'}
+            </button>
+          )}
+          {more.status === 'error' && (
+            <p role="alert" className="text-[13px] text-danger">
+              We couldn’t load more reviews. Try again.
+            </p>
+          )}
+        </div>
       )}
+      <GoogleReviewsLink url={venue.googleMapsUrl} venueName={venue.name} />
     </section>
   )
 }

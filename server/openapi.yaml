@@ -667,6 +667,39 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /venues/{id}/reviews:
+    get:
+      tags: [Venues]
+      operationId: listVenueReviews
+      summary: Platform reviews and the platform rating (REQ-42, REQ-43)
+      description: |
+        Newest first, paginated. Hidden reviews (REQ-44) are left out and don't count towards the rating. No Google
+        reviews or ratings are fetched or stored (srs-alignment #37); the venue's googleMapsUrl is only a link-out.
+      x-srs: [REQ-42, REQ-43, EUC-30]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reviews: { type: array, items: { type: object } }
+                  rating: { type: number, description: Average of the visible platform reviews (0 when none). }
+                  reviewCount: { type: integer }
+                  ratingCounts: { type: object, additionalProperties: { type: integer } }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  pageCount: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /venues/{id}/availability:
     get:
       tags: [Venues]
@@ -2125,6 +2158,11 @@ components:
         reviewCount: { type: integer }
         priceFrom: { $ref: '#/components/schemas/Money' }
         priceUnit: { type: string, const: per_person }
+        googleMapsUrl:
+          {
+            type: [string, 'null'],
+            description: 'Link to the venue on Google Maps (https, Google hosts only), or null.',
+          }
         image: { type: string, format: uri }
         lat: { type: [number, 'null'] }
         lng: { type: [number, 'null'] }
@@ -2154,7 +2192,8 @@ components:
         (with items), addOns, bookingTerms, bridalSuite, reviews, ratingCounts, bookedDates, host, parkingSpaces,
         eventNotes. Same shape as the client's venue page expects. Each hall's walkthrough is
         { mode: generate|upload|link|skip, url, file } where file is { url, assetType: model_3d|panorama_360 } for an
-        uploaded .glb / 360° JPEG (REQ-11) and null otherwise.
+        uploaded .glb / 360° JPEG (REQ-11) and null otherwise. googleMapsUrl is the owner's Google Maps link or null
+        (srs-alignment #37: shown as "Read reviews on Google", no Google data is fetched).
       additionalProperties: true
     Availability:
       type: object

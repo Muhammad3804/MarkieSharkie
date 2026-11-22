@@ -43,7 +43,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
 
 ## Phase 6: Notifications and reviews (REQ-42 to 45, EUC-29 to 31)
 - [ ] Notifications table + socket push + bell UI
-- [ ] Reviews, avg rating, Google reviews adapter, flagging (reporting + admin moderation + rating recompute done 2026-11-22; writing a review needs the booking engine)
+- [ ] Reviews, avg rating, flagging (reporting + admin moderation + rating recompute + `GET /venues/:id/reviews` + "Read reviews on Google" link-out done 2026-11-22; no Google Places adapter, srs-alignment #37; writing a review needs the booking engine)
 
 ## Phase 7: AI chatbot (REQ-27, 28, EUC-20)
 - [ ] LLM adapter, filter extraction, retrieval, grounded answer, history, fallback

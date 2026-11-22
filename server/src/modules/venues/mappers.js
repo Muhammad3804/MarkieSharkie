@@ -86,6 +86,7 @@ export function toCard(row, origin) {
     lng: row.lng,
     capacity: row.capacity,
     venueType: row.venueType,
+    googleMapsUrl: row.googleMapsUrl,
   }
 }
 
@@ -132,6 +133,20 @@ function toImage(image, { venueId, venueName, hallName, origin }) {
     isPublished: image.is_published,
     isCover: image.is_cover,
     aiScore: image.ai_score === null || image.ai_score === undefined ? null : Number(image.ai_score),
+  }
+}
+
+// A platform review (REQ-42) as the venue page shows it. Hidden reviews never get here (removed_at IS NULL).
+export function toPublicReview(r, venueId) {
+  return {
+    reviewId: r.review_id,
+    venueId,
+    customerName: r.customer_name,
+    customerCity: `${r.customer_city}, Pakistan`,
+    rating: r.rating,
+    comment: r.comment ?? '',
+    eventType: r.event_type,
+    createdAt: iso(r.created_at),
   }
 }
 
@@ -212,6 +227,7 @@ export function toVenueDetail(bundle, { origin, reviews = [], ratingRows = [], b
     facilities: (v.facilities ?? []).map((key) => AMENITY_FOR[key] ?? key),
     description: v.description,
     avgRating: Number(v.avg_rating),
+    googleMapsUrl: v.google_maps_url ?? null, // srs-alignment #37: "Read reviews on Google" link-out only
     approvalStatus: v.approval_status,
     isActive: v.is_active,
     images,
@@ -227,16 +243,7 @@ export function toVenueDetail(bundle, { origin, reviews = [], ratingRows = [], b
       minGuests: m.min_guests,
       items: itemsByMenu.get(m.menu_id) ?? [],
     })),
-    reviews: reviews.map((r) => ({
-      reviewId: r.review_id,
-      venueId: id,
-      customerName: r.customer_name,
-      customerCity: `${r.customer_city}, Pakistan`,
-      rating: r.rating,
-      comment: r.comment ?? '',
-      eventType: r.event_type,
-      createdAt: iso(r.created_at),
-    })),
+    reviews: reviews.map((r) => toPublicReview(r, id)),
     ratingCounts: counts,
     bookedDates,
     addOns: bundle.addOns.map((a) => ({
@@ -323,7 +330,7 @@ export function toListing(bundle, origin) {
       postalCode: v.postal_code ?? '',
       lat: num(v.lat),
       lng: num(v.lng),
-      googleMapsUrl: v.google_maps_url ?? '',
+      googleMapsUrl: v.google_maps_url ?? null,
       supportedEvents: v.supported_events,
       facilities: v.facilities,
       headline: v.headline ?? '',

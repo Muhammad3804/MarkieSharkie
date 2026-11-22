@@ -70,7 +70,7 @@ export const STEPS = [
       tips: [
         'Drag the pin or click the map to move it. With the keyboard, focus the pin and use the arrow keys.',
         '“Use my location” works best when you’re at the venue.',
-        'A Google Maps link is optional. It helps us match your Google reviews later.',
+        'A Google Maps link is optional. Customers get a “Read reviews on Google” button that opens it.',
       ],
     },
   },

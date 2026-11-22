@@ -1,7 +1,7 @@
 import { pool } from '../../db/pool.js'
 import { notFoundError } from '../../lib/AppError.js'
 import * as repo from './repository.js'
-import { toCard, toVenueDetail } from './mappers.js'
+import { toCard, toPublicReview, toVenueDetail } from './mappers.js'
 import { CAPACITY_BUCKETS, PUBLIC_PAGE_SIZE } from './schemas.js'
 
 // Public venues (REQ-12, REQ-13): only approved + active venues, everything else is 404.
@@ -130,6 +130,30 @@ export async function getVenue(id, { origin }) {
     repo.fullyBookedDates(pool, id),
   ])
   return toVenueDetail(bundle, { origin, reviews, ratingRows, bookedDates })
+}
+
+// GET /venues/:id/reviews: the platform reviews and rating (REQ-42, REQ-43). Hidden reviews are left out (REQ-44).
+// No Google reviews or ratings are fetched or stored; the venue page links to Google Maps instead (srs-alignment #37).
+export async function listReviews(id, { page, pageSize }) {
+  if (!UUID.test(id)) throw notPublic()
+  const base = await repo.findVenueBase(pool, id)
+  if (!base || base.approval_status !== 'approved' || !base.is_active) throw notPublic()
+  const [rows, ratingRows] = await Promise.all([
+    repo.findReviews(pool, id, { limit: pageSize, offset: (page - 1) * pageSize }),
+    repo.ratingCounts(pool, id),
+  ])
+  const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+  for (const row of ratingRows) ratingCounts[row.rating] = row.n
+  const reviewCount = Object.values(ratingCounts).reduce((a, b) => a + b, 0)
+  return {
+    reviews: rows.map((r) => toPublicReview(r, id)),
+    rating: reviewCount > 0 ? Number(base.avg_rating) : 0,
+    reviewCount,
+    ratingCounts,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(reviewCount / pageSize)),
+  }
 }
 
 const todayKarachi = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date())

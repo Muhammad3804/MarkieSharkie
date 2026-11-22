@@ -176,7 +176,8 @@ CREATE TABLE venues (
   headline              text CHECK (char_length(headline) <= 60),
   area                  text,                                                -- card subtitle ("Johar Town")
   postal_code           text CHECK (postal_code ~ '^[0-9]{5}$'),
-  google_maps_url       text,
+  google_maps_url       text CONSTRAINT venues_google_maps_url_check            -- [SRS] #37 (migration 008): link-out only
+                        CHECK (google_maps_url IS NULL OR (google_maps_url LIKE 'https://%' AND char_length(google_maps_url) <= 500)),
   hosting_since         smallint CHECK (hosting_since BETWEEN 1947 AND 2100),
   landmark              text,                                                -- "15 min from Clock Tower"
   landmark_minutes      smallint CHECK (landmark_minutes BETWEEN 1 AND 180),

@@ -136,6 +136,9 @@ Rules enforced in services (need data from several tables): review only after `c
   Has a working `-- Down Migration` section (tested on the test DB).
 - **007 review-reports** (#36): `review_reports` (reason enum-like CHECK, optional note ≤ 500, `resolved_at`,
   UNIQUE per review and reporter) and `reviews.removal_reason`; partial index on flagged reviews. Down section tested.
+- **008 google-maps-url-check** (#37): `venues.google_maps_url` already existed (004); 008 turns empty strings into
+  NULL and adds `venues_google_maps_url_check` (NULL or `https://…` ≤ 500 chars). `google_place_id` and the
+  `google_reviews` table (ERD) stay untouched and unused. Down section tested.
 - Still pending: #21 invitation `[Design]` columns and `rsvps.party_size` (with the invitations phase).
 - **Files:** `venue_images.image_url`, `halls.floor_plan_url` and `walkthrough_assets.file_url` hold the path
   `/uploads/<key>` (the API adds its origin). `media_uploads` tracks every upload and which venue it was attached to.

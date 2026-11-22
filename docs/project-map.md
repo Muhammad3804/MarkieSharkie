@@ -104,6 +104,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `pages/owner/MyListings.jsx` | `/owner/listings`: the owner's listings with status, edit, withdraw edits, deactivate / reactivate. | `api/owner.js` |
 | `pages/owner/ListingEditor.jsx` | `/owner/listings/:id/edit/:section`: edit a live venue with the wizard's steps; says what goes live and what needs approval. | `api/owner.js`, `features/host/steps/*` |
 | `pages/admin/Reviews.jsx` | Admin review moderation (REQ-44): reported / hidden / all, hide, keep, restore, delete with a reason. | `api/admin.js` |
+| `components/venue/GoogleReviewsLink.jsx`, `lib/googleMaps.js` | "Read reviews on Google" link-out (REQ-43, #37) and the shared Google Maps link rules. | `ReviewsSection` |
 | `components/venue/ReportReviewDialog.jsx` | "Report this review" dialog on the venue page (REQ-44). | `api/reviews.js` |
 | `pages/admin/VenueEdits.jsx`, `VenueEditReview.jsx` | Admin "Live venue edits": list and old-versus-new review with approve / reject (REQ-5). | `api/admin.js` |
 | `pages/Profile.jsx` | `/me` profile (EUC-03): edit details per role, past searches, my bookings; admins read-only. | `api/profile.js`, `features/profile/rules.js` |

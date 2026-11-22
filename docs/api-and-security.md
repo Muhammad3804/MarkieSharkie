@@ -18,7 +18,7 @@
 | Me | `GET /me` | any user |
 | Me | `PATCH /me` | customer, venue_owner, decorator (EUC-03 actors, srs-alignment #24) |
 | Me | `GET /me/searches`, `GET /me/bookings` | customer (REQ-4) |
-| Venues (public) | **Built:** `GET /venues/landing`, `GET /venues` (search, saves a customer's history), `GET /venues/:id`, `GET /venues/:id/availability?from&to`, `GET /stats`. Planned: `GET /venues/:id/reviews`, `POST /venues/compare` | public (optional customer token) |
+| Venues (public) | **Built:** `GET /venues/landing`, `GET /venues` (search, saves a customer's history), `GET /venues/:id`, `GET /venues/:id/availability?from&to`, `GET /venues/:id/reviews` (platform reviews + rating, hidden ones left out), `GET /stats`. Planned: `POST /venues/compare` | public (optional customer token) |
 | Recommendations | `GET /recommendations` | customer |
 | Owner venues | **Built:** `GET/PUT/DELETE /owner/draft`, `POST /owner/uploads` (multipart), `GET/POST /owner/venues`, `GET/PUT /owner/venues/:id` (resubmit), `POST /owner/venues/:id/images/verify`; live venues (2026-11-22, #35): `PUT /owner/venues/:id/edit`, `GET/DELETE /owner/venues/:id/revision`, `POST /owner/venues/:id/deactivate|reactivate`, `POST /owner/venues/:id/menus`, `PUT/DELETE /owner/venues/:id/menus/:menuId`, `POST /owner/venues/:id/add-ons`, `PUT/DELETE /owner/venues/:id/add-ons/:addOnId`. Planned: stage photos, slots (create/block/unblock) | venue_owner (own venues; another owner's id is 404) |
 | Holds and bookings | `POST /slots/:id/hold`, `DELETE /slots/:id/hold`, `POST /bookings`, `POST /bookings/:id/cancel`, `PUT /bookings/:id/add-ons`, `PUT /bookings/:id/menu` | customer |
@@ -96,6 +96,12 @@
   `removal_reason`), restores, keeps ("dismiss", reports closed) or deletes (row gone, its text kept in the audit
   row). Each decision locks the review, closes its open reports, recomputes `venues.avg_rating` from visible reviews
   and writes `admin_audit_log` in one transaction. Hidden reviews never reach public responses.
+- **Google Maps link (REQ-43, EUC-30, srs-alignment #37):** `venues.google_maps_url` is the only Google feature. No
+  Google API, key or network call; no Google review text or rating is stored or shown. Zod (create and edit): optional,
+  trimmed, `''` -> null, `https:` only (http, javascript:, data: refused), host exactly one of `google.com`,
+  `www.google.com`, `maps.google.com`, `maps.app.goo.gl`, `goo.gl`, `g.page`, no credentials, ≤ 500 characters;
+  the DB CHECK (migration 008) repeats https + length. Only the owner (ownership check) sets it; it goes live at once.
+  The client re-checks the URL before rendering the `<a target="_blank" rel="noopener noreferrer">`.
 - **Deactivate (REQ-5):** `is_active = false` hides the venue from search, its page and new bookings; confirmed
   bookings stay valid; requests already made stay with the owner (docs/booking-engine.md).
 - **Admin writes:** lock the venue row, check the transition (409 `INVALID_STATUS`), change, write `admin_audit_log`

@@ -80,3 +80,11 @@ export const availabilityQuerySchema = z
     path: ['to'],
     message: 'The end date must be after the start date.',
   })
+
+// GET /venues/:id/reviews (REQ-42, REQ-43): platform reviews only, newest first.
+export const reviewsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  })
+  .strict()

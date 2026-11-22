@@ -18,6 +18,11 @@ export async function getVenue(req, res) {
   res.json({ venue: await service.getVenue(req.params.id, { origin: requestOrigin(req) }) })
 }
 
+export async function reviews(req, res) {
+  res.set('Cache-Control', 'no-store') // a hidden review disappears at once
+  res.json(await service.listReviews(req.params.id, req.query))
+}
+
 export async function availability(req, res) {
   res.set('Cache-Control', 'no-store')
   res.json(await service.getAvailability(req.params.id, req.query))

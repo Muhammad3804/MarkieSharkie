@@ -285,7 +285,7 @@ export function PinStep() {
         path="venue.googleMapsUrl"
         label="Google Maps link"
         optional
-        hint="Open your venue in Google Maps, tap Share and paste the link here."
+        hint="On Google Maps, open your venue, tap Share, then Copy link."
         value={venue.googleMapsUrl}
         onChange={(googleMapsUrl) => update(setVenue({ googleMapsUrl }))}
         placeholder="https://maps.app.goo.gl/…"

@@ -4,7 +4,7 @@ import { optionalAuthenticate } from '../../middleware/optionalAuthenticate.js'
 import { createRateLimiter } from '../../middleware/rateLimit.js'
 import { validate } from '../../middleware/validate.js'
 import * as controller from './controller.js'
-import { availabilityQuerySchema, searchQuerySchema, venueIdParamsSchema } from './schemas.js'
+import { availabilityQuerySchema, searchQuerySchema, reviewsQuerySchema, venueIdParamsSchema } from './schemas.js'
 
 // Mounted at /api. Public (no login): only approved, active venues (REQ-7, REQ-12, REQ-13).
 export function venuesRouter({ rateLimits }) {
@@ -20,6 +20,12 @@ export function venuesRouter({ rateLimits }) {
     asyncHandler(controller.search),
   )
   router.get('/venues/:id', limiter, validate({ params: venueIdParamsSchema }), asyncHandler(controller.getVenue))
+  router.get(
+    '/venues/:id/reviews',
+    limiter,
+    validate({ params: venueIdParamsSchema, query: reviewsQuerySchema }),
+    asyncHandler(controller.reviews),
+  )
   router.get(
     '/venues/:id/availability',
     limiter,

@@ -7,7 +7,7 @@
 const CARD_COLUMNS = `
   v.venue_id, v.name, v.area, v.city, v.capacity, v.base_price, v.avg_rating, v.venue_type,
   v.supported_events::text[] AS supported_events, -- enum arrays come back as '{a,b}' strings without the cast
-  v.facilities, v.category, v.reviewed_at, v.created_at,
+  v.facilities, v.category, v.reviewed_at, v.created_at, v.google_maps_url,
   ST_Y(v.location::geometry) AS lat, ST_X(v.location::geometry) AS lng,
   (SELECT count(*) FROM halls h WHERE h.venue_id = v.venue_id)::int AS hall_count,
   (SELECT count(*) FROM reviews r WHERE r.venue_id = v.venue_id AND r.removed_at IS NULL)::int AS review_count,
@@ -32,6 +32,7 @@ export function toCardRow(row) {
     supportedEvents: row.supported_events,
     facilities: row.facilities,
     category: row.category,
+    googleMapsUrl: row.google_maps_url ?? null,
     approvedAt: row.reviewed_at,
     createdAt: row.created_at,
     lat: row.lat === null ? null : Number(row.lat),
@@ -194,7 +195,7 @@ export async function loadVenueBundle(db, venueId, { publishedOnly = true } = {}
 }
 
 // Reviews (REQ-42), newest first, with the reviewer's name / city and the event type of the booking.
-export async function findReviews(db, venueId, { limit = 20 } = {}) {
+export async function findReviews(db, venueId, { limit = 20, offset = 0 } = {}) {
   const { rows } = await db.query(
     `SELECT r.review_id, r.rating, r.comment, r.created_at, u.name AS customer_name, u.city AS customer_city,
             b.event_type
@@ -202,9 +203,9 @@ export async function findReviews(db, venueId, { limit = 20 } = {}) {
        JOIN users u ON u.user_id = r.customer_id
        JOIN bookings b ON b.booking_id = r.booking_id
       WHERE r.venue_id = $1 AND r.removed_at IS NULL
-      ORDER BY r.created_at DESC
-      LIMIT $2`,
-    [venueId, limit],
+      ORDER BY r.created_at DESC, r.review_id
+      LIMIT $2 OFFSET $3`,
+    [venueId, limit, offset],
   )
   return rows
 }

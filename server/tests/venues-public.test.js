@@ -145,6 +145,7 @@ describe('GET /api/venues search filters (REQ-12)', () => {
       lng: 74.3,
       capacity: 600,
       venueType: 'indoor',
+      googleMapsUrl: null, // srs-alignment #37: link-out only, null when the owner hasn't added one
     })
   })
 

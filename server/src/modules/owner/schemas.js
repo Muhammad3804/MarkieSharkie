@@ -76,26 +76,35 @@ const httpsUrl = (message) =>
         return false
       }
     }, message)
-const googleMapsUrl = z
-  .string()
+// REQ-43 / EUC-30, srs-alignment #37: a link to the venue on Google Maps, nothing else from Google. Optional; trimmed;
+// '' becomes null; https only (no http:, javascript:, data:); the host must be one of Google's Maps hosts.
+export const GOOGLE_MAPS_HOSTS = [
+  'google.com',
+  'www.google.com',
+  'maps.google.com',
+  'maps.app.goo.gl',
+  'goo.gl',
+  'g.page',
+]
+const MAPS_LINK_MESSAGE =
+  'Paste a Google Maps link that starts with https://maps.app.goo.gl/ or https://www.google.com/maps.'
+export const googleMapsUrlSchema = z
+  .string({ error: MAPS_LINK_MESSAGE })
   .trim()
-  .refine((t) => {
-    if (t === '') return true
+  .max(500, 'That link is too long. Use the short link from Share, then Copy link.')
+  .nullable()
+  .optional()
+  .transform((text) => (text ? text : null))
+  .refine((text) => {
+    if (text === null) return true
     try {
-      const url = new URL(t)
-      const host = url.hostname.replace(/^www\./, '')
-      return (
-        url.protocol === 'https:' &&
-        (host === 'maps.app.goo.gl' ||
-          host === 'goo.gl' ||
-          host === 'maps.google.com' ||
-          (host.startsWith('google.') && url.pathname.startsWith('/maps')))
-      )
+      const url = new URL(text)
+      return url.protocol === 'https:' && !url.username && !url.password && GOOGLE_MAPS_HOSTS.includes(url.hostname)
     } catch {
       return false
     }
-  }, 'Paste a Google Maps link that starts with https://maps.app.goo.gl or https://www.google.com/maps.')
-  .default('')
+  }, MAPS_LINK_MESSAGE)
+const googleMapsUrl = googleMapsUrlSchema
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Enter a time, like 19:00.')
 const zoneCell = z.number().int().min(0).max(8).nullable().default(null)
 const outside = 'The pin is outside Pakistan. Drag it onto your venue.'

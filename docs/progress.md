@@ -559,6 +559,20 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-22: **Google reviews as a Maps link-out (EUC-30, REQ-43), Part E.** No Google API, key, billing or stored
+  Google data (srs-alignment #37, a deviation from REQ-43). Migration **008** (`''` -> NULL and
+  `venues_google_maps_url_check`; the column existed since 004; `google_place_id` / `google_reviews` untouched and
+  unused). Server: stricter `googleMapsUrlSchema` (https, exact Google host list, no credentials, ≤ 500, `''` -> null)
+  for create, resubmit and live edit; `googleMapsUrl` (null when unset) in the venue detail, search / landing cards
+  and the owner listing; new `GET /api/venues/:id/reviews` (platform reviews + rating, pages, hidden ones excluded).
+  Seed: every 4th live venue (5 of 20) gets a `https://www.google.com/maps/search/?api=1&query=<name city>` link,
+  only when empty (idempotent). Tests: `tests/google-maps-link.test.js` (22) and a seed test. Client:
+  `lib/googleMaps.js` (same rules), wizard / editor field with the help text "On Google Maps, open your venue, tap
+  Share, then Copy link." and server field errors shown inline (the wizard now keeps the server's field errors until
+  the next edit), `GoogleReviewsLink.jsx` (an `<a target="_blank" rel="noopener noreferrer">` plus "Opens Google
+  Maps in a new tab."; nothing when there is no link), and the reviews tab loads more pages from the new endpoint
+  (the "once it's connected" placeholder is gone). `.env.example` unchanged.
+
 - 2026-11-22: **Review moderation (EUC-34, REQ-44), Part D.** Migration **007** (`review_reports`,
   `reviews.removal_reason`), srs-alignment #36. Server module `modules/reviews/` (routes, controller, service,
   repository, schemas): `POST /api/venues/:id/reviews/:reviewId/report` (logged in, not admin, not your own review,

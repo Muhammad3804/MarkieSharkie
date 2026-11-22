@@ -46,6 +46,19 @@ describe('npm run seed (db/seeds/seed.js)', () => {
     expect(await countRows(pool)).toEqual(first.counts)
   })
 
+  it('gives 5 live venues a Google Maps search link and leaves the rest without one (srs-alignment #37)', async () => {
+    const { rows } = await pool.query(
+      `SELECT name, city, google_maps_url FROM venues WHERE google_maps_url IS NOT NULL ORDER BY name`,
+    )
+    expect(rows).toHaveLength(5) // still 5 after the second run
+    for (const row of rows) {
+      expect(row.google_maps_url).toBe(
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.city}`)}`,
+      )
+    }
+    expect((await one(`SELECT count(*)::int AS n FROM venues WHERE google_maps_url IS NULL`)).n).toBe(20)
+  })
+
   it('creates 20 approved venues plus 3 pending, 1 rejected and 1 suspended', async () => {
     const { rows } = await pool.query(
       'SELECT approval_status::text AS s, count(*)::int AS n FROM venues GROUP BY 1 ORDER BY 1',

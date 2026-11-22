@@ -44,3 +44,9 @@ export function getVenueAvailability(id, { from, to } = {}) {
   const query = params.toString()
   return apiFetch(`/venues/${encodeURIComponent(id)}/availability${query ? `?${query}` : ''}`)
 }
+
+// GET /api/venues/:id/reviews?page&pageSize -> { reviews, rating, reviewCount, ratingCounts, page, pageSize, pageCount }
+// Platform reviews only (REQ-42, REQ-43); hidden ones are left out (REQ-44). No Google data (srs-alignment #37).
+export function getVenueReviews(id, { page = 1, pageSize = 10 } = {}) {
+  return apiFetch(`/venues/${encodeURIComponent(id)}/reviews?page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`)
+}

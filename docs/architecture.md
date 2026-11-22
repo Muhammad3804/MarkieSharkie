@@ -24,7 +24,7 @@ markiesharkie/
 │   │   ├── middleware/      # authenticate, requireRole, validate, rateLimit, errorHandler, notFound
 │   │   ├── realtime/        # socket.io setup, rooms, emit helpers
 │   │   ├── jobs/            # node-cron jobs (see booking-engine.md)
-│   │   ├── integrations/    # built: mailer, storage (local disk), imageDetection (Sightengine / fake); planned: llm, embeddings, imageGeneration, whatsapp, googlePlaces, weather
+│   │   ├── integrations/    # built: mailer, storage (local disk), imageDetection (Sightengine / fake); planned: llm, embeddings, imageGeneration, whatsapp, weather (no googlePlaces: Google reviews are a Maps link-out, srs-alignment #37)
 │   │   └── modules/
 │   │       ├── auth/        # routes.js controller.js service.js repository.js schemas.js *.test.js
 │   │       ├── users/

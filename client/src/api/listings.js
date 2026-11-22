@@ -69,7 +69,7 @@ export function listingToDraft(listing) {
       postalCode: v.postalCode,
       lat: v.lat,
       lng: v.lng,
-      googleMapsUrl: v.googleMapsUrl,
+      googleMapsUrl: v.googleMapsUrl ?? '',
       supportedEvents: v.supportedEvents,
       facilities: v.facilities.filter((key) => AMENITIES.has(key)),
       customFacilities: v.facilities.filter((key) => !AMENITIES.has(key)),

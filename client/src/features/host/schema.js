@@ -1,3 +1,4 @@
+import { MAPS_LINK_MESSAGE, isGoogleMapsUrl } from '../../lib/googleMaps.js'
 import { z } from 'zod'
 import {
   ADD_ON_TYPES,
@@ -88,19 +89,12 @@ const locationStep = z.object({
   }),
 })
 
+// Optional. Same rules as the server (lib/googleMaps.js): https, Google's Maps hosts only, 500 characters max.
 const googleMapsUrl = z
   .string()
   .trim()
-  .refine((text) => {
-    if (text === '') return true
-    try {
-      const url = new URL(text)
-      const host = url.hostname.replace(/^www\./, '')
-      return url.protocol === 'https:' && (host === 'maps.app.goo.gl' || host === 'goo.gl' || (host.startsWith('google.') && url.pathname.startsWith('/maps')) || host === 'maps.google.com')
-    } catch {
-      return false
-    }
-  }, 'Paste a Google Maps link that starts with https://maps.app.goo.gl or https://www.google.com/maps.')
+  .max(500, 'That link is too long. Use the short link from Share, then Copy link.')
+  .refine((text) => text === '' || isGoogleMapsUrl(text), MAPS_LINK_MESSAGE)
 
 const outside = 'The pin is outside Pakistan. Drag it onto your venue.'
 const pinStep = z.object({

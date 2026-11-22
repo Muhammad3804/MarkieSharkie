@@ -69,6 +69,8 @@ function Wizard({ step, index, draft, saved }) {
   const [checks, setChecks] = useState({ step, touched: new Set(), showAll: false })
   const [helpOpen, setHelpOpen] = useState(false)
   const [submit, setSubmit] = useState({ status: 'idle', error: '' })
+  // Field errors the server sent back on submit (e.g. venue.googleMapsUrl); shown under the field until it changes.
+  const [serverErrors, setServerErrors] = useState({})
   const [announcement, setAnnouncement] = useState('')
 
   // Which way to slide: forward when the step index grows (Next or browser forward), back otherwise.
@@ -85,7 +87,13 @@ function Wizard({ step, index, draft, saved }) {
     if (step !== 'about' || startedListing) setLastStep(step)
   }, [step, startedListing])
 
-  const update = updateDraft
+  const update = useCallback(
+    (recipe) => {
+      setServerErrors((current) => (Object.keys(current).length ? {} : current))
+      updateDraft(recipe)
+    },
+    [],
+  )
   const validation = useMemo(() => validateStep(step, draft), [step, draft])
 
   // Errors show once a field is left (blur) or after Next is pressed. Reset on every step.
@@ -100,8 +108,8 @@ function Wizard({ step, index, draft, saved }) {
     [step],
   )
   const errorFor = useCallback(
-    (path) => (stepChecks.showAll || stepChecks.touched.has(path) ? validation.errors[path] : undefined),
-    [stepChecks, validation],
+    (path) => serverErrors[path] ?? (stepChecks.showAll || stepChecks.touched.has(path) ? validation.errors[path] : undefined),
+    [stepChecks, validation, serverErrors],
   )
   const context = useMemo(() => ({ draft, update, errorFor, touch }), [draft, update, errorFor, touch])
 
@@ -118,6 +126,7 @@ function Wizard({ step, index, draft, saved }) {
     } catch (error) {
       // SubmitError carries a message for the person (server field errors, missing files, wrong account type).
       if (error?.name !== 'SubmitError') console.error('[host] submit failed', error)
+      setServerErrors(error?.fieldErrors ?? {})
       setSubmit({
         status: 'error',
         error: error?.name === 'SubmitError' ? `${error.message} Your draft is saved.` : 'We couldn’t submit your listing. Your draft is saved; check your connection and try again.',
