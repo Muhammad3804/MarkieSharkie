@@ -145,7 +145,11 @@ Rules enforced in services (need data from several tables): review only after `c
   (from / to status, actor, role, reason, time). Down section tested.
 - **010 booking-contact** (#38): `bookings.event_name`, `host_name`, `host_phone` (the booking flow's event details;
   the host may not be the account holder). Down section tested.
-- Still pending: #21 invitation `[Design]` columns and `rsvps.party_size` (with the invitations phase).
+- **011 invitations-per-guest** (#39): invitation card fields (`template`, `event_type`, `host_names`, `rsvp_by`,
+  `contact_phone`, `dress_code`, `notes`, `updated_at`), one invitation per booking; guests with email and / or a
+  Pakistani mobile (`phone` nullable, `guests_contact` CHECK), `invite_token` holds the sha256 of the link token,
+  `token_expires_at`, `revoked_at`, `sent_at`, `created_at`; `rsvps.party_size` (0 for no), `note`, `updated_at`.
+  Down section tested (it drops email-only guests, which can't exist before 011).
 - **Files:** `venue_images.image_url`, `halls.floor_plan_url` and `walkthrough_assets.file_url` hold the path
   `/uploads/<key>` (the API adds its origin). `media_uploads` tracks every upload and which venue it was attached to.
   Enum arrays (`supported_events event_type[]`) must be selected as `::text[]`, or node-postgres returns the raw

@@ -11,8 +11,8 @@ const KEY = 'markiesharkie:invitation-drafts'
 // Prefill from what we already know: the saved invitation, else the booking's own answers (REQ-36).
 export function newInviteDraft(booking, invitation) {
   if (invitation) {
-    const { template, title, eventType, hostNames, message, rsvpBy, contactPhone } = invitation
-    return { template, title, eventType, hostNames, message, rsvpBy, contactPhone: formatPkMobile(contactPhone), lastStep: null }
+    const { template, title, eventType, hostNames, message, rsvpBy, contactPhone, dressCode, notes } = invitation
+    return { template, title, eventType, hostNames, message, rsvpBy: rsvpBy ?? '', contactPhone: contactPhone ? formatPkMobile(contactPhone) : '', dressCode: dressCode ?? '', notes: notes ?? '', lastStep: null }
   }
   const today = todayKey()
   const weekBefore = addDays(booking.date, -7)
@@ -25,6 +25,8 @@ export function newInviteDraft(booking, invitation) {
     message: '',
     rsvpBy,
     contactPhone: booking.hostPhone ? formatPkMobile(booking.hostPhone) : '',
+    dressCode: '',
+    notes: '',
     lastStep: null,
   }
 }

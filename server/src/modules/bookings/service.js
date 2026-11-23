@@ -1,6 +1,8 @@
 import { env } from '../../config/env.js'
 import { pool } from '../../db/pool.js'
 import { withTransaction } from '../../db/withTransaction.js'
+import { sendBookingRequestEmail } from '../../integrations/mailer.js'
+import { logger } from '../../lib/logger.js'
 import { absolute } from '../venues/mappers.js'
 import { AppError, notFoundError } from '../../lib/AppError.js'
 import { validationError } from '../../lib/validation.js'
@@ -86,7 +88,54 @@ export async function releaseHold(user, slotId) {
 
 // ---------------------------------------------------------------- book (REQ-19, REQ-20, EUC-14 steps 4-6, EUC-24)
 
+// The customer's receipt email (requested by the team, 2026-11-23). Sent after the commit; a mail problem is logged
+// (reference only, no personal data) and never affects the booking (NFR-2).
+const money = (amount) => `Rs. ${Number(amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+const longDay = (day) =>
+  new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${day}T12:00:00Z`))
+const time12 = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+}
+export const bookingReference = (bookingId) => `MS-${bookingId.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+
+async function emailBookingRequest(bookingId) {
+  const reference = bookingReference(bookingId)
+  try {
+    const row = await repo.findBooking(pool, bookingId)
+    if (!row?.customer_email) return
+    await sendBookingRequestEmail({
+      to: row.customer_email,
+      name: row.customer_name,
+      reference,
+      eventName: row.event_name,
+      venueName: row.venue_name,
+      hallName: row.hall_name,
+      eventDay: longDay(row.event_date),
+      timeRange: `${time12(row.start_time)} to ${time12(row.end_time)}`,
+      guests: row.guest_count,
+      total: money(row.total_amount),
+      advance: `${money(row.advance_due)} (${row.advance_percent}%), once the venue confirms`,
+      link: `${env.clientOrigin}/bookings`,
+    })
+  } catch (err) {
+    logger.warn({ err: { message: err.message }, reference }, 'booking request email not sent')
+  }
+}
+
 export async function createBooking(user, body) {
+  const result = await createBookingTx(user, body)
+  await emailBookingRequest(result.booking.bookingId)
+  return result
+}
+
+async function createBookingTx(user, body) {
   try {
     return await withTransaction(async (client) => {
       const slot = await repo.lockSlot(client, body.slotId)

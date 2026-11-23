@@ -559,6 +559,21 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-23: **Invitations, guests and replies on the server (EUC-25, 26, 27), Part B.** Migration **011**
+  (invitation card fields + dress code + notes, one per booking; guests with email and / or mobile, hashed link
+  token with expiry and revoke; RSVP party size and note); srs-alignment #39. Server `modules/invitations/`:
+  `GET/PUT /api/bookings/:id/invitation`, `GET /api/invitations`, guest list / add / remove, send (email after the
+  commit, failed = "not delivered" with retry, links shown once), resend, new link, revoke, and the public
+  `GET /api/i/:token`, `PUT /api/i/:token/rsvp` (rate limited, generic 404, only the guest's own data). "Send to
+  everyone not sent yet" never replaces a link already shared with a mobile-only guest. `mailer.js`: invitation
+  email and (team request) a **booking receipt email** to the customer after `POST /bookings` commits.
+  Tests: `tests/invitations.test.js` (10), 2 more in `tests/bookings.test.js`, shared `tests/helpers/bookings.js`.
+  Client: `api/invitations.js` rewritten on the API; the builder saves to the server and gains dress code and notes
+  (the card-in-the-URL link, the open-link QR and `link.js` / `QrShare.jsx` / `useQrCode.js` are deleted); new host
+  event page `/bookings/:id/guests` (totals vs hall capacity, add, send, copy / new link, resend, revoke, remove,
+  filters, search); the guest page moved to `/i/:token` (event, dress code, notes, reply with party size and note);
+  "My bookings" shows server RSVP totals. The invitation draft (unsent form) still autosaves locally on purpose.
+
 - 2026-11-22: **Booking engine on the server (EUC-14, 15, 16, 24, SYS-01), Part A of "make 9 mock use cases
   real".** Migrations **009** (price + policy snapshot, `closed_as`, refund columns, `booking_events`) and **010**
   (event name, host name, host phone); srs-alignment #38. Server `modules/bookings/` (routes, controller, service,

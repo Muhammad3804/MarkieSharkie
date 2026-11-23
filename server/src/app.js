@@ -15,6 +15,7 @@ import { usersRouter } from './modules/users/routes.js'
 import { venuesRouter } from './modules/venues/routes.js'
 import { ownerRouter } from './modules/owner/routes.js'
 import { bookingsRouter } from './modules/bookings/routes.js'
+import { invitationsRouter } from './modules/invitations/routes.js'
 import { adminReviewsRouter, reviewReportsRouter } from './modules/reviews/routes.js'
 import { adminRouter } from './modules/admin/routes.js'
 import { getStorage } from './integrations/storage.js'
@@ -118,6 +119,7 @@ export function createApp({ logger = defaultLogger, rateLimits: overrides = AUTH
     ['/api', usersRouter()],
     ['/api', venuesRouter({ rateLimits })],
     ['/api', bookingsRouter({ rateLimits })],
+    ['/api', invitationsRouter({ rateLimits })],
     ['/api/owner', ownerRouter({ rateLimits })],
     ['/api', reviewReportsRouter({ rateLimits })],
     ['/api/admin/reviews', adminReviewsRouter({ rateLimits })],

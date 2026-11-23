@@ -36,6 +36,8 @@ servers:
 tags:
   - name: Bookings
     description: Holds, bookings, cancellations and owner decisions (EUC-14, 15, 16, 24; docs/booking-engine.md).
+  - name: Invitations
+    description: Event invitations, guests and replies by personal link (EUC-25, 26, 27).
   - name: Health
   - name: Auth
     description: UC-01 Register, UC-02 Log In, UC-03 Log Out (EUC-01, EUC-02)
@@ -823,6 +825,7 @@ paths:
       summary: 'Book a held slot (EUC-14, EUC-24, SYS-01)'
       description: |
         The customer's running hold is required (409 HOLD_EXPIRED). Checks capacity, minimum guests, a live menu and\navailable add-ons (400 with field errors). The server prices it in paisa and stores a snapshot (menu price per\nguest, billable guests, each add-on's unit price, hall charge, total, advance %, advance due, cancellation\npolicy), so later menu or price edits never change it. A race lost at the database is 409 SLOT_TAKEN.
+        After the commit the customer gets a receipt email (a mail failure is logged and never affects the booking).
       x-srs: [REQ-19, REQ-20, REQ-34, REQ-35, EUC-14, EUC-24]
       security:
         - bearerAuth: []
@@ -1016,6 +1019,414 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /bookings/{id}/invitation:
+    get:
+      tags: [Invitations]
+      operationId: getInvitation
+      summary: "The booking's invitation (or null) with event facts and RSVP totals (EUC-25)"
+      x-srs: [REQ-36, EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 'For the customer who owns the booking (anyone else 404).'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [Invitations]
+      operationId: saveInvitation
+      summary: 'Create or update the invitation for a confirmed booking (REQ-36)'
+      description: |
+        409 NOT_CONFIRMED unless the booking is confirmed; 409 EVENT_PASSED after the event. One invitation per booking.
+      x-srs: [REQ-36, EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvitationBody' }
+      responses:
+        '200':
+          description: 'Updated (201 when created). Date, time and venue come from the booking.'
+          content:
+            application/json:
+              schema: { type: object, properties: { invitation: { $ref: '#/components/schemas/Invitation' } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /invitations:
+    get:
+      tags: [Invitations]
+      operationId: listMyInvitations
+      summary: 'My invitations with RSVP totals (for My bookings)'
+      x-srs: [REQ-38]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 'Invited, attending, declined, awaiting and people per invitation.'
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { type: object } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /invitations/{id}/guests:
+    get:
+      tags: [Invitations]
+      operationId: listGuests
+      summary: 'Guest list with deliveries, replies and totals vs hall capacity (EUC-27 host view)'
+      x-srs: [REQ-37, REQ-38, EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - {
+            in: query,
+            name: status,
+            required: false,
+            schema: { type: string, enum: [all, attending, declined, awaiting, not_delivered] },
+          }
+        - { in: query, name: q, required: false, schema: { type: string, maxLength: 100 } }
+      responses:
+        '200':
+          description: 'Guests (name, email, phone, delivery, reply) and totals.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Invitations]
+      operationId: addGuests
+      summary: 'Add guests (name with email and / or a Pakistani mobile)'
+      description: |
+        409 GUEST_EXISTS when the email or mobile is already on the list; at most 500 guests.
+      x-srs: [REQ-37, EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [guests],
+                properties:
+                  {
+                    guests:
+                      {
+                        type: array,
+                        items:
+                          {
+                            type: object,
+                            properties: { name: { type: string }, email: { type: string }, phone: { type: string } },
+                          },
+                      },
+                  },
+              }
+      responses:
+        '201':
+          description: 'Added (not sent yet).'
+          content:
+            application/json:
+              schema: { type: object, properties: { guestIds: { type: array, items: { type: string } } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /invitations/{id}/guests/{guestId}:
+    delete:
+      tags: [Invitations]
+      operationId: removeGuest
+      summary: 'Remove a guest (and their reply)'
+      x-srs: [EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: guestId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204':
+          description: 'Removed.'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /invitations/{id}/send:
+    post:
+      tags: [Invitations]
+      operationId: sendInvitations
+      summary: 'Send to every guest not sent yet (or the chosen ones)'
+      description: |
+        Links are random tokens; only their sha256 is stored, so a link is shown once and resending makes a new one.\nEmails go out after the database commit; the invitation is never lost because of the mailer.
+      x-srs: [REQ-37, EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { guestIds: { type: array, items: { type: string, format: uuid } } } }
+      responses:
+        '200':
+          description: 'Each guest gets a new personal link (shown once). Guests with an email get it by email; a failed email is marked failed (retry later); guests without an email are manual (copy the link).'
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      results:
+                        {
+                          type: array,
+                          items:
+                            {
+                              type: object,
+                              properties:
+                                {
+                                  guestId: { type: string },
+                                  name: { type: string },
+                                  link: { type: string },
+                                  delivery: { type: string, enum: [sent, failed, manual] },
+                                  error: { type: [string, 'null'] },
+                                },
+                            },
+                        },
+                    },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /invitations/{id}/guests/{guestId}/resend:
+    post:
+      tags: [Invitations]
+      operationId: resendInvitation
+      summary: "Re-send one guest's invitation (new link; the old one stops working)"
+      x-srs: [REQ-37, EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: guestId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '200':
+          description: 'Result for that guest.'
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      results:
+                        {
+                          type: array,
+                          items:
+                            {
+                              type: object,
+                              properties:
+                                {
+                                  guestId: { type: string },
+                                  name: { type: string },
+                                  link: { type: string },
+                                  delivery: { type: string, enum: [sent, failed, manual] },
+                                  error: { type: [string, 'null'] },
+                                },
+                            },
+                        },
+                    },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /invitations/{id}/guests/{guestId}/link:
+    post:
+      tags: [Invitations]
+      operationId: newGuestLink
+      summary: 'A new link to copy, without emailing (the old one stops working)'
+      x-srs: [EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: guestId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '200':
+          description: 'Result with the link.'
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      results:
+                        {
+                          type: array,
+                          items:
+                            {
+                              type: object,
+                              properties:
+                                {
+                                  guestId: { type: string },
+                                  name: { type: string },
+                                  link: { type: string },
+                                  delivery: { type: string, enum: [sent, failed, manual] },
+                                  error: { type: [string, 'null'] },
+                                },
+                            },
+                        },
+                    },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /invitations/{id}/guests/{guestId}/revoke:
+    post:
+      tags: [Invitations]
+      operationId: revokeGuest
+      summary: "Revoke a guest's link"
+      x-srs: [EUC-25]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: guestId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyBody' }
+      responses:
+        '204':
+          description: 'The link stops working (sending again makes a new one).'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /i/{token}:
+    get:
+      tags: [Invitations]
+      operationId: getGuestInvitation
+      summary: 'The guest’s invitation page (no account, REQ-38)'
+      description: |
+        An invalid, expired (after the event day) or revoked link is the same 404 INVITATION_NOT_FOUND. 300 per 15 min per IP.
+      x-srs: [REQ-38, REQ-39, EUC-26, EUC-27]
+      security: []
+      parameters:
+        - { in: path, name: token, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 'The event (date, time, venue, address, map link, host message, dress code) and only this guest’s name and reply.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /i/{token}/rsvp:
+    put:
+      tags: [Invitations]
+      operationId: replyToInvitation
+      summary: 'Reply yes or no, with the party size and a note (EUC-26)'
+      description: |
+        409 RSVP_CLOSED after the event day. 60 per 15 min per IP.
+      x-srs: [REQ-38, EUC-26]
+      security: []
+      parameters:
+        - { in: path, name: token, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [response],
+                properties:
+                  {
+                    response: { type: string, enum: [yes, no] },
+                    partySize: { type: integer, minimum: 1, maximum: 20 },
+                    note: { type: string, maxLength: 300 },
+                  },
+              }
+      responses:
+        '200':
+          description: 'Saved; can be changed until the event day.'
+          content:
+            application/json:
+              schema: { type: object, properties: { reply: { type: object } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/InvalidStatus' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -2508,6 +2919,22 @@ components:
         Numbers are sent as text like the form fields. capacity, base price and venue type are computed by the server.
       required: [venue, halls, venueImages, menuPackages, bookingRules]
       additionalProperties: true
+    InvitationBody:
+      type: object
+      required: [template, title, eventType, hostNames]
+      properties:
+        template: { type: string, enum: [classic, floral, modern, mehndi] }
+        title: { type: string, maxLength: 80 }
+        eventType: { $ref: '#/components/schemas/EventType' }
+        hostNames: { type: string, maxLength: 120 }
+        message: { type: string, maxLength: 300 }
+        dressCode: { type: string, maxLength: 100 }
+        notes: { type: string, maxLength: 1000 }
+        contactPhone: { type: [string, 'null'] }
+        rsvpBy: { type: [string, 'null'], format: date }
+    Invitation:
+      type: object
+      additionalProperties: true
     BookingRequest:
       type: object
       required: [slotId, eventType, guestCount, eventName, hostName, hostPhone]
@@ -2711,6 +3138,12 @@ components:
         - HOLD_EXPIRED
         - PAST_DATE
         - INVALID_TRANSITION
+        - NOT_CONFIRMED
+        - EVENT_PASSED
+        - GUEST_EXISTS
+        - TOO_MANY_GUESTS
+        - INVITATION_NOT_FOUND
+        - RSVP_CLOSED
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR

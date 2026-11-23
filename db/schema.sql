@@ -653,26 +653,52 @@ CREATE TABLE invitations (
   event_time    time        NOT NULL,
   share_link    text        NOT NULL UNIQUE,
   qr_enabled    boolean     NOT NULL DEFAULT false,
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  -- [Design] #39 (migration 011): the card builder's fields (#21) plus dress code and notes
+  template      text        NOT NULL DEFAULT 'classic' CHECK (template IN ('classic', 'floral', 'modern', 'mehndi')),
+  event_type    event_type,
+  host_names    text CHECK (char_length(host_names) <= 120),
+  rsvp_by       date,
+  contact_phone text CHECK (contact_phone ~ '^\+923[0-9]{9}$'),
+  dress_code    text CHECK (char_length(dress_code) <= 100),
+  notes         text CHECK (char_length(notes) <= 1000),
+  updated_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX invitations_booking_idx ON invitations(booking_id);
+CREATE UNIQUE INDEX invitations_one_per_booking ON invitations (booking_id);   -- [Design] #39 one per booking
+CREATE TRIGGER invitations_updated_at BEFORE UPDATE ON invitations FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE guests (
   guest_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   invitation_id   uuid            NOT NULL REFERENCES invitations(invitation_id) ON DELETE CASCADE,
   name            text            NOT NULL,
-  phone           text            NOT NULL,
-  invite_token    text            NOT NULL UNIQUE,                           -- secure random, used in the guest link (REQ-3)
+  phone           text,                                                      -- [Design] #39 nullable: email and / or mobile
+  invite_token    text            NOT NULL UNIQUE,                           -- [Design] #39: sha256 of the link token (REQ-3)
   delivery_status delivery_status NOT NULL DEFAULT 'pending',                -- [SRS] REQ-37 delivery status per guest
   delivery_error  text,                                                      -- [SRS] EUC-25 step 5.1
-  UNIQUE (invitation_id, phone)
+  -- [Design] #39 (migration 011)
+  email            citext CHECK (char_length(email) <= 254),
+  token_expires_at timestamptz,
+  revoked_at       timestamptz,
+  sent_at          timestamptz,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (invitation_id, phone),
+  CONSTRAINT guests_contact CHECK (phone IS NOT NULL OR email IS NOT NULL),
+  CONSTRAINT guests_phone_format CHECK (phone IS NULL OR phone ~ '^\+923[0-9]{9}$'),
+  CONSTRAINT guests_email_per_invitation UNIQUE (invitation_id, email)
 );
+CREATE INDEX guests_invitation_idx ON guests (invitation_id);
 
 CREATE TABLE rsvps (
   rsvp_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   guest_id     uuid          NOT NULL UNIQUE REFERENCES guests(guest_id) ON DELETE CASCADE, -- one current reply, updatable (EUC-26 4.1)
   response     rsvp_response NOT NULL,
-  responded_at timestamptz   NOT NULL DEFAULT now()
+  responded_at timestamptz   NOT NULL DEFAULT now(),
+  -- [Design] #39 (migration 011): how many people the reply is for (0 for "no") and a note
+  party_size   smallint NOT NULL DEFAULT 1 CHECK (party_size BETWEEN 0 AND 20),
+  note         text CHECK (char_length(note) <= 300),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT rsvps_party_matches CHECK ((response = 'no') = (party_size = 0))
 );
 
 CREATE TABLE qr_codes (

@@ -26,13 +26,13 @@ export const INVITE_STEPS = [
   },
   {
     id: 'review',
-    title: 'Review & share',
+    title: 'Review & save',
     help: {
-      title: 'Sharing your invitation',
+      title: 'After saving',
       tips: [
-        'Generating makes a QR code and a link. Anyone with either one can open the invitation and reply. No account needed.',
-        'Guests reply Attending (with how many people) or Can’t make it. Their replies show up on your booking.',
-        'If you change something later, generate again. The QR code changes too, so share the new one.',
+        'Saving stores the invitation. Next you add guests with an email or a mobile number.',
+        'Each guest gets their own link: by email, or copy it and share it on WhatsApp. Links are personal, so one guest can’t see another’s reply.',
+        'Guests reply Attending (with how many people) or Can’t make it, and can change it until the event day.',
       ],
     },
   },

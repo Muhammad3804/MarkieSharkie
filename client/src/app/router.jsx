@@ -3,7 +3,7 @@ import AuthProvider from '../features/auth/AuthProvider.jsx'
 import RequireAuth from '../features/auth/RequireAuth.jsx'
 import RequireRole from '../features/auth/RequireRole.jsx'
 import PublicLayout from './layouts/PublicLayout.jsx'
-import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, MyBookingsRoute, ProfileRoute, MyListingsRoute, ListingEditorRoute, OwnerBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
+import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, InvitationGuestsRoute, MyBookingsRoute, ProfileRoute, MyListingsRoute, ListingEditorRoute, OwnerBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
 import Landing from '../pages/Landing.jsx'
 import SearchRedirect from './SearchRedirect.jsx'
 import HostResumeRedirect from './HostResumeRedirect.jsx'
@@ -65,6 +65,15 @@ export const router = createBrowserRouter([
               </RequireRole>
             ),
           },
+          // EUC-25 / EUC-27: the host's event page, guest list and replies (the booking's customer only).
+          {
+            path: '/bookings/:id/guests',
+            element: (
+              <RequireAuth intent="invitation">
+                <InvitationGuestsRoute />
+              </RequireAuth>
+            ),
+          },
           // Customer's own bookings (moves into /app with role dashboards).
           {
             path: '/bookings',
@@ -95,7 +104,7 @@ export const router = createBrowserRouter([
         ),
       },
       // Guest invitation: public, no account, no site chrome (REQ-38).
-      { path: '/invite/:id', element: <GuestInvitationRoute /> },
+      { path: '/i/:token', element: <GuestInvitationRoute /> },
       // The listing wizard has its own full-screen shell (no site header, footer or chat).
       // Logged-in only. TODO(auth): venue_owner role once accounts have roles, see pages/HostWizard.jsx.
       {

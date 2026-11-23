@@ -49,7 +49,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
 - [ ] LLM adapter, filter extraction, retrieval, grounded answer, history, fallback
 
 ## Phase 8: Invitations and event day (REQ-36 to 41, EUC-25 to 28)
-- [ ] Invitation + card + share link, guest page (offline-capable), RSVP
+- [ ] Invitation + card + per-guest links + email + guest page + RSVP (done 2026-11-23, #39; offline-capable guest page still to do)
 - [ ] WhatsApp adapter + webhook (delivery status + button replies)
 - [ ] QR codes, attendants, scanner page, attendance count
 

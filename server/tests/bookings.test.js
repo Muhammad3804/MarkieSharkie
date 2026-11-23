@@ -6,6 +6,7 @@ import { submitListing, useTempStorage } from './helpers/venues.js'
 import { setImageDetector } from '../src/integrations/imageDetection.js'
 import { settleVerifications } from '../src/modules/venues/imageVerification.js'
 import { runBookingJobs } from '../src/modules/bookings/service.js'
+import { setBookingEmailSender, testOutbox } from '../src/integrations/mailer.js'
 
 // The booking engine (EUC-14, 15, 16, 24, SYS-01; docs/booking-engine.md, srs-alignment #38).
 
@@ -16,9 +17,11 @@ beforeAll(() => {
 afterAll(() => storage.cleanup())
 beforeEach(async () => {
   await resetDb()
+  testOutbox.length = 0
   setImageDetector(async () => ({ score: 0.05 }))
 })
 afterEach(async () => {
+  setBookingEmailSender(null)
   await settleVerifications()
   setImageDetector(null)
 })
@@ -228,6 +231,30 @@ describe('POST /api/bookings (EUC-14, EUC-24)', () => {
     })
     expect(booking.events).toEqual([expect.objectContaining({ from: null, to: 'requested', by: 'customer' })])
     expect((await one('SELECT status FROM time_slots WHERE slot_id = $1', [slotId])).status).toBe('booked')
+  })
+
+  it('emails the customer a receipt once the request is in', async () => {
+    const v = await liveVenue()
+    const c = await signedIn(v.agent, 'customer')
+    const { booking } = await book(v, c)
+    const mail = testOutbox.filter((m) => m.kind === 'booking_request')
+    expect(mail).toHaveLength(1)
+    expect(mail[0].to).toBe(c.body.email)
+    expect(mail[0].subject).toMatch(/Booking request sent: Ali & Sara’s Walima \(MS-[0-9A-F]{6}\)/)
+    expect(mail[0].text).toMatch(/Total: Rs\. 465,000/)
+    expect(mail[0].text).toMatch(/Main hall/)
+    expect(mail[0].reference).toBe(`MS-${booking.bookingId.replace(/-/g, '').slice(0, 6).toUpperCase()}`)
+  })
+
+  it('a mail failure never affects the booking', async () => {
+    const v = await liveVenue()
+    const c = await signedIn(v.agent, 'customer')
+    setBookingEmailSender(async () => {
+      throw new Error('SMTP down')
+    })
+    const { booking } = await book(v, c)
+    expect(booking.status).toBe('requested')
+    expect(await count('SELECT count(*) FROM bookings WHERE booking_id = $1', [booking.bookingId])).toBe(1)
   })
 
   it('bills the menu minimum when fewer guests come', async () => {

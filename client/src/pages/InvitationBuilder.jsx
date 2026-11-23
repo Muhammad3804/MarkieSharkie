@@ -1,29 +1,26 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'motion/react'
 import FlowHeaderShell from '../features/booking/FlowHeader.jsx'
 import HelpDrawer from '../features/host/HelpDrawer.jsx'
 import { WizardContext, useWizard } from '../features/host/WizardContext.js'
 import { ErrorText, StepHeading, TextArea, TextField } from '../features/host/fields.jsx'
-import { InvitationError, getInvitationContext, saveInvitation, toPublicCard } from '../api/invitations.js'
+import { InvitationError, getInvitationContext, saveInvitation } from '../api/invitations.js'
 import InvitationCard, { InviteFonts } from '../features/invitations/InvitationCard.jsx'
-import QrShare from '../features/invitations/QrShare.jsx'
-import { useQrCode } from '../features/invitations/useQrCode.js'
 import { newInviteDraft, saveInviteDraft, updateInviteDraft, useInviteDraft } from '../features/invitations/draft.js'
 import { INVITE_EVENT_TYPES, INVITE_TEMPLATES, LIMITS } from '../features/invitations/options.js'
 import { validateInviteStep } from '../features/invitations/schema.js'
 import { INVITE_STEPS, inviteStepIndex } from '../features/invitations/steps.js'
-import { inviteUrl, mapsUrl } from '../features/invitations/link.js'
 import { formatLongDate, formatTimeRange } from '../features/invitations/format.js'
 import { bookingReference } from '../lib/booking.js'
 import { addDays } from '../lib/days.js'
 import { todayKey } from '../lib/format.js'
 import { normalizePkMobile } from '../lib/phone.js'
 
-// /bookings/:id/invite/:step: QR invitation builder (REQ-36), one topic per screen like the booking flow:
-// pick a design -> details (prefilled from the booking, live preview) -> review & generate (QR + share).
-// Only for a Confirmed booking. Frontend only, on the mock api/invitations.js.
-// Logged-in only (RequireAuth); getBooking only returns the signed-in user's own bookings.
+// /bookings/:id/invite/:step: invitation builder (REQ-36), one topic per screen like the booking flow:
+// pick a design -> details (prefilled from the booking, live preview) -> review & save. Saving stores it on the
+// server (PUT /api/bookings/:id/invitation) and opens the guest list (/bookings/:id/guests), where each guest gets a
+// personal link. Only for the customer's own Confirmed booking (the server checks both).
 
 export default function InvitationBuilder() {
   const { id, step } = useParams()
@@ -38,6 +35,7 @@ export default function InvitationBuilder() {
       .catch((error) => {
         if (cancelled) return
         if (error instanceof InvitationError && error.code === 'NOT_FOUND') setState({ status: 'not-found' })
+        else if (error instanceof InvitationError && error.code === 'EVENT_PASSED') setState({ status: 'passed' })
         else {
           console.error('[invitations] load failed', error)
           setState({ status: 'error' })
@@ -56,8 +54,9 @@ export default function InvitationBuilder() {
 
   if (state.status === 'loading' || (ready && !draft)) return <Message loading />
   if (state.status === 'not-found') return <Message title="Booking not found" body="This booking doesn’t exist or isn’t yours." />
+  if (state.status === 'passed') return <Message title="This event has passed" body="Invitations can only be changed before the event." />
   if (state.status === 'error') return <Message title="Couldn’t load this booking" body="Check your connection and try again. Your invitation draft is saved." onRetry={() => setVersion((v) => v + 1)} />
-  if (!ready) return <Message title="Invitations open once the booking is confirmed" body={`Booking ${bookingReference(state.booking.bookingId)} isn’t confirmed yet. When the venue records your advance, you can make a QR invitation here.`} />
+  if (!ready) return <Message title="Invitations open once the booking is confirmed" body={`Booking ${bookingReference(state.booking.bookingId)} isn’t confirmed yet. When the venue confirms it, you can make an invitation here.`} />
 
   const index = inviteStepIndex(step)
   if (index < 0) return <Navigate to={`/bookings/${id}/invite/${draft.lastStep ?? 'template'}`} replace />
@@ -99,7 +98,7 @@ function Message({ loading, title, body, onRetry }) {
   )
 }
 
-const DRAFT_FIELDS = ['template', 'title', 'eventType', 'hostNames', 'message', 'rsvpBy']
+const DRAFT_FIELDS = ['template', 'title', 'eventType', 'hostNames', 'message', 'rsvpBy', 'dressCode', 'notes']
 // Has the host changed anything since the invitation was generated?
 function differs(draft, invitation) {
   if (!invitation) return true
@@ -152,10 +151,10 @@ function Builder({ bookingId, step, index, draft, saved, facts, initialInvitatio
       const result = await saveInvitation(bookingId, draft)
       setInvitation(result)
       setSubmit({ status: 'idle', error: '' })
-      setAnnouncement(invitation ? 'Invitation updated. Share the new QR code.' : 'Invitation ready. Share the QR code or the link.')
+      navigate(`/bookings/${bookingId}/guests`, { state: { saved: invitation ? 'updated' : 'created' } })
     } catch (error) {
-      console.error('[invitations] save failed', error)
-      setSubmit({ status: 'error', error: error instanceof InvitationError ? error.message : 'We couldn’t generate the invitation. Your answers are saved; try again.' })
+      if (!(error instanceof InvitationError)) console.error('[invitations] save failed', error)
+      setSubmit({ status: 'error', error: error instanceof InvitationError ? error.message : 'We couldn’t save the invitation. Your answers are saved on this device; try again.' })
     }
   }
 
@@ -177,7 +176,7 @@ function Builder({ bookingId, step, index, draft, saved, facts, initialInvitatio
     setAnnouncement('')
     if (step === 'review') {
       if (dirty) return generate()
-      return navigate('/bookings')
+      return navigate(`/bookings/${bookingId}/guests`)
     }
     goTo(INVITE_STEPS[index + 1].id)
   }
@@ -193,7 +192,7 @@ function Builder({ bookingId, step, index, draft, saved, facts, initialInvitatio
   }
 
   const View = { template: TemplateStep, details: DetailsStep, review: ReviewStep }[step]
-  const nextLabel = step !== 'review' ? 'Next' : !dirty ? 'Done' : invitation ? 'Update invitation' : 'Generate invitation'
+  const nextLabel = step !== 'review' ? 'Next' : !dirty ? 'Guest list' : invitation ? 'Save changes' : 'Save & add guests'
 
   return (
     <MotionConfig reducedMotion="user">
@@ -224,7 +223,7 @@ function Builder({ bookingId, step, index, draft, saved, facts, initialInvitatio
                 <motion.div key={step} custom={offset} variants={slide} initial="enter" animate="center" exit="exit" className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12">
                   {slideState.moved && <StepFocus />}
                   <p className="mb-3 text-[14px] font-medium text-muted-warm">
-                    Step {index + 1} of {INVITE_STEPS.length} · QR invitation
+                    Step {index + 1} of {INVITE_STEPS.length} · Invitation
                   </p>
                   <View />
                 </motion.div>
@@ -256,7 +255,7 @@ function Builder({ bookingId, step, index, draft, saved, facts, initialInvitatio
                 } ${busy ? 'cursor-wait' : ''}`}
               >
                 {busy && <span className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent motion-reduce:animate-none" aria-hidden="true" />}
-                {busy ? 'Generating…' : nextLabel}
+                {busy ? 'Saving…' : nextLabel}
               </button>
             </div>
             <div aria-live="polite" className="sr-only">
@@ -390,6 +389,11 @@ function DetailsStep() {
           <TextArea path="message" label="Personal message (optional)" hint={`A line or two for your guests. Up to ${LIMITS.message} characters.`} value={draft.message} onChange={(message) => update({ message })} maxLength={LIMITS.message} rows={3} dir="auto" />
 
           <div className="grid gap-7 sm:grid-cols-2">
+            <TextField path="dressCode" label="Dress code (optional)" hint="Like “Formal” or “Shades of green”." value={draft.dressCode ?? ''} onChange={(dressCode) => update({ dressCode })} maxLength={100} dir="auto" />
+            <TextArea path="notes" label="Notes for guests (optional)" hint="Parking, entry gate, timings. Shown on each guest’s page." value={draft.notes ?? ''} onChange={(notes) => update({ notes })} maxLength={1000} rows={2} dir="auto" />
+          </div>
+
+          <div className="grid gap-7 sm:grid-cols-2">
             <TextField path="rsvpBy" type="date" label="Reply by" hint={`Before the event day (${formatLongDate(facts.eventDate)}).`} value={draft.rsvpBy} onChange={(rsvpBy) => update({ rsvpBy })} min={today} max={lastReplyDay} />
             <TextField path="contactPhone" type="tel" inputMode="tel" autoComplete="tel" label="Contact phone" hint="Printed on the card for guests’ questions." placeholder="0300-1234567" value={draft.contactPhone} onChange={(contactPhone) => update({ contactPhone })} />
           </div>
@@ -436,7 +440,7 @@ function BookingFacts({ facts }) {
           </div>
         ))}
       </dl>
-      <a href={mapsUrl(facts)} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-1.5 text-[15px] font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-primary">
+      <a href={facts.mapsUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-1.5 text-[15px] font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-primary">
         Check the location on Google Maps<span className="sr-only"> (opens in a new tab)</span>
       </a>
     </section>
@@ -444,40 +448,29 @@ function BookingFacts({ facts }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Step 3: review & generate. The QR only exists once the invitation is saved (it encodes the saved link).
+// Step 3: review & save. Each guest gets a personal link from the guest list, so the card itself has no QR.
 
 function ReviewStep() {
   const { previewCard, invitation, dirty } = useWizard()
-  const cardRef = useRef(null)
-  const shareCard = useMemo(() => (invitation ? toPublicCard(invitation) : null), [invitation])
-  const url = shareCard ? inviteUrl(shareCard) : ''
-  const { dataUrl: qr, failed: qrFailed } = useQrCode(url)
-  const ready = shareCard && !dirty
   return (
     <>
       <StepHeading
-        title={ready ? 'Your invitation is ready' : 'Review your invitation'}
-        subtitle={ready ? 'Share the QR code or the link. Replies show up on your booking.' : invitation ? 'You changed some details. Update the invitation to get a new QR code.' : 'Check the card, then generate your QR code and link.'}
+        title={invitation && !dirty ? 'Your invitation is saved' : 'Review your invitation'}
+        subtitle={invitation ? (dirty ? 'You changed some details. Save them; guests see the new version on their links.' : 'Go to the guest list to add guests and send their personal links.') : 'Check the card, then save it and add your guests.'}
       />
       <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] lg:gap-14">
         <div className="mx-auto w-full max-w-[440px]">
-          <div ref={cardRef} className="overflow-hidden rounded-2xl shadow-[0_1px_2px_rgba(41,28,31,0.08),0_20px_48px_-20px_rgba(41,28,31,0.45)]">
-            <InvitationCard card={ready ? shareCard : previewCard} qr={!ready ? 'pending' : qrFailed ? null : (qr ?? 'pending')} />
-          </div>
+          <PreviewCard card={previewCard} />
         </div>
-        {ready ? (
-          <QrShare url={url} qr={qr} qrFailed={qrFailed} card={shareCard} cardRef={cardRef} />
-        ) : (
-          <div className="rounded-3xl border border-dashed border-outline-strong bg-blush/50 p-6">
-            <h2 className="font-heading text-[20px] font-semibold text-ink-strong">What happens next</h2>
-            <ol className="mt-3 grid list-decimal gap-2 pl-5 text-[15px] text-ink">
-              <li>Generating makes a QR code and a link for this card.</li>
-              <li>Download the card or QR, or share the link on WhatsApp.</li>
-              <li>Guests open it on their phone, no account needed, and reply Attending or Can’t make it.</li>
-              <li>You see replies and the guest total on your booking.</li>
-            </ol>
-          </div>
-        )}
+        <div className="rounded-3xl border border-dashed border-outline-strong bg-blush/50 p-6">
+          <h2 className="font-heading text-[20px] font-semibold text-ink-strong">What happens next</h2>
+          <ol className="mt-3 grid list-decimal gap-2 pl-5 text-[15px] text-ink">
+            <li>Add your guests with an email address or a mobile number.</li>
+            <li>Send: guests with an email get theirs by email. For everyone, you can copy their personal link to share on WhatsApp.</li>
+            <li>Guests open their link on their phone, no account needed, and reply Attending (with how many people) or Can’t make it.</li>
+            <li>You see every reply and the total against your hall’s capacity on the guest list.</li>
+          </ol>
+        </div>
       </div>
     </>
   )

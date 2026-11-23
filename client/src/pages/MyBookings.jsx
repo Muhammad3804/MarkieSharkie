@@ -189,8 +189,8 @@ function BookingCard({ booking, invite, today, onCancel }) {
         </span>
         {/* REQ-36: invitations only for a Confirmed booking. */}
         {booking.status === 'confirmed' && (
-          <Link to={`/bookings/${booking.bookingId}/invite${invite ? '/review' : ''}`} className={invite ? secondaryButton : primaryButton}>
-            {invite ? 'Invitation & QR' : 'Generate QR invitation'}
+          <Link to={invite ? `/bookings/${booking.bookingId}/guests` : `/bookings/${booking.bookingId}/invite`} className={invite ? secondaryButton : primaryButton}>
+            {invite ? 'Guests & replies' : 'Create invitation'}
             <span className="sr-only"> for {reference}</span>
           </Link>
         )}

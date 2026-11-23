@@ -17,6 +17,7 @@ const ListingEditor = lazy(() => import('../pages/owner/ListingEditor.jsx'))
 const OwnerBookings = lazy(() => import('../pages/owner/OwnerBookings.jsx'))
 const InvitationBuilder = lazy(() => import('../pages/InvitationBuilder.jsx'))
 const GuestInvitation = lazy(() => import('../pages/GuestInvitation.jsx'))
+const InvitationGuests = lazy(() => import('../pages/InvitationGuests.jsx'))
 
 export default function VenueDetailRoute() {
   return (
@@ -118,6 +119,14 @@ export function OwnerBookingsRoute() {
   return (
     <Suspense fallback={<div aria-busy="true" aria-label="Loading bookings" className="min-h-[60vh]" />}>
       <OwnerBookings />
+    </Suspense>
+  )
+}
+
+export function InvitationGuestsRoute() {
+  return (
+    <Suspense fallback={<div aria-busy="true" aria-label="Loading your guest list" className="min-h-[60vh]" />}>
+      <InvitationGuests />
     </Suspense>
   )
 }

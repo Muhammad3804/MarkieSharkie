@@ -24,6 +24,9 @@ export const AUTH_RATE_LIMITS = Object.freeze({
   reviewReports: { windowMs: 60 * MINUTE, limit: 30 },
   // Holds, bookings, cancels and owner decisions (EUC-14 to 16), per IP.
   bookingWrite: { windowMs: 15 * MINUTE, limit: 300 },
+  // Guest invitation links (no account, REQ-38): reading, and replying.
+  inviteGuest: { windowMs: 15 * MINUTE, limit: 300 },
+  inviteRsvp: { windowMs: 15 * MINUTE, limit: 60 },
 })
 
 const RATE_LIMITED_MESSAGES = {

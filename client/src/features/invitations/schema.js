@@ -13,6 +13,8 @@ const details = z.object({
   message: z.string().trim().max(LIMITS.message, `Keep the message under ${LIMITS.message + 1} characters.`),
   contactPhone: z.string().refine((value) => normalizePkMobile(value) !== null, 'Enter a Pakistani mobile number, like 0300-1234567.'),
   rsvpBy: z.string().min(1, 'Pick the last day guests can reply.'),
+  dressCode: z.string().trim().max(100, 'Keep the dress code under 101 characters.').optional(),
+  notes: z.string().trim().max(1000, 'Keep the notes under 1001 characters.').optional(),
 })
 
 function zodErrors(result) {

@@ -27,8 +27,8 @@
 | Payments | `POST /bookings/:id/payments` (owner), `GET /bookings/:id/payments` (both) | |
 | Chatbot | `POST /chat/sessions`, `POST /chat/sessions/:id/messages`, `GET /chat/sessions` | customer |
 | Decor | `GET /decorators`, `GET /decorators/:id`, `PATCH /decorator/profile`, `/decorator/packages`, `POST /decor-quotations`, `POST /decor-quotations/:id/quote|accept|reject|revise`, `POST /bookings/:id/decor-previews`, `PATCH /decor-previews/:id/shortlist`, `POST /decor-previews/share` | customer, decorator |
-| Invitations | `POST /bookings/:id/invitation`, `POST /invitations/:id/guests`, `POST /invitations/:id/send`, `GET /invitations/:id/rsvp-summary`, `GET /invitations/:id/attendance`, `POST /bookings/:id/attendants` | customer |
-| Guest | `GET /i/:token`, `POST /i/:token/rsvp` | guest (token) |
+| Invitations | **Built (2026-11-23, #39):** `GET/PUT /bookings/:id/invitation`, `GET /invitations`, `GET/POST /invitations/:id/guests`, `DELETE /invitations/:id/guests/:guestId`, `POST /invitations/:id/send`, `POST /invitations/:id/guests/:guestId/resend|link|revoke`. Planned: `GET /invitations/:id/attendance`, `POST /bookings/:id/attendants` (EUC-28) | customer (the booking's own; others 404) |
+| Guest | **Built:** `GET /i/:token`, `PUT /i/:token/rsvp` (300 / 60 per 15 min per IP) | guest (token) |
 | Check-in | `POST /checkin/session` (event code), `POST /checkin/scan` | attendant (code) |
 | Webhooks | `POST /webhooks/whatsapp` (delivery status + RSVP button replies) | Meta, signature verified |
 | Reviews | **Built (2026-11-22, #36):** `POST /venues/:id/reviews/:reviewId/report` (customer, venue_owner, decorator; once per user per review). Planned: `POST /bookings/:id/review` (customer, after a completed booking) | logged in, not admin |
@@ -95,6 +95,14 @@
   anyone else); the owner also sees the customer's contact. Every change locks the slot row, then the booking row;
   a lost race is 409 (`SLOT_UNAVAILABLE`, `SLOT_TAKEN`, `HOLD_EXPIRED`), an illegal change 409 `INVALID_TRANSITION`.
   Prices are computed on the server in paisa and snapshotted. Writes are limited to 300 per 15 min per IP.
+- **Invitations and guest links (EUC-25, 26, 27, srs-alignment #39):** only the customer who owns a confirmed,
+  upcoming booking writes its invitation and guest list (404 for anyone else, 403 for other roles). Guest links carry
+  24 random bytes (base64url); only the sha256 is stored (`guests.invite_token`), so a link is shown once and
+  "resend" / "new link" replace it. Links expire after the event day and can be revoked; an invalid, expired or
+  revoked token is the same 404 `INVITATION_NOT_FOUND`. The guest page returns the event and only that guest's name
+  and reply (NFR-8), `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. Emails are sent after the commit;
+  a failure marks the guest `failed` with the reason (retry), never loses the invitation, and the link is never
+  logged. The booking receipt email (sent after `POST /bookings` commits) works the same way.
 - **Review moderation (REQ-44, EUC-34, srs-alignment #36):** reporting needs a login (admins can't; not your own
   review, 403; once per user per review, 409 `ALREADY_REPORTED`; 30 an hour per IP) and only works for reviews on a
   public venue page. A report sets `reviews.is_flagged`. The admin hides (soft: `removed_at`, `removed_by`,
