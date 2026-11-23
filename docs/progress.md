@@ -15,8 +15,8 @@ Last updated: 2026-11-22
   image checks); admin `/api/admin/venues[...]` (queue, review, decisions, bulk), `/api/admin/images`, `/stats`,
   `/audit`. Photos go through the AI check (Sightengine; fake without keys). Files under `server/uploads/` served at
   `/uploads`. The home page, Explore, venue pages, Become a host and the admin approvals / venues / photos / overview /
-  audit / users pages, bookings and invitations use real data; admin disputes and listing reports are still browser
-  mocks (Part D).
+  audit / users / disputes & reports pages, bookings, invitations and disputes use real data. No browser mock store
+  is left (`api/mockStore.js` deleted 2026-11-23).
 
 - Node 20, ES modules, Express 4.22, `pg` 8 (raw SQL, `$n` params only), node-pg-migrate 9 (SQL migrations), Zod 4,
   dotenv 18 (loads the repo-root `.env`; shell vars win), helmet, cors, cookie-parser, express-rate-limit 8, argon2
@@ -133,14 +133,16 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `GET /api/venues/landing`, `GET /api/venues?<query>` and `GET /api/stats` later. The only
   file that imports `mockVenues.js`
 - `src/api/chat.js`: `sendMessage({ message, history })` stub, returns `null`
-- `src/api/mockStore.js`: `createMockStore(key, { seed, isValid })` (localStorage JSON, memory fallback, cross-tab
-  `storage` sync), one shared change signal `subscribeMockStores`, `latency()`
+- `src/features/admin/changes.js`: the admin "data changed" signal (pages refetch after a write, also across tabs)
+  and a separate one for the sidebar badge numbers. (`src/api/mockStore.js` was deleted 2026-11-23.)
 - `src/api/listings.js`: submitted listings (localStorage `markiesharkie:listings`, files in IndexedDB
   `markiesharkie-listings`), venue suspensions, `listingToVenue()` (payload → the same venue shape as `getMockVenue`),
   `getPublicListingVenues()` (approved + active + not suspended only). Seeds from `features/admin/seedListings.js`
-- `src/api/admin.js`: admin mock API (localStorage `markiesharkie:admin`): approvals, flagged images, venues,
-  users, disputes, listing reports, audit log, overview, notifications, global search. Every change writes an
-  audit entry. `CURRENT_ADMIN` is a demo admin (`TODO(auth)`)
+- `src/api/admin.js`: admin API on `/api/admin/...`: approvals, flagged images, venues, users, disputes, listing
+  reports, audit log, overview, notifications, global search. The server audits every write. `CURRENT_ADMIN` is the
+  signed-in admin
+- `src/api/disputes.js`: disputes for the booking's customer and venue owner (open with photos, list, read, reply,
+  private evidence as blob URLs) and "Report this listing"
 - `src/features/venues/mockVenues.js`: 48 landing cards (`landingSections`) and `getMockVenue(id)`, which builds full venue
   detail (halls, bridal suite, menus, reviews, rating counts, booked dates, lat/lng/address, gallery per hall)
 - `src/features/venues/constants.js`: `VENUE_TABS`, `AMENITIES`, `EVENT_LABELS`, `GALLERY_SECTIONS`
@@ -401,7 +403,7 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   notifications popover (mark all read) and admin menu; breadcrumb (pages set the last crumb via `crumbs.js`);
   skip link; focus moves to the page `h1` on section change; toasts (`aria-live`, 5 s, pause on hover/focus)
 - Every section, tab, filter, sort, page and open user is in the URL (`useUrlState`: filters replace, tabs/pages push)
-- `useAdminData(load, key)`: loading / ready / error + reload; refetches when any mock store changes (this tab or
+- `useAdminData(load, key)`: loading / ready / error + reload; refetches after any admin write (this tab or
   another), keeping old rows on screen (dimmed) while it does
 - Pages: Overview (5 KPI cards, weekly submitted vs approved chart with tooltip + table view, "Needs your
   attention", recent activity), Venue approvals (status tabs, search, city/type/date filters, sort via select +
@@ -412,9 +414,10 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   sticky action bar below xl), Flagged images (grid, AI score meter, Keep / Remove), All venues (Live / Suspended,
   suspend with optional reason, unsuspend), Users (server since 2026-11-23: role tabs incl. admins, status filter,
   search, side panel `?user=` with activity and admin history, suspend / reactivate / change role / delete, each with a
-  required reason and an active-bookings warning), Disputes & reports (booking disputes with quotation + payments, listing
-  reports; Start review → Resolve with a required resolution), Audit log (search, action type), Settings (platform
-  facts, demo account, Reset demo data)
+  required reason and an active-bookings warning), Disputes & reports (server since 2026-11-23: booking disputes with
+  status / category / search, a `?dispute=` panel with the booking, its status history, both parties, private evidence,
+  messages and internal notes, Start review → Resolve (outcome, recorded compensation) or Reject; listing reports with
+  Start review → Resolve), Audit log (search, action type), Settings (platform facts, rules, your account)
 - Every action has a confirm `<dialog>` (`ConfirmDialog`: Esc / backdrop cancel, focus on Cancel for destructive
   ones, errors stay in the dialog) and a toast. Empty, loading (skeleton) and error (Try again) states on every page
 - The loop: wizard Submit → `submitListing` copies the photo/plan/3D files out of the wizard's IndexedDB and creates a
@@ -424,8 +427,8 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - `/host/submitted` reads the status live: Pending / Approved (link to the venue) / Rejected (reason) / Changes
   requested (note + "Edit and resubmit", which puts the draft and its files back into the wizard; submitting again
   updates the same listing back to `pending`)
-- "Report this listing" on the venue page opens `ReportListingDialog` (reason + details); the admin API is loaded only
-  when a report is sent
+- "Report this listing" on the venue page (signed in) opens `ReportListingDialog` (reason + details ≥ 10 chars) and
+  saves to `venue_reports` (POST /api/venues/:id/reports)
 - Venues with no reviews show "New" instead of "0.00 (0)" (VenueCard, ListingSummary, map pins); TrustDetails and
   HostRow handle missing rating categories / reply time
 - Chart colours `chart-submitted` #b0405c and `chart-approved` #b8862e, checked with the dataviz palette validator
@@ -532,10 +535,11 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - Explore state lives in the URL only; filter changes `replace`, search submit and pagination `push`
 - Wishlist is localStorage until accounts exist
 - Admin approval (asked 2026-11-17): `changes_requested` added to `approval_status` + `venues.changes_note`
-  (srs-alignment #18). "Report this listing" reports are UI-only (no table); disputes stay booking-linked (REQ-48)
+  (srs-alignment #18). "Report this listing" is `venue_reports` and disputes stay booking-linked (REQ-48, #41)
 - Only `approved` + `is_active` + not suspended venues are public. Approve requires the 3-item checklist; bulk approve
   skips it (confirm dialog says to use it only for listings already checked)
-- Admin mock stores live in `api/` (`admin.js`, `listings.js`, `mockStore.js`); pages never touch localStorage
+- Admin data comes from `api/admin.js` only; pages never touch localStorage (except per-browser conveniences: the
+  sidebar state and when the notifications were last read)
 - Host wizard SRS alignment (asked 2026-11-16):
   - Venue type cards (Marquee, Banquet hall, Lawn, Farmhouse, Hotel ballroom, Rooftop) are a UI-only category.
     `venues.venue_type` (REQ-5) is derived from the per-hall Indoor / Outdoor / Semi-outdoor setting (mixed → semi_outdoor)
@@ -560,6 +564,23 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `useAuth` / `useRequireAuth` so the real auth can replace `api/auth.js`
 
 ## Changelog (newest first)
+
+- 2026-11-23: **Disputes and listing reports on the server (EUC-35, REQ-48), Part D.** Migrations **013** (dispute
+  status `rejected`, alone) and **014** (dispute category, raised_by_role, outcome, recorded compensation, updated_at,
+  one open dispute per booking per party, `dispute_files`, `dispute_notes`, `venue_reports`); srs-alignment #41. Server
+  `modules/disputes/`: `POST /api/disputes/uploads` (JPEG / PNG ≤ 5 MB from the bytes, 20 a day, stored under
+  `disputes/`, which `/uploads` now refuses), `POST /api/bookings/:id/disputes` (customer or venue owner of a confirmed,
+  completed or cancelled booking), `GET /api/disputes[/:id]`, `POST /api/disputes/:id/notes`,
+  `GET /api/disputes/:id/files/:fileId` (parties and admins only, private no-store), `POST /api/venues/:id/reports`;
+  admin `GET /api/admin/disputes[/:id]` (with the booking, its status history and both parties),
+  `POST .../take|resolve|reject|notes`, `GET /api/admin/venue-reports`, `POST .../take|resolve`. Non-parties get 404.
+  Every admin step is audited; resolve / reject email both parties after the commit (a failed email is logged only).
+  `/admin/stats` counts open disputes and reports; the audit log labels them with the venue. Tests:
+  `tests/disputes.test.js` (10). Client: "Report a problem" on My bookings and the owner inbox
+  (`ReportProblemDialog`, photos upload as picked), `/disputes` and `/disputes/:id` (both sides, messages, decision),
+  "Reported problems" in the user menu, admin Disputes & reports rewritten on the API, "Report this listing" saved on
+  the server (sign-in first), `apiFetch(..., { as: 'blob' })`. The admin mock store is gone: `api/mockStore.js` deleted,
+  seeds removed, overview / notifications / badges / audit from the server, Settings "Demo data" card removed.
 
 - 2026-11-23: **Admin user management on the server (EUC-33, REQ-47), Part C.** Migration **012**
   (`users.suspension_reason`, `suspended_at`; the mobile-format CHECK skips deleted rows so anonymised accounts free
@@ -942,16 +963,15 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   (per-guest tokens fix this). Changing the invitation changes the QR (the card is in the hash)
 - Oxlint doesn't flag undeclared identifiers in this config (a missing import only showed up in review); consider
   enabling `no-undef`
-- "Report this listing": saved to the admin mock store, but there is no `listing_reports` table yet (proposed:
-  `report_id, venue_id, reporter_id NULL, reason, details, status dispute_status, resolution, admin_id, created_at,
-  resolved_at`). Decide before the server work
+- Disputes (#41): no quotation or payment records exist yet (out of scope), so the admin reviews the booking's price
+  snapshot, advance and recorded refund instead. Decision emails go to both parties; no in-app notifications centre
+- Dispute evidence photos uploaded but never attached to a dispute stay on disk (no clean-up job yet)
 - `/owner`: not built. Owners only see their last submission's status on `/host/submitted` (one per browser)
 - Admin: no auth (`TODO(auth)` RequireRole('admin') in `app/adminRoutes.jsx` / `app/router.jsx`); `CURRENT_ADMIN` is
   a demo account; "Sign out" and "create admin" aren't built. Notifications to owners (REQ-7/10/45) aren't sent
-- Admin mocks: disputes, listing reports, bookings-this-month KPI, AI image scores, flagged images (seeded from gallery
+- Admin mocks: bookings-this-month KPI, AI image scores, flagged images (seeded from gallery
   photos), catalogue "listed" dates for the chart. Uploaded listing photos get a mock AI score on the review page but
   never enter the flagged queue. Flagged-image decisions don't change any venue's gallery
-- Admin "Remove" user is a soft delete flag only; suspended users can still use the public site (no accounts)
 - Listings submitted from this browser live in this browser only (localStorage + IndexedDB); "Reset demo data" in
   admin Settings restores the seeds
 - Host wizard: no auth guard yet (`TODO(auth)` in `pages/HostWizard.jsx` and `app/router.jsx`); submit goes to the

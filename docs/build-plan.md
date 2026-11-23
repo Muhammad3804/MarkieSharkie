@@ -59,7 +59,7 @@ Protect the core differentiators first: booking engine (hold + no double booking
 
 ## Phase 10: Weather and admin (REQ-46 to 48, EUC-32 to 35)
 - [ ] Weather adapter + job + advisory banner
-- [ ] Admin users, moderation, disputes, audit log, bookings oversight (review moderation, flagged images and the venue audit log done 2026-11-22)
+- [ ] Admin bookings oversight (users, review moderation, flagged images, disputes, listing reports and the audit log done by 2026-11-23)
 
 ## Phase 11: Polish and release
 - [ ] Playwright e2e for: register → search → hold → book → owner confirm → payment → invitation → RSVP → check-in → review

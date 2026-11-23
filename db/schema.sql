@@ -48,7 +48,7 @@ CREATE TYPE sender_type         AS ENUM ('customer', 'assistant');
 CREATE TYPE rsvp_response       AS ENUM ('yes', 'no');                                                  -- REQ-38
 CREATE TYPE scan_result         AS ENUM ('valid', 'invalid', 'duplicate');                              -- REQ-41
 CREATE TYPE severity            AS ENUM ('low', 'moderate', 'high', 'severe');                          -- REQ-46
-CREATE TYPE dispute_status      AS ENUM ('open', 'under_review', 'resolved');                           -- REQ-48
+CREATE TYPE dispute_status      AS ENUM ('open', 'under_review', 'resolved', 'rejected');               -- REQ-48 (+ rejected: 013)
 CREATE TYPE delivery_status     AS ENUM ('pending', 'sent', 'delivered', 'read', 'failed');             -- [SRS] REQ-37
 
 -- ---------------------------------------------------------------------
@@ -813,8 +813,75 @@ CREATE TABLE disputes (
   resolution  text,
   created_at  timestamptz    NOT NULL DEFAULT now(),
   resolved_at timestamptz,
+  -- [SRS] 014 (srs-alignment #41): category, who raised it, the admin's outcome and recorded compensation (no money
+  -- moves, REQ-25).
+  category            text NOT NULL DEFAULT 'other'
+    CHECK (category IN ('service_not_as_described', 'cancellation_refund', 'pricing', 'damage', 'conduct', 'other')),
+  raised_by_role      text NOT NULL DEFAULT 'customer' CHECK (raised_by_role IN ('customer', 'venue_owner')),
+  outcome             text CHECK (outcome IN ('upheld', 'partially_upheld', 'dismissed')),
+  compensation_amount numeric(12, 2) CHECK (compensation_amount >= 0),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT disputes_resolved_fields CHECK (
     status <> 'resolved' OR (resolution IS NOT NULL AND resolved_at IS NOT NULL AND admin_id IS NOT NULL)
-  )
+  ),
+  CONSTRAINT disputes_reason_length CHECK (char_length(reason) BETWEEN 20 AND 2000),
+  CONSTRAINT disputes_outcome_when_resolved CHECK ((status = 'resolved') = (outcome IS NOT NULL)),
+  CONSTRAINT disputes_rejected_fields
+    CHECK (status::text <> 'rejected' OR (resolution IS NOT NULL AND resolved_at IS NOT NULL AND admin_id IS NOT NULL)),
+  CONSTRAINT disputes_compensation_only_when_upheld
+    CHECK (compensation_amount IS NULL OR outcome IN ('upheld', 'partially_upheld'))
 );
 CREATE INDEX disputes_status_idx ON disputes(status);
+CREATE UNIQUE INDEX disputes_one_open_per_party ON disputes (booking_id, raised_by)
+  WHERE status IN ('open', 'under_review');
+CREATE INDEX disputes_booking_idx ON disputes (booking_id);
+CREATE INDEX disputes_raised_by_idx ON disputes (raised_by);
+CREATE TRIGGER disputes_updated_at BEFORE UPDATE ON disputes FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- [SRS] 014: dispute evidence images (uploaded first, attached when the dispute is opened; never served publicly).
+CREATE TABLE dispute_files (
+  file_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  uploaded_by uuid        NOT NULL REFERENCES users(user_id),
+  dispute_id  uuid        REFERENCES disputes(dispute_id) ON DELETE CASCADE,
+  storage_key text        NOT NULL UNIQUE,
+  mime_type   text        NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png')),
+  size_bytes  int         NOT NULL CHECK (size_bytes > 0),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX dispute_files_dispute_idx ON dispute_files (dispute_id);
+CREATE INDEX dispute_files_uploader_idx ON dispute_files (uploaded_by, created_at);
+
+-- [SRS] 014: replies from either party and admin notes (internal = admins only).
+CREATE TABLE dispute_notes (
+  note_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  dispute_id  uuid        NOT NULL REFERENCES disputes(dispute_id) ON DELETE CASCADE,
+  author_id   uuid        NOT NULL REFERENCES users(user_id),
+  author_role text        NOT NULL CHECK (author_role IN ('customer', 'venue_owner', 'admin')),
+  body        text        NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000),
+  internal    boolean     NOT NULL DEFAULT false,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT dispute_notes_internal_admin CHECK (NOT internal OR author_role = 'admin')
+);
+CREATE INDEX dispute_notes_dispute_idx ON dispute_notes (dispute_id, created_at);
+
+-- [Design] 014 (srs-alignment #41): "Report this listing", reviewed by an admin.
+CREATE TABLE venue_reports (
+  report_id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id    uuid        NOT NULL REFERENCES venues(venue_id),
+  reporter_id uuid        NOT NULL REFERENCES users(user_id),
+  reason      text        NOT NULL
+    CHECK (reason IN ('inaccurate', 'fake_photos', 'not_real', 'pricing', 'offensive', 'other')),
+  details     text        NOT NULL CHECK (char_length(details) BETWEEN 10 AND 1000),
+  status      text        NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'under_review', 'resolved')),
+  admin_id    uuid        REFERENCES admins(user_id),
+  resolution  text        CHECK (char_length(resolution) <= 1000),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz,
+  CONSTRAINT venue_reports_resolved_fields
+    CHECK (status <> 'resolved' OR (resolution IS NOT NULL AND resolved_at IS NOT NULL AND admin_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX venue_reports_one_open_per_reporter ON venue_reports (venue_id, reporter_id)
+  WHERE status IN ('open', 'under_review');
+CREATE INDEX venue_reports_status_idx ON venue_reports (status, created_at);
+CREATE TRIGGER venue_reports_updated_at BEFORE UPDATE ON venue_reports FOR EACH ROW EXECUTE FUNCTION set_updated_at();

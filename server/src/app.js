@@ -18,6 +18,7 @@ import { bookingsRouter } from './modules/bookings/routes.js'
 import { invitationsRouter } from './modules/invitations/routes.js'
 import { adminReviewsRouter, reviewReportsRouter } from './modules/reviews/routes.js'
 import { adminRouter } from './modules/admin/routes.js'
+import { adminDisputesRouter, disputesRouter } from './modules/disputes/routes.js'
 import { getStorage } from './integrations/storage.js'
 
 // GET /api/health -> { status: 'ok', db: 'up' } after a real SELECT 1; 503 { status: 'error', db: 'down' } otherwise.
@@ -93,6 +94,8 @@ export function createApp({ logger = defaultLogger, rateLimits: overrides = AUTH
   // Uploaded and seed files (photos, floor plans, walkthroughs). Random names, no directory listing, no dotfiles,
   // nosniff (helmet) so a file is never run as something else. CORP cross-origin so the PWA on another origin can
   // show the images; files are served as downloads unless they are images.
+  // Dispute evidence (REQ-48) is private: only GET /api/disputes/:id/files/:fileId serves it, to the parties and admins.
+  app.use('/uploads/disputes', notFound)
   app.use(
     '/uploads',
     (_req, res, next) => {
@@ -122,6 +125,8 @@ export function createApp({ logger = defaultLogger, rateLimits: overrides = AUTH
     ['/api', invitationsRouter({ rateLimits })],
     ['/api/owner', ownerRouter({ rateLimits })],
     ['/api', reviewReportsRouter({ rateLimits })],
+    ['/api', disputesRouter({ rateLimits })],
+    ['/api/admin', adminDisputesRouter({ rateLimits })],
     ['/api/admin/reviews', adminReviewsRouter({ rateLimits })],
     ['/api/admin', adminRouter({ rateLimits })],
   ]

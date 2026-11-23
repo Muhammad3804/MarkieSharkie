@@ -68,10 +68,11 @@ export const ACTION_LABELS = {
   'user.delete': 'Deleted user',
   'dispute.take': 'Took dispute',
   'dispute.resolve': 'Resolved dispute',
+  'dispute.reject': 'Rejected dispute',
+  'dispute.note': 'Added a dispute note',
   'report.take': 'Took report',
   'report.resolve': 'Resolved report',
   'report.create': 'Reported listing',
-  'demo.reset': 'Reset demo data',
 }
 export const actionLabel = (action) => ACTION_LABELS[action] ?? action
 

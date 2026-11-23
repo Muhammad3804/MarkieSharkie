@@ -27,6 +27,9 @@ export const AUTH_RATE_LIMITS = Object.freeze({
   // Guest invitation links (no account, REQ-38): reading, and replying.
   inviteGuest: { windowMs: 15 * MINUTE, limit: 300 },
   inviteRsvp: { windowMs: 15 * MINUTE, limit: 60 },
+  // REQ-48 disputes (open, reply) and "Report this listing" (one open report per venue per user is also in the DB).
+  disputeWrite: { windowMs: 15 * MINUTE, limit: 120 },
+  venueReports: { windowMs: 60 * MINUTE, limit: 20 },
 })
 
 const RATE_LIMITED_MESSAGES = {

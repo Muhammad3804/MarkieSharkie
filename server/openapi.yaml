@@ -36,6 +36,8 @@ servers:
 tags:
   - name: Bookings
     description: Holds, bookings, cancellations and owner decisions (EUC-14, 15, 16, 24; docs/booking-engine.md).
+  - name: Disputes
+    description: Problems with a booking raised by its customer or venue owner, and listing reports (EUC-35, REQ-48).
   - name: Invitations
     description: Event invitations, guests and replies by personal link (EUC-25, 26, 27).
   - name: Health
@@ -2720,6 +2722,515 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /disputes/uploads:
+    post:
+      tags: [Disputes]
+      operationId: uploadDisputeEvidence
+      summary: 'Upload an evidence photo for a dispute'
+      description: |
+        Customer or venue owner. JPEG/PNG up to 5 MB (checked from the bytes), 20 a day per user. Private: never served\nfrom /uploads, only through GET /disputes/{{id}}/files/{{fileId}}.
+      x-srs: [REQ-48, EUC-35]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+      responses:
+        '201':
+          description: 'Stored, not yet attached. Attach it by id when opening the dispute.'
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    { fileId: { type: string, format: uuid }, mimeType: { type: string }, size: { type: integer } },
+                }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '413': { $ref: '#/components/responses/FileRejected' }
+        '415': { $ref: '#/components/responses/FileRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /bookings/{id}/disputes:
+    post:
+      tags: [Disputes]
+      operationId: openDispute
+      summary: 'Report a problem with a booking (open a dispute)'
+      description: |
+        The booking's customer or its venue's owner; anyone else gets 404. Confirmed, completed or cancelled bookings only\n(409 NOT_DISPUTABLE). One open dispute per booking per party (409 DISPUTE_EXISTS).
+      x-srs: [REQ-48, EUC-35]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [category, description],
+                properties:
+                  {
+                    category:
+                      {
+                        type: string,
+                        enum: [service_not_as_described, cancellation_refund, pricing, damage, conduct, other],
+                      },
+                    description: { type: string, minLength: 20, maxLength: 2000 },
+                    evidenceIds: { type: array, maxItems: 5, items: { type: string, format: uuid } },
+                  },
+              }
+      responses:
+        '201':
+          description: 'Opened (status open).'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes:
+    get:
+      tags: [Disputes]
+      operationId: listMyDisputes
+      summary: 'Disputes on my bookings (raised by me or the other party)'
+      x-srs: [REQ-48, EUC-35]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: query, name: status, required: false, schema: { type: string, enum: [open, closed, all] } }
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: 'Page of disputes.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes/{id}:
+    get:
+      tags: [Disputes]
+      operationId: getMyDispute
+      summary: 'One dispute with its evidence and replies'
+      x-srs: [REQ-48, EUC-35]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 'The dispute. Internal admin notes are never included.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes/{id}/notes:
+    post:
+      tags: [Disputes]
+      operationId: replyToDispute
+      summary: 'Add a reply (visible to the other party and the admin)'
+      description: |
+        409 DISPUTE_CLOSED once resolved or rejected.
+      x-srs: [REQ-48, EUC-35]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { type: object, required: [body], properties: { body: { type: string, minLength: 1, maxLength: 2000 } } }
+      responses:
+        '201':
+          description: 'The dispute with the new reply.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes/{id}/files/{fileId}:
+    get:
+      tags: [Disputes]
+      operationId: getDisputeEvidence
+      summary: 'One evidence photo (parties and admins only)'
+      x-srs: [REQ-48, EUC-35]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: fileId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 'The image bytes (private, no-store).'
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /venues/{id}/reports:
+    post:
+      tags: [Disputes]
+      operationId: reportVenue
+      summary: 'Report this listing'
+      description: |
+        Any signed-in customer, venue owner or decorator, on a public venue. 409 OWN_VENUE, 409 REPORT_EXISTS (one open\nreport per venue per user). 20 an hour per IP.
+      x-srs: [REQ-48]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason, details],
+                properties:
+                  {
+                    reason: { type: string, enum: [inaccurate, fake_photos, not_real, pricing, offensive, other] },
+                    details: { type: string, minLength: 10, maxLength: 1000 },
+                  },
+              }
+      responses:
+        '201':
+          description: 'Reported (status open).'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/disputes:
+    get:
+      tags: [Admin]
+      operationId: adminListDisputes
+      summary: 'Disputes queue with status, category and search'
+      x-srs: [REQ-48, EUC-35, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - {
+            in: query,
+            name: status,
+            required: false,
+            schema: { type: string, enum: [open, under_review, resolved, rejected, all] },
+          }
+        - {
+            in: query,
+            name: category,
+            required: false,
+            schema:
+              { type: string, enum: [service_not_as_described, cancellation_refund, pricing, damage, conduct, other] },
+          }
+        - { in: query, name: q, required: false, schema: { type: string, maxLength: 100 } }
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: 'Rows and counts per status.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/disputes/{id}:
+    get:
+      tags: [Admin]
+      operationId: adminGetDispute
+      summary: 'A dispute with the booking, its status history, both parties, evidence and all notes'
+      x-srs: [REQ-48, EUC-35, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: '{{ dispute, booking }}.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/disputes/{id}/take:
+    post:
+      tags: [Admin]
+      operationId: adminTakeDispute
+      summary: 'Start the review (open to under_review)'
+      x-srs: [REQ-48, EUC-35, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: 'Taken; audited.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/disputes/{id}/resolve:
+    post:
+      tags: [Admin]
+      operationId: adminResolveDispute
+      summary: 'Resolve with an outcome (under_review to resolved)'
+      x-srs: [REQ-48, EUC-35, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [outcome, resolution],
+                properties:
+                  {
+                    outcome: { type: string, enum: [upheld, partially_upheld, dismissed] },
+                    compensation:
+                      {
+                        type: string,
+                        description: 'Rupees, recorded only (no money moves); not for dismissed; at most the booking total',
+                      },
+                    resolution: { type: string, minLength: 10, maxLength: 2000 },
+                  },
+              }
+      responses:
+        '200':
+          description: 'Resolved; audited; both parties emailed.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/disputes/{id}/reject:
+    post:
+      tags: [Admin]
+      operationId: adminRejectDispute
+      summary: 'Reject a dispute (open or under_review to rejected)'
+      x-srs: [REQ-48, EUC-35, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 10, maxLength: 2000 } },
+              }
+      responses:
+        '200':
+          description: 'Rejected; audited; both parties emailed.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/disputes/{id}/notes:
+    post:
+      tags: [Admin]
+      operationId: adminDisputeNote
+      summary: 'Add an admin note (internal by default, or visible to both parties)'
+      x-srs: [REQ-48, EUC-35, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [body],
+                properties:
+                  { body: { type: string, minLength: 1, maxLength: 2000 }, internal: { type: boolean, default: true } },
+              }
+      responses:
+        '201':
+          description: 'The dispute with the note; audited.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venue-reports:
+    get:
+      tags: [Admin]
+      operationId: adminListVenueReports
+      summary: 'Listing reports'
+      x-srs: [REQ-48, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - {
+            in: query,
+            name: status,
+            required: false,
+            schema: { type: string, enum: [open, under_review, resolved, all] },
+          }
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: 'Rows and counts.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venue-reports/{id}/take:
+    post:
+      tags: [Admin]
+      operationId: adminTakeVenueReport
+      summary: 'Start reviewing a listing report'
+      x-srs: [REQ-48, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: 'Taken; audited.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venue-reports/{id}/resolve:
+    post:
+      tags: [Admin]
+      operationId: adminResolveVenueReport
+      summary: 'Resolve a listing report with what was done'
+      x-srs: [REQ-48, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [resolution],
+                properties: { resolution: { type: string, minLength: 10, maxLength: 1000 } },
+              }
+      responses:
+        '200':
+          description: 'Resolved; audited.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /admin/images:
     get:
       tags: [Admin]
@@ -3353,6 +3864,11 @@ components:
         - LAST_ADMIN
         - HAS_VENUES
         - HAS_ACTIVE_BOOKINGS
+        - NOT_DISPUTABLE
+        - DISPUTE_EXISTS
+        - DISPUTE_CLOSED
+        - OWN_VENUE
+        - REPORT_EXISTS
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR

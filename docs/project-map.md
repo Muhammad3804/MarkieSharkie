@@ -110,6 +110,8 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `components/venue/GoogleReviewsLink.jsx`, `lib/googleMaps.js` | "Read reviews on Google" link-out (REQ-43, #37) and the shared Google Maps link rules. | `ReviewsSection` |
 | `components/venue/ReportReviewDialog.jsx` | "Report this review" dialog on the venue page (REQ-44). | `api/reviews.js` |
 | `pages/admin/Users.jsx` | Admin users (REQ-47, EUC-33): role tabs, status filter, search, `?user=` panel with activity and history, suspend / reactivate / change role / delete with a reason. | `api/admin.js` -> `server/src/modules/admin/usersService.js` |
+| `pages/admin/Reports.jsx` | Admin disputes & listing reports (REQ-48, EUC-35): filters, `?dispute=` panel (booking, history, parties, evidence, notes), take / resolve / reject. | `api/admin.js` -> `server/src/modules/disputes/` |
+| `pages/Disputes.jsx`, `pages/DisputeDetail.jsx`, `features/disputes/ReportProblemDialog.jsx` | Customer / owner side of disputes: report a problem on a booking, list, read, reply. | `api/disputes.js` |
 | `pages/admin/VenueEdits.jsx`, `VenueEditReview.jsx` | Admin "Live venue edits": list and old-versus-new review with approve / reject (REQ-5). | `api/admin.js` |
 | `pages/Profile.jsx` | `/me` profile (EUC-03): edit details per role, past searches, my bookings; admins read-only. | `api/profile.js`, `features/profile/rules.js` |
 | `pages/VenuePhotos.jsx` | Full photo gallery per hall, opens the lightbox. | `useVenue`, `Lightbox` |
@@ -120,13 +122,13 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `api/chat.js` → `sendMessage` | Returns nothing | `POST /api/chat` (RAG over pgvector) |
 | `api/host.js` | **Real:** draft autosave `PUT /api/owner/draft` (localStorage is only the instant local copy), submit = uploads + `POST`/`PUT /api/owner/venues`, live status | (done 2026-11-22) |
 | `api/listings.js` | Now only converts a server listing into the wizard draft (admin review, edit and resubmit) | (done) |
-| `api/admin.js` | **Real:** approvals, review, decisions, live / suspended venues, flagged photos, KPIs, venue / photo / user audit log, users (REQ-47). **Still mock** in localStorage `markiesharkie:admin`: disputes, listing reports | disputes and reports modules (Part D) |
+| `api/admin.js` | **Real:** approvals, review, decisions, live / suspended venues, flagged photos, KPIs, venue / photo / user audit log, users (REQ-47). disputes and listing reports (REQ-48). No mock data left | (done) |
 | `features/host/photoStore.js` | Files stay in **IndexedDB** `markiesharkie-host` until submit, which uploads them | (done; the files live on the server after submit) |
 | `features/wishlist/wishlist.js` | **localStorage** `markiesharkie:wishlist` | Customer wishlist API (not in the SRS, decide if we keep it) |
 | `api/bookings.js` | **Real (2026-11-22):** availability, holds, bookings, cancel, owner inbox / confirm / reject on `/api` (Socket.io `slot:updated` still to do; the calendar polls) | (done) |
 | `features/booking/draft.js` | Booking draft (unsent form) in **localStorage** `markiesharkie:booking-drafts`, a reference to the server hold per tab in **sessionStorage** | (by design; the hold itself is on the server) |
 | `api/invitations.js` | **Real (2026-11-23):** invitation, guests, sending, links, replies on `/api` | (done) |
-| `components/venue/BookingSidebar.jsx` | "Report this listing" goes to the admin mock store | Report endpoint |
+| `components/venue/BookingSidebar.jsx` | "Report this listing" (sign-in first) -> `POST /api/venues/:id/reports` | (done) |
 | `components/venue/ReviewsSection.jsx` | Mock reviews and the 6 rating categories (categories aren't in the ERD) | Reviews API + Google reviews adapter |
 | `lib/booking.js` | `SLOT_PRESETS` (Lunch/Evening) hard-coded | Real `time_slots` per venue |
 | `features/about/content.js` | Team names/roles/photos are placeholders | Real team info (no API needed) |

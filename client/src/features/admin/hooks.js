@@ -1,20 +1,34 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
-import { subscribeMockStores } from '../../api/mockStore.js'
+import { subscribeAdminChanges } from './changes.js'
 
 let version = 0
-subscribeMockStores(() => {
+subscribeAdminChanges(() => {
   version += 1
 })
 const getVersion = () => version
+let countsVersion = 0
+subscribeAdminChanges(
+  () => {
+    countsVersion += 1
+  },
+  { counts: true },
+)
+const getCountsVersion = () => countsVersion
+const subscribeCounts = (listener) => subscribeAdminChanges(listener, { counts: true })
 
-// Re-renders whenever any mock store changes (an action here, or another tab).
+// Re-renders after any admin write (here or in another tab); useAdminData refetches on it.
 export function useStoreVersion() {
-  return useSyncExternalStore(subscribeMockStores, getVersion, getVersion)
+  return useSyncExternalStore(subscribeAdminChanges, getVersion, getVersion)
 }
 
-// Loads `load()` whenever `key` changes or the stores change. { status: loading|ready|error, data, reload }.
-// While a refetch runs after a store change, the previous data stays on screen (status stays 'ready').
+// Re-renders after a write and when the sidebar badge numbers were reloaded.
+export function useCountsVersion() {
+  return useSyncExternalStore(subscribeCounts, getCountsVersion, getCountsVersion)
+}
+
+// Loads `load()` whenever `key` changes or admin data changed. { status: loading|ready|error, data, reload }.
+// While a refetch runs after a change, the previous data stays on screen (status stays 'ready').
 // (TanStack Query replaces this once it's added; see docs/ui-and-dashboards.md.)
 export function useAdminData(load, key) {
   const storeVersion = useStoreVersion()

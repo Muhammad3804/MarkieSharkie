@@ -220,3 +220,83 @@ export async function sendBookingRequestEmail({ to, ...fields }) {
   await getTransport().sendMail({ from: env.mail.from, to, ...message })
   return { delivered: true }
 }
+
+// REQ-48 "records resolution, notifies both": the admin's decision on a dispute, to the customer and to the venue
+// owner. decision: 'resolved' | 'rejected'. outcomeLabel / compensation only when resolved.
+export function disputeDecisionEmail({
+  name,
+  reference,
+  venueName,
+  decision,
+  outcomeLabel,
+  compensation,
+  reason,
+  link,
+}) {
+  const resolved = decision === 'resolved'
+  const subject = `Dispute ${resolved ? 'resolved' : 'closed'}: booking ${reference} at ${venueName}`
+  const greeting = name ? `Hi ${name.split(' ')[0]},` : 'Hi,'
+  const rows = [
+    ['Booking', `${reference}, ${venueName}`],
+    ['Decision', resolved ? outcomeLabel : 'Rejected (not taken forward)'],
+    ...(resolved && compensation
+      ? [['Compensation', `${compensation} (recorded; settled between you and the venue)`]]
+      : []),
+  ]
+  const text = [
+    greeting,
+    '',
+    `A MarkieSharkie admin has ${resolved ? 'resolved' : 'closed'} the dispute on this booking.`,
+    '',
+    ...rows.map(([k, v]) => `${k}: ${v}`),
+    '',
+    'The admin’s note:',
+    reason,
+    '',
+    'See the details:',
+    link,
+    '',
+    'MarkieSharkie',
+  ].join('\n')
+  const html = `<!doctype html>
+<html lang="en"><body style="margin:0;padding:24px;background:#f6f3f1;font-family:Arial,Helvetica,sans-serif;color:#2b2326">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px">
+    <tr><td>
+      <p style="margin:0 0 8px;font-size:20px;font-weight:bold;color:#7a1631">Dispute ${resolved ? 'resolved' : 'closed'}</p>
+      <p style="margin:0 0 16px;font-size:15px">${escapeHtml(greeting)}</p>
+      <p style="margin:0 0 16px;font-size:15px">A MarkieSharkie admin has ${resolved ? 'resolved' : 'closed'} the dispute on this booking.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;margin:0 0 16px;font-size:14px">
+        ${rows.map(([k, v]) => `<tr><td style="padding:4px 0;color:#6b5f63;width:110px;vertical-align:top">${escapeHtml(k)}</td><td style="padding:4px 0;font-weight:bold">${escapeHtml(v)}</td></tr>`).join('')}
+      </table>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b5f63">The admin’s note</p>
+      <p style="margin:0 0 24px;font-size:14px;white-space:pre-line">${escapeHtml(reason)}</p>
+      <p style="margin:0"><a href="${escapeHtml(link)}" style="display:inline-block;background:#7a1631;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:bold">See the dispute</a></p>
+    </td></tr>
+  </table>
+</body></html>`
+  return { subject, text, html }
+}
+
+let disputeSender = null
+export function setDisputeEmailSender(fn) {
+  disputeSender = fn
+}
+
+// Throws when it could not be sent; the dispute service logs it (the decision is already saved).
+export async function sendDisputeDecisionEmail({ to, ...fields }) {
+  const message = disputeDecisionEmail(fields)
+  if (disputeSender) return disputeSender({ to, ...message })
+  if (env.isTest) {
+    testOutbox.push({ to, kind: 'dispute_decision', reference: fields.reference, ...message })
+    return { delivered: false }
+  }
+  if (!env.mail.configured) {
+    if (env.nodeEnv === 'development') {
+      logger.info(`[mail] SMTP is not configured (development only): dispute email ${fields.reference} not sent`)
+      return { delivered: false }
+    }
+    throw new Error('SMTP is not configured')
+  }
+  await getTransport().sendMail({ from: env.mail.from, to, ...message })
+  return { delivered: true }
+}

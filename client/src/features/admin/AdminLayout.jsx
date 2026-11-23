@@ -5,7 +5,7 @@ import { ToastProvider } from './toast.jsx'
 import { CrumbContext } from './crumbs.js'
 import { Initials } from './ui.jsx'
 import { focusRing } from './styles.js'
-import { useAdminData, useStoreVersion } from './hooks.js'
+import { useAdminData, useCountsVersion } from './hooks.js'
 import { CURRENT_ADMIN, getNotifications, markNotificationsRead, navCounts, searchAdmin } from '../../api/admin.js'
 import { ago } from './format.js'
 
@@ -121,7 +121,7 @@ export default function AdminLayout() {
 }
 
 function SidebarContent({ collapsed = false, onToggle, onNavigate }) {
-  useStoreVersion()
+  useCountsVersion()
   const counts = navCounts()
   return (
     <>

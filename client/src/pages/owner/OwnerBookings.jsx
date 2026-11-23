@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { confirmBooking, listOwnerBookings, rejectBooking } from '../../api/bookings.js'
 import { listMyListings } from '../../api/owner.js'
+import { openDisputesByBooking } from '../../api/disputes.js'
+import ReportProblemDialog from '../../features/disputes/ReportProblemDialog.jsx'
+import { canReportProblem, secondaryButton } from '../../features/disputes/ui.js'
 import Button from '../../components/ui/Button.jsx'
 import ConfirmDialog from '../../features/admin/ConfirmDialog.jsx'
 import { ToastProvider } from '../../features/admin/toast.jsx'
@@ -46,6 +49,8 @@ function Inbox() {
   const [attempt, setAttempt] = useState(0)
   const [venues, setVenues] = useState([])
   const [dialog, setDialog] = useState(null) // { kind: 'confirm' | 'reject', booking }
+  const [problems, setProblems] = useState({}) // open disputes by booking id (REQ-48)
+  const [reporting, setReporting] = useState(null)
   const reload = useCallback(() => setAttempt((n) => n + 1), [])
 
   useEffect(() => {
@@ -56,6 +61,9 @@ function Inbox() {
 
   useEffect(() => {
     let cancelled = false
+    openDisputesByBooking()
+      .then((map) => !cancelled && setProblems(map))
+      .catch(() => {})
     listOwnerBookings({ status: tab, venueId, page })
       .then((data) => !cancelled && setResult({ key, status: 'ready', data }))
       .catch(() => !cancelled && setResult({ key, status: 'error', data: null }))
@@ -157,7 +165,7 @@ function Inbox() {
         <>
           <ul className="mt-6 grid gap-4">
             {rows.map((b) => (
-              <InboxCard key={b.bookingId} booking={b} onAction={(kind) => setDialog({ kind, booking: b })} />
+              <InboxCard key={b.bookingId} booking={b} problem={problems[b.bookingId]} onReport={() => setReporting(b)} onAction={(kind) => setDialog({ kind, booking: b })} />
             ))}
           </ul>
           {data.pageCount > 1 && (
@@ -176,6 +184,7 @@ function Inbox() {
         </>
       )}
 
+      <ReportProblemDialog booking={reporting} otherSide="The customer" onClose={() => setReporting(null)} />
       <ConfirmDialog
         open={dialog?.kind === 'confirm'}
         title={dialog && `Confirm ${dialog.booking.eventName || 'this booking'}?`}
@@ -216,7 +225,7 @@ function Inbox() {
   )
 }
 
-function InboxCard({ booking: b, onAction }) {
+function InboxCard({ booking: b, problem, onReport, onAction }) {
   const slot = slotPreset(b.slot)
   const open = b.status === 'requested' || b.status === 'held'
   const created = b.events?.[0]?.at ?? b.createdAt
@@ -303,6 +312,19 @@ function InboxCard({ booking: b, onAction }) {
               Confirm<span className="sr-only"> {bookingReference(b.bookingId)}</span>
             </Button>
           </>
+        )}
+        {/* REQ-48: the owner can report a problem with a confirmed, past or cancelled booking too. */}
+        {problem ? (
+          <Link to={`/disputes/${problem.id}`} className={secondaryButton}>
+            {problem.raisedByYou ? 'View reported problem' : 'Problem reported by the customer'}
+            <span className="sr-only"> for {bookingReference(b.bookingId)}</span>
+          </Link>
+        ) : (
+          canReportProblem(b) && (
+            <button type="button" onClick={onReport} className={`${secondaryButton} text-muted-warm`}>
+              Report a problem<span className="sr-only"> with {bookingReference(b.bookingId)}</span>
+            </button>
+          )
         )}
       </div>
     </li>

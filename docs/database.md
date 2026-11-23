@@ -63,7 +63,7 @@ Columns: ERD camelCase → snake_case (`heldUntil` → `held_until`, `menuPackag
 | rsvp_response | yes, no | REQ-38 |
 | scan_result | valid, invalid, duplicate | REQ-41 |
 | severity | low, moderate, high, severe | REQ-46 |
-| dispute_status | open, under_review, resolved | REQ-48 |
+| dispute_status | open, under_review, resolved, rejected (013) | REQ-48 |
 | delivery_status | pending, sent, delivered, read, failed | REQ-37 |
 
 Adding an enum value: `ALTER TYPE x ADD VALUE 'y';` in a migration. Never remove values.
@@ -150,6 +150,14 @@ Rules enforced in services (need data from several tables): review only after `c
   Pakistani mobile (`phone` nullable, `guests_contact` CHECK), `invite_token` holds the sha256 of the link token,
   `token_expires_at`, `revoked_at`, `sent_at`, `created_at`; `rsvps.party_size` (0 for no), `note`, `updated_at`.
   Down section tested (it drops email-only guests, which can't exist before 011).
+- **013 dispute-status-rejected** (#41): `dispute_status` gains `rejected` (alone; forward-only, an enum value
+  can't be dropped).
+- **014 disputes-and-venue-reports** (#41): `disputes.category`, `raised_by_role`, `outcome`, `compensation_amount`
+  (recorded only), `updated_at` (+ trigger); checks: reason 20–2000 chars, outcome exactly when resolved, rejected
+  needs admin + reason + time (written as `status::text` because all pending migrations run in one transaction),
+  compensation only when upheld / partly upheld; partial unique index `disputes_one_open_per_party`. New tables
+  `dispute_files` (private evidence, `dispute_id` NULL until attached), `dispute_notes` (party replies, admin notes,
+  `internal` admin-only), `venue_reports` (one open per venue per reporter). Down section tested.
 - **012 user-management** (#40): `users.suspension_reason` (≤ 500) and `suspended_at`; `users_phone_pk_format` now
   skips deleted rows (`deleted_at IS NOT NULL OR phone ~ '^\+923[0-9]{9}$'`) so an anonymised account stores
   `deleted:<id>` and frees the real number. Down section tested.

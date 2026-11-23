@@ -1,4 +1,4 @@
-import { createMockStore, latency, notifyStoreChange } from './mockStore.js'
+import { notifyAdminChange, notifyCountsChange } from '../features/admin/changes.js'
 import { getSessionUser } from './auth.js'
 import { ApiError, apiFetch } from './http.js'
 import { listingToDraft, toHistory } from './listings.js'
@@ -8,11 +8,9 @@ import { REPORT_REASONS } from '../features/admin/format.js'
 export { REPORT_REASONS }
 
 // Admin API (REQ-7, 9, 10, 47, 48, NFR-4 audit). Venues, approvals, photo checks, the dashboard and the venue /
-// photo audit log come from the server (/api/admin/...), and so do users (REQ-47). Disputes and listing reports are
-// still a demo in localStorage `markiesharkie:admin` (REQ-48 comes with its own module); the comments below this line
-// describe that demo part. Original note: mocked in localStorage until the server
-// exists. Every function maps to a route in docs/api-and-security.md ("/admin/..."); every action that changes
-// something writes an admin_audit_log row (`audit` below). The server re-checks role = admin on each request.
+// photo audit log, users (REQ-47), disputes and listing reports (REQ-48) all come from the server (/api/admin/...).
+// Every write is checked (role = admin) and written to admin_audit_log by the server (NFR-4); after a write the admin
+// pages refetch through the change signal in features/admin/changes.js.
 // The logged-in admin (the route is admin-only, RequireRole in app/router.jsx).
 export const CURRENT_ADMIN = {
   get id() {
@@ -26,143 +24,16 @@ export const CURRENT_ADMIN = {
   },
 }
 
-const STORE_VERSION = 3 // 2: venues, photos and the venue audit log moved to the server; 3: users moved too
-const HOUR = 3600000
-const DAY = 24 * HOUR
+const DAY = 24 * 3600000
 export const PAGE_SIZE = 10
 
-// ---------------------------------------------------------------------------------------------------------------
-// Seed data
-// ---------------------------------------------------------------------------------------------------------------
-// Demo customer names for the demo disputes only (REQ-48 moves to the server in Part D; users are on the server).
-const DEMO_CUSTOMERS = ['Ayesha Malik', 'Hassan Qureshi', 'Sana Iqbal', 'Omar Sheikh', 'Hira Butt', 'Bilal Raza']
-
-const DISPUTE_REASONS = [
-  ['customer', 'The venue charged extra for the SMD screen even though it was in the agreed quotation.'],
-  ['venue_owner', 'Customer cancelled two days before the event and is asking for the advance back, against the agreed policy.'],
-  ['customer', 'Guest count was confirmed at 400 but only 300 chairs were set up; asking for a partial refund of the balance.'],
-  ['customer', 'Booking was confirmed but the hall was double-booked for a corporate event at the same time.'],
-  ['venue_owner', 'Balance payment recorded as received by the customer, but the owner never received it.'],
-  ['customer', 'Dinner was served 90 minutes late and the menu items didn’t match Menu 2.'],
-]
-const DISPUTE_STATUS = ['open', 'open', 'under_review', 'open', 'resolved', 'under_review']
-
-function seedDisputes(now, venues) {
-  return DISPUTE_REASONS.map(([role, reason], i) => {
-    const venue = venues[(i * 7) % venues.length]
-    const customer = { name: DEMO_CUSTOMERS[(i * 3) % DEMO_CUSTOMERS.length] }
-    const status = DISPUTE_STATUS[i]
-    const createdAt = new Date(now - (i * 2 + 1) * DAY - i * 5 * HOUR).toISOString()
-    const guests = 250 + i * 50
-    const perHead = Number(venue.priceFrom)
-    const total = guests * perHead
-    const advance = Math.round(total * 0.25)
-    return {
-      id: `dispute-${i + 1}`,
-      bookingId: `BK-2026-${String(412 + i * 37).padStart(4, '0')}`,
-      venueId: venue.id,
-      venueName: venue.name,
-      customerName: customer.name,
-      raisedBy: role === 'customer' ? { name: customer.name, role } : { name: `${venue.name} team`, role },
-      reason,
-      status,
-      eventDate: new Date(now - (i - 2) * 9 * DAY).toISOString().slice(0, 10),
-      createdAt,
-      // REQ-48: the admin reviews the booking, its quotations and its payments.
-      quotation: { quotationId: `QT-${3100 + i}`, guests, pricePerHead: `${perHead}.00`, total: `${total}.00`, status: 'accepted' },
-      payments: [
-        { paymentId: `PM-${7000 + i * 2}`, type: 'advance', amount: `${advance}.00`, status: 'received', recordedAt: new Date(Date.parse(createdAt) - 20 * DAY).toISOString() },
-        ...(i % 2 ? [{ paymentId: `PM-${7001 + i * 2}`, type: 'balance', amount: `${total - advance}.00`, status: 'recorded', recordedAt: new Date(Date.parse(createdAt) - 2 * DAY).toISOString() }] : []),
-      ],
-      adminName: status === 'open' ? null : CURRENT_ADMIN.name,
-      resolution: status === 'resolved' ? 'Checked the payment records with both sides; the owner confirmed the balance arrived late. Marked as received, no further action.' : '',
-      resolvedAt: status === 'resolved' ? new Date(Date.parse(createdAt) + DAY).toISOString() : null,
-    }
-  })
-}
-
-
-function seedReports(now, venues) {
-  return [
-    ['fake_photos', 'The stage photos are from a Pinterest board, I’ve seen them on two other listings.', 'open', 6],
-    ['pricing', 'Called them and Menu 1 is Rs 900 more per head than shown here.', 'open', 30],
-    ['inaccurate', 'Says 800 guests but the hall barely fits 500.', 'resolved', 140],
-  ].map(([reason, details, status, hoursAgo], i) => {
-    const venue = venues[(i * 11 + 3) % venues.length]
-    return {
-      id: `report-${i + 1}`,
-      venueId: venue.id,
-      venueName: venue.name,
-      reason,
-      details,
-      reporter: 'Signed-out visitor',
-      status,
-      createdAt: new Date(now - hoursAgo * HOUR).toISOString(),
-      resolution: status === 'resolved' ? 'Asked the owner to correct the capacity; updated to 550 seated.' : '',
-      resolvedAt: status === 'resolved' ? new Date(now - (hoursAgo - 20) * HOUR).toISOString() : null,
-    }
-  })
-}
-
-// REQ-9: images the AI check flagged. The score is the detector's confidence that the photo is AI-generated or
-// stock (mock). Keep = verification_status 'approved' (published), remove = 'rejected' (never published).
-// Venue names for the demo disputes and reports (the seeded catalogue's names; ids are demo ids).
-const DEMO_VENUES = ['Qasar-e-Noor', 'The Palms Marquee', 'Rosewood Banquet', 'Jasmine Garden', 'Pearl Banquet', 'Chenab Palace', 'Imperial Manor', 'Opal Pavilion'].map((name, i) => ({ id: `demo-venue-${i + 1}`, name, city: i % 3 === 0 ? 'Lahore' : i % 3 === 1 ? 'Islamabad' : 'Faisalabad', priceFrom: `${3500 + i * 250}.00` }))
-
-const store = createMockStore('markiesharkie:admin', {
-  seed: () => {
-    const now = Date.now()
-    const venues = DEMO_VENUES
-    return {
-      version: STORE_VERSION,
-      disputes: seedDisputes(now, venues),
-      reports: seedReports(now, venues),
-      audit: [],
-      notificationsReadAt: null,
-    }
-  },
-  isValid: (value) => value?.version === STORE_VERSION && Array.isArray(value.disputes) && Array.isArray(value.audit),
-})
-
-// One admin_audit_log row (NFR-4). `details` is free-form JSON (reason, note, counts...).
-function audit(state, { action, targetTable, targetId, targetLabel, details = {} }) {
-  const entry = {
-    logId: `log-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-    adminId: CURRENT_ADMIN.id,
-    adminName: CURRENT_ADMIN.name,
-    action,
-    targetTable,
-    targetId,
-    targetLabel,
-    details,
-    createdAt: new Date().toISOString(),
-  }
-  return { ...state, audit: [entry, ...state.audit] }
-}
-
-
-// ---------------------------------------------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------------------------------------------
-const lower = (text) => String(text ?? '').toLocaleLowerCase('en')
-const matchesQuery = (q, ...fields) => !q || fields.some((field) => lower(field).includes(lower(q)))
-
-function paginate(rows, page) {
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
-  const current = Math.min(Math.max(1, page || 1), pageCount)
-  return { rows: rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE), total: rows.length, page: current, pageCount, pageSize: PAGE_SIZE }
-}
-
-// When a mock catalogue venue was listed (UI-only, for the submissions chart and "All venues").
-
-// ---------------------------------------------------------------------------------------------------------------
-// Venue approvals (REQ-7): GET/POST /api/admin/venues...
-// ---------------------------------------------------------------------------------------------------------------
 export const APPROVAL_STATUSES = ['pending', 'changes_requested', 'approved', 'rejected']
-
-// Sidebar badges are read synchronously (navCounts); every server answer that has the numbers refreshes this.
 const cachedCounts = { pending: 0, images: 0, edits: 0, reviews: 0, loaded: false, loading: false }
-const changed = () => notifyStoreChange() // admin pages refetch on store changes (features/admin/hooks.js)
+// After a write: badges reload and admin pages refetch (features/admin/hooks.js).
+const changed = () => {
+  cachedCounts.stale = true
+  notifyAdminChange()
+}
 
 export function approvalCounts() {
   return { pending: cachedCounts.pending, changes_requested: 0, approved: 0, rejected: 0 }
@@ -378,82 +249,55 @@ export async function changeUserRole(id, body) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Disputes (REQ-48) and listing reports (UI-only: no table in db/schema.sql yet)
+// Disputes (REQ-48, EUC-35) and listing reports (srs-alignment #41): /api/admin/disputes, /api/admin/venue-reports
 // ---------------------------------------------------------------------------------------------------------------
-export async function listDisputes({ status }) {
-  await latency()
-  const all = store.get().disputes
-  return {
-    rows: all.filter((d) => !status || d.status === status).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
-    counts: { open: all.filter((d) => d.status === 'open').length, under_review: all.filter((d) => d.status === 'under_review').length, resolved: all.filter((d) => d.status === 'resolved').length },
+export const DISPUTE_STATUSES = ['open', 'under_review', 'resolved', 'rejected']
+export const REPORT_STATUSES = ['open', 'under_review', 'resolved']
+
+// params: { status, category, q, page } -> { rows, total, page, pageCount, pageSize, counts }
+export function listDisputes({ status = 'open', category = '', q = '', page = 1 } = {}) {
+  return apiFetch(`/admin/disputes?${query({ status, category, q: q.trim(), page, pageSize: PAGE_SIZE })}`)
+}
+
+// -> { dispute, booking } or null
+export async function getDispute(id) {
+  try {
+    return await apiFetch(`/admin/disputes/${encodeURIComponent(id)}`)
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 400)) return null
+    throw error
   }
 }
 
-export async function updateDispute(id, { status, resolution = '' }) {
-  if (status === 'resolved' && !resolution.trim()) throw new Error('A resolution is required')
-  await latency(250)
-  if (store.get().disputes.find((d) => d.id === id)?.status === 'resolved') throw new Error('Dispute already resolved')
-  store.update((state) => {
-    const dispute = state.disputes.find((d) => d.id === id)
-    const patch = status === 'resolved' ? { status, resolution: resolution.trim(), resolvedAt: new Date().toISOString(), adminName: CURRENT_ADMIN.name } : { status, adminName: CURRENT_ADMIN.name }
-    const next = { ...state, disputes: state.disputes.map((d) => (d.id === id ? { ...d, ...patch } : d)) }
-    return audit(next, { action: status === 'resolved' ? 'dispute.resolve' : 'dispute.take', targetTable: 'disputes', targetId: id, targetLabel: `${dispute.bookingId} · ${dispute.venueName}`, details: resolution ? { resolution: resolution.trim() } : {} })
-  })
+// action: 'take' | 'resolve' ({ outcome, compensation?, resolution }) | 'reject' ({ reason }) | 'note' ({ body, internal })
+export async function actOnDispute(id, action, body = {}) {
+  const path = action === 'note' ? 'notes' : action
+  const result = await apiFetch(`/admin/disputes/${encodeURIComponent(id)}/${path}`, { method: 'POST', body })
+  changed()
+  return result
 }
 
-export async function listReports({ status }) {
-  await latency()
-  const all = store.get().reports
-  return {
-    rows: all.filter((r) => !status || r.status === status).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
-    counts: { open: all.filter((r) => r.status === 'open').length, under_review: all.filter((r) => r.status === 'under_review').length, resolved: all.filter((r) => r.status === 'resolved').length },
-  }
+export function listReports({ status = 'open', page = 1 } = {}) {
+  return apiFetch(`/admin/venue-reports?${query({ status, page, pageSize: PAGE_SIZE })}`)
 }
 
+// status: 'under_review' (take) | 'resolved' (with a resolution)
 export async function updateReport(id, { status, resolution = '' }) {
-  if (status === 'resolved' && !resolution.trim()) throw new Error('A resolution is required')
-  await latency(250)
-  if (store.get().reports.find((r) => r.id === id)?.status === 'resolved') throw new Error('Report already resolved')
-  store.update((state) => {
-    const report = state.reports.find((r) => r.id === id)
-    const patch = status === 'resolved' ? { status, resolution: resolution.trim(), resolvedAt: new Date().toISOString() } : { status }
-    const next = { ...state, reports: state.reports.map((r) => (r.id === id ? { ...r, ...patch } : r)) }
-    return audit(next, { action: status === 'resolved' ? 'report.resolve' : 'report.take', targetTable: 'listing_reports', targetId: id, targetLabel: report.venueName, details: resolution ? { resolution: resolution.trim() } : {} })
-  })
+  const path = `/admin/venue-reports/${encodeURIComponent(id)}`
+  if (status === 'resolved') await apiFetch(`${path}/resolve`, { method: 'POST', body: { resolution: resolution.trim() } })
+  else await apiFetch(`${path}/take`, { method: 'POST', body: {} })
+  changed()
 }
 
-// Public: "Report this listing" on the venue page. Anyone can report; no account yet (TODO(auth): reporter id).
-// Later: POST /api/venues/:id/reports (proposed table, see docs/progress.md).
-export async function reportListing({ venueId, venueName, reason, details }) {
-  await latency(400)
-  const report = {
-    id: `report-${Date.now().toString(36)}`,
-    venueId,
-    venueName,
-    reason,
-    details: details.trim(),
-    reporter: 'Signed-out visitor',
-    status: 'open',
-    createdAt: new Date().toISOString(),
-    resolution: '',
-    resolvedAt: null,
-  }
-  store.update((state) => ({ ...state, reports: [report, ...state.reports] }))
-  return report
+// Evidence photos are private: fetched with the admin's token and shown from a blob URL (caller revokes it).
+export async function evidenceUrl(apiPath) {
+  return URL.createObjectURL(await apiFetch(apiPath.replace(/^\/api/, ''), { as: 'blob' }))
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Audit log (NFR-4): venue and photo decisions from GET /api/admin/audit; user, dispute and report actions are
-// still the local demo log until those modules exist on the server.
+// Audit log (NFR-4): GET /api/admin/audit (venues, photos, reviews, users, disputes, reports)
 // ---------------------------------------------------------------------------------------------------------------
-const LOCAL_ACTIONS = new Set(['dispute', 'report'])
-
 export async function listAudit({ q, action, page }) {
-  if (LOCAL_ACTIONS.has(action)) {
-    const all = store.get().audit
-    const rows = all.filter((entry) => entry.action.startsWith(`${action}.`) && matchesQuery(q, entry.targetLabel, entry.adminName, entry.action, JSON.stringify(entry.details)))
-    return paginate(rows, page)
-  }
   const data = await apiFetch(`/admin/audit?${query({ q, action, page: page || 1, pageSize: PAGE_SIZE })}`)
   return { rows: data.rows, total: data.total, page: data.page, pageCount: data.pageCount, pageSize: data.pageSize }
 }
@@ -466,52 +310,58 @@ function applyStats(stats) {
   cachedCounts.images = stats.kpis.flaggedImages
   cachedCounts.edits = stats.kpis.pendingEdits ?? 0
   cachedCounts.reviews = stats.kpis.reportedReviews ?? 0
+  cachedCounts.reports = (stats.kpis.openDisputes ?? 0) + (stats.kpis.openReports ?? 0)
   cachedCounts.loaded = true
 }
 
-// Sync, for the sidebar badges (they re-read on every store change). The first call loads the numbers.
+// Sync, for the sidebar badges (they re-read on every change signal). Loads the numbers on first use and again after
+// each write (`changed` marks them stale); the reload signals once more, by which time they are fresh.
 export function navCounts() {
-  if (!cachedCounts.loaded && !cachedCounts.loading) {
+  if ((!cachedCounts.loaded || cachedCounts.stale) && !cachedCounts.loading) {
+    cachedCounts.stale = false
     cachedCounts.loading = true
     apiFetch('/admin/stats')
       .then((stats) => {
         applyStats(stats)
-        changed()
+        notifyCountsChange()
       })
       .catch(() => {})
       .finally(() => {
         cachedCounts.loading = false
       })
   }
-  const state = store.get()
   return {
     approvals: cachedCounts.pending,
     images: cachedCounts.images,
     edits: cachedCounts.edits,
     reviews: cachedCounts.reviews,
-    reports: state.disputes.filter((d) => d.status === 'open').length + state.reports.filter((r) => r.status === 'open').length,
+    reports: cachedCounts.reports ?? 0,
   }
 }
 
-// GET /api/admin/stats, plus the demo disputes / reports for the attention list and activity feed.
+const reasonLabel = (value) => REPORT_REASONS.find((x) => x.value === value)?.label ?? value
+
+// GET /api/admin/stats plus the oldest open disputes and listing reports for the attention list.
 export async function getOverview() {
-  const stats = await apiFetch('/admin/stats')
+  const [stats, disputes, reports] = await Promise.all([
+    apiFetch('/admin/stats'),
+    listDisputes({ status: 'open' }).catch(() => ({ rows: [] })),
+    listReports({ status: 'open' }).catch(() => ({ rows: [] })),
+  ])
   applyStats(stats)
-  const state = store.get()
   const pkWeekStart = (week) => Date.parse(`${week}T00:00:00+05:00`)
   const attention = [
     ...stats.oldPending.map((v) => ({ id: v.id, kind: 'approval', title: v.name, detail: `Waiting for review since ${v.submittedAt}`, at: v.submittedAt, to: `/admin/approvals/${v.id}` })),
     ...(stats.kpis.flaggedImages
       ? [{ id: 'flagged-photos', kind: 'image', title: `${stats.kpis.flaggedImages} photo${stats.kpis.flaggedImages === 1 ? '' : 's'} flagged by the AI check`, detail: 'Keep or remove each one', at: new Date().toISOString(), to: '/admin/images' }]
       : []),
-    ...state.disputes.filter((d) => d.status === 'open').map((d) => ({ id: d.id, kind: 'dispute', title: `Dispute on ${d.bookingId}`, detail: d.venueName, at: d.createdAt, to: `/admin/reports?tab=disputes&status=open#${d.id}` })),
-    ...state.reports.filter((r) => r.status === 'open').map((r) => ({ id: r.id, kind: 'report', title: `Report on ${r.venueName}`, detail: REPORT_REASONS.find((x) => x.value === r.reason)?.label ?? r.reason, at: r.createdAt, to: `/admin/reports?tab=reports&status=open#${r.id}` })),
+    ...disputes.rows.map((d) => ({ id: d.id, kind: 'dispute', title: `Dispute on ${d.reference}`, detail: d.venue.name, at: d.createdAt, to: `/admin/reports?dispute=${d.id}` })),
+    ...reports.rows.map((r) => ({ id: r.id, kind: 'report', title: `Report on ${r.venueName}`, detail: reasonLabel(r.reason), at: r.createdAt, to: `/admin/reports?tab=reports#${r.id}` })),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
 
   const activity = [
     ...stats.activity.map((entry) => ({ id: entry.id, kind: 'audit', action: entry.action, actor: entry.actor, target: entry.target, at: entry.at })),
     ...stats.submissions.map((s) => ({ id: `sub-${s.id}-${s.submittedAt}`, kind: 'submission', action: 'venue.submit', actor: s.ownerName, target: s.name, at: s.submittedAt })),
-    ...state.reports.map((r) => ({ id: `rep-${r.id}`, kind: 'report', action: 'report.create', actor: r.reporter, target: r.venueName, at: r.createdAt })),
   ]
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, 8)
@@ -524,23 +374,41 @@ export async function getOverview() {
   }
 }
 
+// When this admin last opened the bell (per browser; a convenience, not shared state).
+const READ_KEY = 'markiesharkie:admin-notifications-read'
+function readAt() {
+  try {
+    return Number(localStorage.getItem(READ_KEY)) || 0
+  } catch {
+    return 0
+  }
+}
+
 export async function getNotifications() {
-  const state = store.get()
-  const readAt = state.notificationsReadAt ? Date.parse(state.notificationsReadAt) : 0
-  const pending = await apiFetch(`/admin/venues?${query({ status: 'pending', sort: 'newest', pageSize: 10 })}`).catch(() => ({ rows: [] }))
+  const since = readAt()
+  const [pending, disputes, reports] = await Promise.all([
+    apiFetch(`/admin/venues?${query({ status: 'pending', sort: 'newest', pageSize: 10 })}`).catch(() => ({ rows: [] })),
+    listDisputes({ status: 'open' }).catch(() => ({ rows: [] })),
+    listReports({ status: 'open' }).catch(() => ({ rows: [] })),
+  ])
   const items = [
     ...pending.rows.map((v) => ({ id: `n-sub-${v.id}`, text: `${v.name} was submitted for review`, at: v.submittedAt, to: `/admin/approvals/${v.id}` })),
-    ...state.reports.filter((r) => r.status === 'open').map((r) => ({ id: `n-rep-${r.id}`, text: `New report on ${r.venueName}`, at: r.createdAt, to: `/admin/reports?tab=reports&status=open#${r.id}` })),
-    ...state.disputes.filter((d) => d.status === 'open').map((d) => ({ id: `n-dis-${d.id}`, text: `Dispute opened on ${d.bookingId}`, at: d.createdAt, to: `/admin/reports?tab=disputes&status=open#${d.id}` })),
+    ...reports.rows.map((r) => ({ id: `n-rep-${r.id}`, text: `New report on ${r.venueName}`, at: r.createdAt, to: `/admin/reports?tab=reports#${r.id}` })),
+    ...disputes.rows.map((d) => ({ id: `n-dis-${d.id}`, text: `Dispute opened on ${d.reference}`, at: d.createdAt, to: `/admin/reports?dispute=${d.id}` })),
   ]
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, 10)
-    .map((item) => ({ ...item, unread: Date.parse(item.at) > readAt }))
+    .map((item) => ({ ...item, unread: Date.parse(item.at) > since }))
   return { items, unread: items.filter((i) => i.unread).length }
 }
 
 export function markNotificationsRead() {
-  store.update((state) => ({ ...state, notificationsReadAt: new Date().toISOString() }))
+  try {
+    localStorage.setItem(READ_KEY, String(Date.now()))
+  } catch {
+    // storage blocked: the badge comes back on the next load
+  }
+  notifyAdminChange()
 }
 
 // Global search in the top bar: venues of any status and users by name, email or mobile (both from the server).
@@ -560,11 +428,6 @@ export async function searchAdmin(q) {
   const people = await apiFetch(`/admin/users?${query({ q: q.trim(), status: 'all', pageSize: 4 })}`).catch(() => ({ rows: [] }))
   const users = people.rows.map((u) => ({ id: u.id, kind: 'User', label: u.name, detail: u.email, to: `/admin/users?q=${encodeURIComponent(u.email)}&user=${u.id}` }))
   return [...venues, ...users].slice(0, 8)
-}
-
-// Resets the demo-only admin data (disputes, reports). Users, bookings and invitations are on the server.
-export function resetDemoData() {
-  store.reset()
 }
 
 // ---------------------------------------------------------------------------------------------------------------

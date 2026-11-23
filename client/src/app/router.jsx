@@ -3,7 +3,7 @@ import AuthProvider from '../features/auth/AuthProvider.jsx'
 import RequireAuth from '../features/auth/RequireAuth.jsx'
 import RequireRole from '../features/auth/RequireRole.jsx'
 import PublicLayout from './layouts/PublicLayout.jsx'
-import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, InvitationGuestsRoute, MyBookingsRoute, ProfileRoute, MyListingsRoute, ListingEditorRoute, OwnerBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
+import VenueDetailRoute, { AboutRoute, BookingFlowRoute, ExploreRoute, GuestInvitationRoute, InvitationBuilderRoute, InvitationGuestsRoute, MyBookingsRoute, DisputesRoute, DisputeDetailRoute, ProfileRoute, MyListingsRoute, ListingEditorRoute, OwnerBookingsRoute, HostIntroRoute, HostSubmittedRoute, HostWizardRoute, VenuePhotosRoute } from './VenueDetailRoute.jsx'
 import Landing from '../pages/Landing.jsx'
 import SearchRedirect from './SearchRedirect.jsx'
 import HostResumeRedirect from './HostResumeRedirect.jsx'
@@ -71,6 +71,23 @@ export const router = createBrowserRouter([
             element: (
               <RequireAuth intent="invitation">
                 <InvitationGuestsRoute />
+              </RequireAuth>
+            ),
+          },
+          // Problems reported on a booking (REQ-48), for its customer and its venue owner.
+          {
+            path: '/disputes',
+            element: (
+              <RequireAuth intent="disputes">
+                <DisputesRoute />
+              </RequireAuth>
+            ),
+          },
+          {
+            path: '/disputes/:id',
+            element: (
+              <RequireAuth intent="disputes">
+                <DisputeDetailRoute />
               </RequireAuth>
             ),
           },

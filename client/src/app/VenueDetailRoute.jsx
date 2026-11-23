@@ -11,6 +11,8 @@ const HostWizard = lazy(() => import('../pages/HostWizard.jsx'))
 const HostSubmitted = lazy(() => import('../pages/HostSubmitted.jsx'))
 const BookingFlow = lazy(() => import('../pages/BookingFlow.jsx'))
 const MyBookings = lazy(() => import('../pages/MyBookings.jsx'))
+const Disputes = lazy(() => import('../pages/Disputes.jsx'))
+const DisputeDetail = lazy(() => import('../pages/DisputeDetail.jsx'))
 const Profile = lazy(() => import('../pages/Profile.jsx'))
 const MyListings = lazy(() => import('../pages/owner/MyListings.jsx'))
 const ListingEditor = lazy(() => import('../pages/owner/ListingEditor.jsx'))
@@ -79,6 +81,22 @@ export function BookingFlowRoute() {
   return (
     <Suspense fallback={<div aria-busy="true" aria-label="Loading your booking" className="min-h-dvh" />}>
       <BookingFlow />
+    </Suspense>
+  )
+}
+
+export function DisputesRoute() {
+  return (
+    <Suspense fallback={<div aria-busy="true" aria-label="Loading reported problems" className="min-h-[60vh]" />}>
+      <Disputes />
+    </Suspense>
+  )
+}
+
+export function DisputeDetailRoute() {
+  return (
+    <Suspense fallback={<div aria-busy="true" aria-label="Loading the problem" className="min-h-[60vh]" />}>
+      <DisputeDetail />
     </Suspense>
   )
 }

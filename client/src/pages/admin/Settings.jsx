@@ -1,7 +1,5 @@
-import { useState } from 'react'
-import { CURRENT_ADMIN, resetDemoData } from '../../api/admin.js'
-import ConfirmDialog from '../../features/admin/ConfirmDialog.jsx'
-import { Button, Card, Initials, PageHeader } from '../../features/admin/ui.jsx'
+import { CURRENT_ADMIN } from '../../api/admin.js'
+import { Card, Initials, PageHeader } from '../../features/admin/ui.jsx'
 import { SLOT_HOLD_MINUTES, MIN_GUESTS } from '../../lib/booking.js'
 import { MAX_PHOTOS, MIN_PHOTOS, PHOTO_MAX_BYTES } from '../../features/host/options.js'
 
@@ -37,7 +35,6 @@ function Facts({ items }) {
 }
 
 export default function Settings() {
-  const [confirm, setConfirm] = useState(false)
   return (
     <>
       <title>Settings | Admin | MarkieSharkie</title>
@@ -57,25 +54,9 @@ export default function Settings() {
               <p className="text-[14px] text-muted-warm">{CURRENT_ADMIN.email} · Admin</p>
             </div>
           </div>
-          <p className="mt-3 text-[13px] text-muted-warm">Demo account. Sign-in, password changes and creating other admins arrive with accounts (REQ-1 to REQ-3).</p>
-        </Card>
-        <Card title="Demo data">
-          <p className="text-[14px] leading-relaxed text-ink">Disputes and listing reports are still a demo stored in this browser only. Resetting brings back their seeded examples. Users, venues, bookings, invitations and the audit log are on the server and aren’t affected.</p>
-          <Button variant="danger-outline" icon="rotate-ccw" className="mt-4" onClick={() => setConfirm(true)}>Reset demo data</Button>
+          <p className="mt-3 text-[13px] text-muted-warm">New admins are created from the server command line (REQ-1). Change your password with “Forgot password” on the login screen.</p>
         </Card>
       </div>
-      <ConfirmDialog
-        open={confirm}
-        tone="danger"
-        title="Reset the demo disputes and reports?"
-        body="The demo disputes and listing reports in this browser go back to the seeded examples. Nothing on the server changes."
-        confirmLabel="Reset demo data"
-        onClose={() => setConfirm(false)}
-        onConfirm={async () => {
-          resetDemoData()
-          return 'Demo data reset'
-        }}
-      />
     </>
   )
 }

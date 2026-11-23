@@ -267,13 +267,13 @@ export default function BookingSidebar({ venue, booking, onChange, availability 
       </div>
 
       <div className="flex flex-col items-center gap-1">
-        <button type="button" onClick={() => setReporting(true)} disabled={reported} className="flex items-center justify-center gap-2 text-[12px] text-muted-warm underline hover:text-ink-strong focus-visible:outline-2 focus-visible:outline-primary disabled:no-underline disabled:hover:text-muted-warm">
+        <button type="button" onClick={() => requireAuth('reportListing', () => setReporting(true))} disabled={Boolean(reported)} className="flex items-center justify-center gap-2 text-[12px] text-muted-warm underline hover:text-ink-strong focus-visible:outline-2 focus-visible:outline-primary disabled:no-underline disabled:hover:text-muted-warm">
           <img src={flagIcon} alt="" width="15" height="15" />
           {reported ? 'Listing reported' : 'Report this listing'}
         </button>
-        <p role="status" className="text-[12px] text-muted-warm empty:hidden">{reported ? 'Thanks. Our team will look into it.' : ''}</p>
+        <p role="status" className="text-center text-[12px] text-muted-warm empty:hidden">{reported || ''}</p>
       </div>
-      <ReportListingDialog venue={venue} open={reporting} onClose={() => setReporting(false)} onSent={() => setReported(true)} />
+      <ReportListingDialog venue={venue} open={reporting} onClose={() => setReporting(false)} onSent={setReported} />
     </div>
   )
 }

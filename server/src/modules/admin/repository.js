@@ -195,7 +195,9 @@ export async function dashboardNumbers(db) {
          WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'Asia/Karachi') AT TIME ZONE 'Asia/Karachi')::int AS bookings_this_month,
        (SELECT count(*) FROM venue_images WHERE verification_status = 'flagged')::int AS flagged_images,
        (SELECT count(*) FROM venue_revisions WHERE status = 'pending')::int AS pending_edits,
-       (SELECT count(*) FROM reviews WHERE is_flagged AND removed_at IS NULL)::int AS reported_reviews`,
+       (SELECT count(*) FROM reviews WHERE is_flagged AND removed_at IS NULL)::int AS reported_reviews,
+       (SELECT count(*) FROM disputes WHERE status = 'open')::int AS open_disputes,
+       (SELECT count(*) FROM venue_reports WHERE status = 'open')::int AS open_reports`,
   )
   return rows[0]
 }
@@ -239,16 +241,22 @@ export async function recentSubmissions(db) {
 // ---------------------------------------------------------------- audit log (NFR-4)
 
 const AUDIT_SQL = `SELECT l.log_id, l.action, l.target_table, l.target_id, l.details, l.created_at, u.name AS admin_name,
-       coalesce(v.name, iv.name, l.details->>'name', tu.name) AS target_label, count(*) OVER ()::int AS total
+       coalesce(v.name, iv.name, l.details->>'name', tu.name, dv.name, rv.name) AS target_label,
+       count(*) OVER ()::int AS total
   FROM admin_audit_log l
   JOIN users u ON u.user_id = l.admin_id
   LEFT JOIN venues v ON l.target_table = 'venues' AND v.venue_id = l.target_id
   LEFT JOIN venue_images i ON l.target_table = 'venue_images' AND i.image_id = l.target_id
   LEFT JOIN venues iv ON iv.venue_id = i.venue_id
   LEFT JOIN users tu ON l.target_table = 'users' AND tu.user_id = l.target_id
+  LEFT JOIN disputes dd ON l.target_table = 'disputes' AND dd.dispute_id = l.target_id
+  LEFT JOIN bookings db ON db.booking_id = dd.booking_id
+  LEFT JOIN venues dv ON dv.venue_id = db.venue_id
+  LEFT JOIN venue_reports vr ON l.target_table = 'venue_reports' AND vr.report_id = l.target_id
+  LEFT JOIN venues rv ON rv.venue_id = vr.venue_id
  WHERE ($1::text IS NULL OR l.action LIKE $1 || '.%')
    AND ($2::text IS NULL OR u.name ILIKE '%' || $2 || '%' OR l.action ILIKE '%' || $2 || '%'
-        OR coalesce(v.name, iv.name, tu.name, '') ILIKE '%' || $2 || '%' OR l.details::text ILIKE '%' || $2 || '%')
+        OR coalesce(v.name, iv.name, tu.name, dv.name, rv.name, '') ILIKE '%' || $2 || '%' OR l.details::text ILIKE '%' || $2 || '%')
  ORDER BY l.created_at DESC
  LIMIT $3 OFFSET $4`
 
@@ -260,10 +268,13 @@ export async function listAudit(db, { action, q, page, pageSize }) {
 export async function recentAudit(db, limit = 12) {
   const { rows } = await db.query(
     `SELECT l.log_id, l.action, l.created_at, u.name AS admin_name,
-            coalesce(v.name, l.details->>'name', tu.name, '') AS target_label
+            coalesce(v.name, l.details->>'name', tu.name, l.details->>'venue', dv.name, '') AS target_label
        FROM admin_audit_log l JOIN users u ON u.user_id = l.admin_id
        LEFT JOIN venues v ON l.target_table = 'venues' AND v.venue_id = l.target_id
        LEFT JOIN users tu ON l.target_table = 'users' AND tu.user_id = l.target_id
+       LEFT JOIN disputes dd ON l.target_table = 'disputes' AND dd.dispute_id = l.target_id
+       LEFT JOIN bookings db ON db.booking_id = dd.booking_id
+       LEFT JOIN venues dv ON dv.venue_id = db.venue_id
       ORDER BY l.created_at DESC LIMIT $1`,
     [limit],
   )

@@ -292,7 +292,7 @@ function toBooking(row, addOns = [], events = null, { view }) {
   }
 }
 
-async function loadBooking(db, bookingId, { view, origin = null }) {
+export async function loadBooking(db, bookingId, { view, origin = null }) {
   const row = await repo.findBooking(db, bookingId)
   const [addOns, events] = await Promise.all([repo.bookingAddOns(db, [bookingId]), repo.bookingEvents(db, bookingId)])
   const out = toBooking(row, addOns, events, { view })

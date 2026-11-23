@@ -48,7 +48,7 @@ export const imageDecisionBodySchema = z.object({ decision: z.enum(['approved', 
 export const auditQuerySchema = z
   .object({
     q: z.string().trim().max(100).optional(),
-    action: z.enum(['venue', 'image', 'review', 'user']).optional(),
+    action: z.enum(['venue', 'image', 'review', 'user', 'dispute', 'report']).optional(),
     page: z.coerce.number().int().min(1).max(10_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(50).default(10),
   })

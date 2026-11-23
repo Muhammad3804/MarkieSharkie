@@ -3,6 +3,9 @@ import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext.js'
 import { BookingError, cancelBooking, listMyBookings } from '../api/bookings.js'
 import { listMyInvitationSummaries } from '../api/invitations.js'
+import { openDisputesByBooking } from '../api/disputes.js'
+import ReportProblemDialog from '../features/disputes/ReportProblemDialog.jsx'
+import { canReportProblem } from '../features/disputes/ui.js'
 import RsvpSummary from '../features/invitations/RsvpSummary.jsx'
 import StatusBadge from '../features/booking/StatusBadge.jsx'
 import { downloadIcs } from '../features/booking/ics.js'
@@ -34,7 +37,8 @@ export default function MyBookings() {
 }
 
 function CustomerBookings() {
-  const [state, setState] = useState({ status: 'loading', bookings: [], invites: {} })
+  const [state, setState] = useState({ status: 'loading', bookings: [], invites: {}, problems: {} })
+  const [reporting, setReporting] = useState(null)
   const [version, setVersion] = useState(0)
   const [cancelling, setCancelling] = useState(null)
   const [notice, setNotice] = useState('')
@@ -50,11 +54,11 @@ function CustomerBookings() {
   }, [reload])
   useEffect(() => {
     let cancelled = false
-    Promise.all([listMyBookings(), listMyInvitationSummaries()])
-      .then(([bookings, invites]) => !cancelled && setState({ status: 'ready', bookings, invites }))
+    Promise.all([listMyBookings(), listMyInvitationSummaries(), openDisputesByBooking().catch(() => ({}))])
+      .then(([bookings, invites, problems]) => !cancelled && setState({ status: 'ready', bookings, invites, problems }))
       .catch((error) => {
         console.error('[bookings] list failed', error)
-        if (!cancelled) setState((current) => (current.status === 'ready' ? current : { status: 'error', bookings: [], invites: {} }))
+        if (!cancelled) setState((current) => (current.status === 'ready' ? current : { status: 'error', bookings: [], invites: {}, problems: {} }))
       })
     return () => {
       cancelled = true
@@ -101,11 +105,12 @@ function CustomerBookings() {
       )}
       {state.status === 'ready' && state.bookings.length > 0 && (
         <>
-          <BookingList title="Upcoming" bookings={upcoming} invites={state.invites} today={today} onCancel={setCancelling} empty="No upcoming bookings." />
-          <BookingList title="Past and cancelled" bookings={past} invites={state.invites} today={today} onCancel={setCancelling} empty="Nothing here yet." />
+          <BookingList title="Upcoming" bookings={upcoming} invites={state.invites} problems={state.problems} today={today} onCancel={setCancelling} onReport={setReporting} empty="No upcoming bookings." />
+          <BookingList title="Past and cancelled" bookings={past} invites={state.invites} problems={state.problems} today={today} onCancel={setCancelling} onReport={setReporting} empty="Nothing here yet." />
         </>
       )}
 
+      <ReportProblemDialog booking={reporting} otherSide="The venue" onClose={() => setReporting(null)} />
       <CancelDialog
         booking={cancelling}
         today={today}
@@ -124,7 +129,7 @@ function CustomerBookings() {
   )
 }
 
-function BookingList({ title, bookings, invites, today, onCancel, empty }) {
+function BookingList({ title, bookings, invites, problems, today, onCancel, onReport, empty }) {
   const id = useId()
   return (
     <section aria-labelledby={id} className="mt-10">
@@ -136,7 +141,7 @@ function BookingList({ title, bookings, invites, today, onCancel, empty }) {
       ) : (
         <ul className="mt-4 grid gap-4">
           {bookings.map((booking) => (
-            <BookingCard key={booking.bookingId} booking={booking} invite={invites[booking.bookingId]} today={today} onCancel={onCancel} />
+            <BookingCard key={booking.bookingId} booking={booking} invite={invites[booking.bookingId]} problem={problems[booking.bookingId]} today={today} onCancel={onCancel} onReport={onReport} />
           ))}
         </ul>
       )}
@@ -144,7 +149,7 @@ function BookingList({ title, bookings, invites, today, onCancel, empty }) {
   )
 }
 
-function BookingCard({ booking, invite, today, onCancel }) {
+function BookingCard({ booking, invite, problem, today, onCancel, onReport }) {
   const slot = slotPreset(booking.slot)
   const reference = bookingReference(booking.bookingId)
   return (
@@ -203,6 +208,19 @@ function BookingCard({ booking, invite, today, onCancel }) {
           <button type="button" onClick={() => onCancel(booking)} className={`${secondaryButton} border-danger/40 text-danger hover:border-danger hover:bg-danger-bg`}>
             Cancel booking<span className="sr-only"> {reference}</span>
           </button>
+        )}
+        {/* REQ-48: a problem with a confirmed, past or cancelled booking. One open report per side. */}
+        {problem ? (
+          <Link to={`/disputes/${problem.id}`} className={secondaryButton}>
+            {problem.raisedByYou ? 'View reported problem' : 'Problem reported by the venue'}
+            <span className="sr-only"> for {reference}</span>
+          </Link>
+        ) : (
+          canReportProblem(booking) && (
+            <button type="button" onClick={() => onReport(booking)} className={`${secondaryButton} text-muted-warm`}>
+              Report a problem<span className="sr-only"> with {reference}</span>
+            </button>
+          )
         )}
       </div>
     </li>

@@ -82,6 +82,11 @@ export default function UserMenu({ user, onLogout }) {
               My bookings
             </Link>
           )}
+          {(user.role === 'customer' || user.role === 'venue_owner') && (
+            <Link to="/disputes" onClick={() => setOpen(false)} className={itemClass}>
+              Reported problems
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => {

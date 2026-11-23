@@ -254,6 +254,8 @@ export async function getStats() {
       flaggedImages: n.flagged_images,
       pendingEdits: n.pending_edits,
       reportedReviews: n.reported_reviews, // REQ-44 moderation queue // edits to live venues waiting for approval (srs-alignment #35)
+      openDisputes: n.open_disputes, // REQ-48, not yet taken by an admin
+      openReports: n.open_reports, // "Report this listing", not yet taken
     },
     weeks: weeks.map((w) => ({ week: w.week, submitted: w.submitted, approved: w.approved })),
     oldPending: old.map((r) => ({ id: r.venue_id, name: r.name, submittedAt: iso(r.submitted_at) })),

@@ -156,3 +156,13 @@ Use `node-cron` in the API process for the FYP. Jobs must be idempotent (safe to
 - Payment larger than balance → 422.
 - Cancel a completed booking → 409.
 - Counter-offer by the same side that proposed → 403.
+
+## Disputes on a booking (REQ-48, srs-alignment #41)
+
+- Either party (the customer, or the owner of the booking's venue) can open a dispute on a `confirmed`, `completed`
+  or `cancelled` booking; requests that were never confirmed are cancelled instead. One open dispute per booking per
+  party (`disputes_one_open_per_party`).
+- A dispute never changes the booking, its slot or its money. The admin's decision (outcome and any compensation) is
+  recorded on the dispute only; the parties settle it between them (payments are tracked, never processed).
+- Dispute states: `open -> under_review` (an admin takes it) `-> resolved`, and `open | under_review -> rejected`.
+  Each step locks the dispute row (`SELECT ... FOR UPDATE`), is audited, and emails both parties after the commit.

@@ -1,9 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { reportVenue } from '../../api/disputes.js'
+import { ApiError } from '../../api/http.js'
 import { REPORT_REASONS } from '../../features/admin/format.js'
 
-// "Report this listing" (REQ-48 monitoring): a native modal <dialog> with a reason and optional details. Reports go
-// to the admin "Disputes & reports" page. The admin API is loaded only when a report is sent, so the venue page
-// doesn't carry it. TODO(auth): attach the reporter's account once accounts exist.
+// "Report this listing" (srs-alignment #41): a native modal <dialog> with a reason and details, saved on the server
+// (POST /api/venues/:id/reports, signed in) and reviewed on the admin "Disputes & reports" page. The owner never
+// sees who reported. One open report per venue per person (409 REPORT_EXISTS).
+const DETAILS_MIN = 10
 export default function ReportListingDialog({ venue, open, onClose, onSent }) {
   const ref = useRef(null)
   const id = useId()
@@ -31,15 +34,23 @@ export default function ReportListingDialog({ venue, open, onClose, onSent }) {
       ref.current.querySelector('input[type=radio]')?.focus()
       return
     }
+    if (details.trim().length < DETAILS_MIN) {
+      setState({ status: 'idle', error: `Tell us a little more (at least ${DETAILS_MIN} characters).` })
+      ref.current.querySelector('textarea')?.focus()
+      return
+    }
     setState({ status: 'sending', error: '' })
     try {
-      const { reportListing } = await import('../../api/admin.js')
-      await reportListing({ venueId: venue.id, venueName: venue.name, reason, details })
-      onSent()
+      await reportVenue(venue.id, { reason, details })
+      onSent('Thanks. Our team will look into it.')
       onClose()
     } catch (error) {
-      console.error('[venue] report failed', error)
-      setState({ status: 'idle', error: 'We couldn’t send your report. Check your connection and try again.' })
+      if (error instanceof ApiError && (error.code === 'REPORT_EXISTS' || error.code === 'OWN_VENUE')) {
+        onSent(error.message)
+        onClose()
+        return
+      }
+      setState({ status: 'idle', error: error instanceof ApiError && (error.status === 400 || error.status === 403) ? error.message : 'We couldn’t send your report. Check your connection and try again.' })
     }
   }
 
@@ -72,10 +83,11 @@ export default function ReportListingDialog({ venue, open, onClose, onSent }) {
         </fieldset>
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${id}-details`} className="text-[14px] font-semibold text-ink-strong">
-            Details <span className="font-normal text-muted-warm">(optional)</span>
+            Details
           </label>
-          <textarea id={`${id}-details`} rows={3} maxLength={1000} value={details} onChange={(event) => setDetails(event.target.value)} placeholder="What did you notice?" className="w-full resize-y rounded-[10px] border border-outline-strong px-3 py-2 text-[15px] text-ink-strong placeholder:text-placeholder focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-primary/30" />
+          <textarea id={`${id}-details`} rows={3} maxLength={1000} value={details} onChange={(event) => setDetails(event.target.value)} placeholder="What did you notice?" aria-describedby={`${id}-hint`} className="w-full resize-y rounded-[10px] border border-outline-strong px-3 py-2 text-[15px] text-ink-strong placeholder:text-placeholder focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-primary/30" />
         </div>
+        <p id={`${id}-hint`} className="-mt-3 text-[12px] text-muted-warm">At least {DETAILS_MIN} characters.</p>
         {state.error && (
           <p id={`${id}-error`} role="alert" className="text-[14px] text-danger">{state.error}</p>
         )}

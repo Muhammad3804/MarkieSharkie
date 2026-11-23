@@ -55,7 +55,8 @@ export function configureAuth({ refresh, onUnauthorized }) {
 
 // apiFetch(path, { method, body, auth }) -> parsed JSON (null for 204). `auth: false` for the public auth routes:
 // no Authorization header, and a 401 from them (wrong password, expired refresh) is just an error, not a logout.
-export async function apiFetch(path, { method = 'GET', body, auth = true, retry = true, signal } = {}) {
+// `as: 'blob'` returns the body as a Blob (private images such as dispute evidence, which need the token).
+export async function apiFetch(path, { method = 'GET', body, auth = true, retry = true, signal, as = 'json' } = {}) {
   // FormData (file uploads) goes as multipart: the browser sets the Content-Type with its boundary.
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData
   const headers = { Accept: 'application/json' }
@@ -77,6 +78,7 @@ export async function apiFetch(path, { method = 'GET', body, auth = true, retry 
   }
 
   if (response.status === 204) return null
+  if (response.ok && as === 'blob') return response.blob()
   const data = await response.json().catch(() => null)
   if (response.ok) return data
 
@@ -84,7 +86,7 @@ export async function apiFetch(path, { method = 'GET', body, auth = true, retry 
   if (response.status === 401 && auth) {
     // The access token expired (15 min): get a new one once and repeat the request.
     if (retry && refreshHandler && (await refreshHandler().catch(() => false))) {
-      return apiFetch(path, { method, body, auth, retry: false, signal })
+      return apiFetch(path, { method, body, auth, retry: false, signal, as })
     }
     unauthorizedHandler?.(error)
   }
