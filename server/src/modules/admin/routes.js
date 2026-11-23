@@ -19,6 +19,10 @@ import {
   rejectBodySchema,
   revisionParamsSchema,
   revisionsQuerySchema,
+  roleChangeSchema,
+  userParamsSchema,
+  userReasonSchema,
+  usersQuerySchema,
   suspendBodySchema,
   venueParamsSchema,
 } from './schemas.js'
@@ -84,6 +88,16 @@ export function adminRouter({ rateLimits }) {
     validate({ params: revisionParamsSchema, body: rejectBodySchema }),
     asyncHandler(controller.rejectRevision),
   )
+
+  // Users (REQ-47, EUC-33): every action needs a reason and is audited; no admin can act on themselves or remove the
+  // last active admin.
+  const userAction = (schema) => validate({ params: userParamsSchema, body: schema })
+  router.get('/users', validate({ query: usersQuerySchema }), asyncHandler(controller.listUsers))
+  router.get('/users/:id', validate({ params: userParamsSchema }), asyncHandler(controller.getUser))
+  router.post('/users/:id/suspend', writes, userAction(userReasonSchema), asyncHandler(controller.suspendUser))
+  router.post('/users/:id/reactivate', writes, userAction(userReasonSchema), asyncHandler(controller.reactivateUser))
+  router.post('/users/:id/role', writes, userAction(roleChangeSchema), asyncHandler(controller.changeRole))
+  router.delete('/users/:id', writes, userAction(userReasonSchema), asyncHandler(controller.deleteUser))
 
   router.get('/images', validate({ query: imagesQuerySchema }), asyncHandler(controller.listImages))
   router.post(

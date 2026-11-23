@@ -150,6 +150,9 @@ Rules enforced in services (need data from several tables): review only after `c
   Pakistani mobile (`phone` nullable, `guests_contact` CHECK), `invite_token` holds the sha256 of the link token,
   `token_expires_at`, `revoked_at`, `sent_at`, `created_at`; `rsvps.party_size` (0 for no), `note`, `updated_at`.
   Down section tested (it drops email-only guests, which can't exist before 011).
+- **012 user-management** (#40): `users.suspension_reason` (≤ 500) and `suspended_at`; `users_phone_pk_format` now
+  skips deleted rows (`deleted_at IS NOT NULL OR phone ~ '^\+923[0-9]{9}$'`) so an anonymised account stores
+  `deleted:<id>` and frees the real number. Down section tested.
 - **Files:** `venue_images.image_url`, `halls.floor_plan_url` and `walkthrough_assets.file_url` hold the path
   `/uploads/<key>` (the API adds its origin). `media_uploads` tracks every upload and which venue it was attached to.
   Enum arrays (`supported_events event_type[]`) must be selected as `::text[]`, or node-postgres returns the raw

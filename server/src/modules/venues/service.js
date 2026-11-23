@@ -123,7 +123,8 @@ export async function search(query, { origin, user }) {
 export async function getVenue(id, { origin }) {
   if (!UUID.test(id)) throw notPublic()
   const bundle = await repo.loadVenueBundle(pool, id, { publishedOnly: true })
-  if (!bundle || bundle.base.approval_status !== 'approved' || !bundle.base.is_active) throw notPublic()
+  if (!bundle || bundle.base.approval_status !== 'approved' || !bundle.base.is_active || !bundle.base.owner_active)
+    throw notPublic()
   const [reviews, ratingRows, bookedDates] = await Promise.all([
     repo.findReviews(pool, id),
     repo.ratingCounts(pool, id),
@@ -137,7 +138,7 @@ export async function getVenue(id, { origin }) {
 export async function listReviews(id, { page, pageSize }) {
   if (!UUID.test(id)) throw notPublic()
   const base = await repo.findVenueBase(pool, id)
-  if (!base || base.approval_status !== 'approved' || !base.is_active) throw notPublic()
+  if (!base || base.approval_status !== 'approved' || !base.is_active || !base.owner_active) throw notPublic()
   const [rows, ratingRows] = await Promise.all([
     repo.findReviews(pool, id, { limit: pageSize, offset: (page - 1) * pageSize }),
     repo.ratingCounts(pool, id),
@@ -164,7 +165,7 @@ const addDays = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS
 export async function getAvailability(id, { from, to }, { viewerId = null } = {}) {
   if (!UUID.test(id)) throw notPublic()
   const base = await repo.findVenueBase(pool, id)
-  if (!base || base.approval_status !== 'approved' || !base.is_active) throw notPublic()
+  if (!base || base.approval_status !== 'approved' || !base.is_active || !base.owner_active) throw notPublic()
   const start = from ?? todayKarachi()
   let end = to ?? addDays(start, 30)
   if (Date.parse(end) - Date.parse(start) > 91 * DAY_MS) end = addDays(start, 91)

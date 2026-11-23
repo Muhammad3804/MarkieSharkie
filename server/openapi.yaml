@@ -2515,6 +2515,211 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: adminListUsers
+      summary: 'Users with search, role and status filters (REQ-47)'
+      x-srs: [REQ-47, NFR-4, EUC-33]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: query, name: q, required: false, schema: { type: string, maxLength: 100 } }
+        - {
+            in: query,
+            name: role,
+            required: false,
+            schema: { type: string, enum: [customer, venue_owner, decorator, admin] },
+          }
+        - {
+            in: query,
+            name: status,
+            required: false,
+            schema: { type: string, enum: [active, suspended, deleted, all] },
+          }
+        - { in: query, name: page, required: false, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, required: false, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: 'Rows (with active bookings and venue counts) and counts per role and status.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users/{id}:
+    get:
+      tags: [Admin]
+      operationId: adminGetUser
+      summary: 'One user with role details, activity (REQ-47 active-bookings warning) and their audit history'
+      x-srs: [REQ-47, NFR-4, EUC-33]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 'The user.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Admin]
+      operationId: adminDeleteUser
+      summary: 'Delete a user (anonymise; bookings and audit history kept)'
+      description: |
+        409 SELF_ACTION for your own account, 409 LAST_ADMIN for the last active admin.
+      x-srs: [REQ-47, NFR-4, EUC-33]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '200':
+          description: 'Deleted: personal fields replaced, sign-in impossible, sessions revoked. Audited with the reason.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users/{id}/suspend:
+    post:
+      tags: [Admin]
+      operationId: adminSuspendUser
+      summary: 'Suspend a user (reason required)'
+      description: |
+        409 SELF_ACTION, 409 LAST_ADMIN, 409 INVALID_STATUS when already suspended or deleted.
+      x-srs: [REQ-47, NFR-4, EUC-33]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '200':
+          description: 'Suspended: every refresh token revoked, login refused (ACCOUNT_SUSPENDED); an owner’s venues are hidden, confirmed bookings stay.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users/{id}/reactivate:
+    post:
+      tags: [Admin]
+      operationId: adminReactivateUser
+      summary: 'Reactivate a suspended user (reason required)'
+      x-srs: [REQ-47, NFR-4, EUC-33]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [reason],
+                properties: { reason: { type: string, minLength: 5, maxLength: 500 } },
+              }
+      responses:
+        '200':
+          description: 'Active again.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users/{id}/role:
+    post:
+      tags: [Admin]
+      operationId: adminChangeUserRole
+      summary: 'Change a user’s role between customer, venue owner and decorator'
+      description: |
+        Venue owner needs businessName (contactNumber defaults to the user's mobile); decorator needs businessName and bio.\n409 HAS_VENUES (an owner with venues), 409 HAS_ACTIVE_BOOKINGS (a customer with active bookings), 409 SELF_ACTION, 409 LAST_ADMIN (demoting the last admin).
+      x-srs: [REQ-47, NFR-4, EUC-33]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [role, reason],
+                properties:
+                  {
+                    role: { type: string, enum: [customer, venue_owner, decorator] },
+                    reason: { type: string, minLength: 5 },
+                    businessName: { type: string },
+                    contactNumber: { type: string },
+                    bio: { type: string },
+                    city: { type: string },
+                  },
+              }
+      responses:
+        '200':
+          description: 'Changed; the user signs in again to use it.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /admin/images:
     get:
       tags: [Admin]
@@ -3144,6 +3349,10 @@ components:
         - TOO_MANY_GUESTS
         - INVITATION_NOT_FOUND
         - RSVP_CLOSED
+        - SELF_ACTION
+        - LAST_ADMIN
+        - HAS_VENUES
+        - HAS_ACTIVE_BOOKINGS
         - PAYLOAD_TOO_LARGE
         - RATE_LIMITED
         - INTERNAL_ERROR

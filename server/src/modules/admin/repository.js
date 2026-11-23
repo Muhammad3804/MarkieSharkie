@@ -239,15 +239,16 @@ export async function recentSubmissions(db) {
 // ---------------------------------------------------------------- audit log (NFR-4)
 
 const AUDIT_SQL = `SELECT l.log_id, l.action, l.target_table, l.target_id, l.details, l.created_at, u.name AS admin_name,
-       coalesce(v.name, iv.name) AS target_label, count(*) OVER ()::int AS total
+       coalesce(v.name, iv.name, l.details->>'name', tu.name) AS target_label, count(*) OVER ()::int AS total
   FROM admin_audit_log l
   JOIN users u ON u.user_id = l.admin_id
   LEFT JOIN venues v ON l.target_table = 'venues' AND v.venue_id = l.target_id
   LEFT JOIN venue_images i ON l.target_table = 'venue_images' AND i.image_id = l.target_id
   LEFT JOIN venues iv ON iv.venue_id = i.venue_id
+  LEFT JOIN users tu ON l.target_table = 'users' AND tu.user_id = l.target_id
  WHERE ($1::text IS NULL OR l.action LIKE $1 || '.%')
    AND ($2::text IS NULL OR u.name ILIKE '%' || $2 || '%' OR l.action ILIKE '%' || $2 || '%'
-        OR coalesce(v.name, iv.name, '') ILIKE '%' || $2 || '%' OR l.details::text ILIKE '%' || $2 || '%')
+        OR coalesce(v.name, iv.name, tu.name, '') ILIKE '%' || $2 || '%' OR l.details::text ILIKE '%' || $2 || '%')
  ORDER BY l.created_at DESC
  LIMIT $3 OFFSET $4`
 
@@ -258,9 +259,11 @@ export async function listAudit(db, { action, q, page, pageSize }) {
 
 export async function recentAudit(db, limit = 12) {
   const { rows } = await db.query(
-    `SELECT l.log_id, l.action, l.created_at, u.name AS admin_name, coalesce(v.name, '') AS target_label
+    `SELECT l.log_id, l.action, l.created_at, u.name AS admin_name,
+            coalesce(v.name, l.details->>'name', tu.name, '') AS target_label
        FROM admin_audit_log l JOIN users u ON u.user_id = l.admin_id
        LEFT JOIN venues v ON l.target_table = 'venues' AND v.venue_id = l.target_id
+       LEFT JOIN users tu ON l.target_table = 'users' AND tu.user_id = l.target_id
       ORDER BY l.created_at DESC LIMIT $1`,
     [limit],
   )

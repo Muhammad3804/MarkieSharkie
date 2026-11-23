@@ -109,6 +109,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `pages/admin/Reviews.jsx` | Admin review moderation (REQ-44): reported / hidden / all, hide, keep, restore, delete with a reason. | `api/admin.js` |
 | `components/venue/GoogleReviewsLink.jsx`, `lib/googleMaps.js` | "Read reviews on Google" link-out (REQ-43, #37) and the shared Google Maps link rules. | `ReviewsSection` |
 | `components/venue/ReportReviewDialog.jsx` | "Report this review" dialog on the venue page (REQ-44). | `api/reviews.js` |
+| `pages/admin/Users.jsx` | Admin users (REQ-47, EUC-33): role tabs, status filter, search, `?user=` panel with activity and history, suspend / reactivate / change role / delete with a reason. | `api/admin.js` -> `server/src/modules/admin/usersService.js` |
 | `pages/admin/VenueEdits.jsx`, `VenueEditReview.jsx` | Admin "Live venue edits": list and old-versus-new review with approve / reject (REQ-5). | `api/admin.js` |
 | `pages/Profile.jsx` | `/me` profile (EUC-03): edit details per role, past searches, my bookings; admins read-only. | `api/profile.js`, `features/profile/rules.js` |
 | `pages/VenuePhotos.jsx` | Full photo gallery per hall, opens the lightbox. | `useVenue`, `Lightbox` |
@@ -119,7 +120,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `api/chat.js` → `sendMessage` | Returns nothing | `POST /api/chat` (RAG over pgvector) |
 | `api/host.js` | **Real:** draft autosave `PUT /api/owner/draft` (localStorage is only the instant local copy), submit = uploads + `POST`/`PUT /api/owner/venues`, live status | (done 2026-11-22) |
 | `api/listings.js` | Now only converts a server listing into the wizard draft (admin review, edit and resubmit) | (done) |
-| `api/admin.js` | **Real:** approvals, review, decisions, live / suspended venues, flagged photos, KPIs, venue / photo audit log. **Still mock** in localStorage `markiesharkie:admin`: users, disputes, listing reports | `/api/admin/users`, disputes and reports modules |
+| `api/admin.js` | **Real:** approvals, review, decisions, live / suspended venues, flagged photos, KPIs, venue / photo / user audit log, users (REQ-47). **Still mock** in localStorage `markiesharkie:admin`: disputes, listing reports | disputes and reports modules (Part D) |
 | `features/host/photoStore.js` | Files stay in **IndexedDB** `markiesharkie-host` until submit, which uploads them | (done; the files live on the server after submit) |
 | `features/wishlist/wishlist.js` | **localStorage** `markiesharkie:wishlist` | Customer wishlist API (not in the SRS, decide if we keep it) |
 | `api/bookings.js` | **Real (2026-11-22):** availability, holds, bookings, cancel, owner inbox / confirm / reject on `/api` (Socket.io `slot:updated` still to do; the calendar polls) | (done) |

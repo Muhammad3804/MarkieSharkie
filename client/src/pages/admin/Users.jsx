@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
-import { getUser, listUsers, setUserState } from '../../api/admin.js'
+import { useEffect, useId, useRef, useState } from 'react'
+import { CURRENT_ADMIN, changeUserRole, getUser, listUsers, setUserState } from '../../api/admin.js'
+import { ApiError } from '../../api/http.js'
 import { useAdminData, useUrlState, useHref } from '../../features/admin/hooks.js'
 import ConfirmDialog from '../../features/admin/ConfirmDialog.jsx'
 import AdminIcon from '../../features/admin/icons.jsx'
+import { useToast } from '../../features/admin/toastContext.js'
 import { Button, Card, EmptyState, ErrorState, Initials, PageHeader, Pager, SearchField, SelectField, Skeleton, SkeletonRows, StatusBadge, Th, UrlTabs } from '../../features/admin/ui.jsx'
 import { focusRing } from '../../features/admin/styles.js'
 import { ROLE_LABELS, actionLabel, ago, formatDate, formatDateTime } from '../../features/admin/format.js'
 
-// REQ-47: view and search users, suspend, unblock, remove; warn first when the user has active bookings.
+// REQ-47 / EUC-33 (srs-alignment #40): view and search users, suspend, reactivate, change role, delete. Everything is
+// on the server (/api/admin/users); every action needs a reason and lands in the audit log. The server refuses
+// acting on yourself, removing the last active admin, and role changes while the old role has live work.
 // The open user is ?user=<id>, so the panel survives a refresh and Back closes it.
 const DEFAULTS = { role: '', status: '', q: '', page: 1, user: '' }
 const ROLE_TABS = [
@@ -15,17 +19,32 @@ const ROLE_TABS = [
   { value: 'customer', label: 'Customers' },
   { value: 'venue_owner', label: 'Venue owners' },
   { value: 'decorator', label: 'Decorators' },
+  { value: 'admin', label: 'Admins' },
 ]
 const STATUS_OPTIONS = [
   { value: '', label: 'Any status' },
   { value: 'active', label: 'Active' },
   { value: 'suspended', label: 'Suspended' },
-  { value: 'removed', label: 'Removed' },
+  { value: 'deleted', label: 'Deleted' },
 ]
+const REASON_FIELD = { label: 'Reason', required: true, minLength: 5, tooShort: 'Write at least 5 characters.', hint: 'Saved in the audit log with your name.', placeholder: 'e.g. Repeated fake booking requests' }
 const ACTION_COPY = {
-  suspend: { title: 'Suspend', confirm: 'Suspend user', tone: 'danger', body: 'They can’t sign in or use MarkieSharkie until you unblock them (REQ-3).', done: 'suspended' },
-  unblock: { title: 'Unblock', confirm: 'Unblock user', tone: 'primary', body: 'They can sign in again straight away.', done: 'unblocked' },
-  remove: { title: 'Remove', confirm: 'Remove account', tone: 'danger', body: 'The account is closed and personal details are anonymised. This can’t be undone.', done: 'removed' },
+  suspend: { title: 'Suspend', confirm: 'Suspend user', tone: 'danger', body: 'They’re signed out everywhere and can’t sign in until you reactivate them. A venue owner’s venues are hidden from customers; confirmed bookings stay in place.', done: 'suspended' },
+  reactivate: { title: 'Reactivate', confirm: 'Reactivate user', tone: 'primary', body: 'They can sign in again straight away, and an owner’s venues come back.', done: 'reactivated' },
+  delete: { title: 'Delete', confirm: 'Delete account', tone: 'danger', body: 'Their name, email and mobile are replaced and they can’t sign in again. Bookings and the audit log are kept. This can’t be undone.', done: 'deleted' },
+}
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+// REQ-47 "warn if the user has active bookings": as a customer, and on the venues they own.
+function bookingWarning(user, action) {
+  if (!user || action === 'reactivate') return null
+  const own = user.activeBookings ?? user.activity?.activeBookings ?? 0
+  const onVenues = user.activity?.activeVenueBookings ?? 0
+  const parts = []
+  if (own) parts.push(`${plural(own, 'active booking')} as a customer`)
+  if (onVenues) parts.push(`${plural(onVenues, 'active booking')} on their venues`)
+  if (!parts.length) return null
+  return `${user.name} has ${parts.join(' and ')}. The bookings stay in place; contact the people involved before you continue.`
 }
 
 export default function Users() {
@@ -34,18 +53,19 @@ export default function Users() {
   const { user: openUserId, ...listParams } = params
   const { status, data, reload, refreshing } = useAdminData(() => listUsers(listParams), JSON.stringify(listParams))
   const [pending, setPending] = useState(null) // { user, action }
+  const [roleFor, setRoleFor] = useState(null) // user whose role is being changed
   const rows = data?.rows ?? []
   const openUser = (id) => setParams({ user: id, page: params.page }, { push: true })
+  const onAction = (user, action) => (action === 'role' ? setRoleFor(user) : setPending({ user, action }))
 
-  const totalCount = data ? Object.values(data.counts).reduce((a, b) => a + b, 0) : undefined
   return (
     <>
       <title>Users | Admin | MarkieSharkie</title>
-      <PageHeader title="Users" description="Customers, venue owners and decorators. Admin accounts are created by another admin." />
-      <UrlTabs label="Role" value={params.role} hrefFor={(value) => href({ role: value, user: '' })} items={ROLE_TABS.map((tab) => ({ ...tab, count: tab.value ? data?.counts[tab.value] : totalCount }))} />
+      <PageHeader title="Users" description="Customers, venue owners, decorators and admins. New admins are created from the server command line (REQ-1)." />
+      <UrlTabs label="Role" value={params.role} hrefFor={(value) => href({ role: value, user: '' })} items={ROLE_TABS.map((tab) => ({ ...tab, count: data?.counts[tab.value || 'all'] }))} />
       <Card bodyClassName="">
         <div className="flex flex-col gap-2 border-b border-line p-3 sm:flex-row sm:p-4">
-          <SearchField label="Search users" value={params.q} onChange={(q) => setParams({ q })} placeholder="Search by name, email, phone or city" className="flex-1" />
+          <SearchField label="Search users" value={params.q} onChange={(q) => setParams({ q })} placeholder="Search by name, email or mobile" className="flex-1" />
           <SelectField label="Status" value={params.status} onChange={(value) => setParams({ status: value })} options={STATUS_OPTIONS} className="sm:w-40" />
         </div>
         {status === 'loading' ? (
@@ -77,19 +97,19 @@ export default function Users() {
                         <Initials name={user.name} />
                         <div className="min-w-0">
                           <button type="button" onClick={() => openUser(user.id)} className={`block truncate rounded text-left font-medium text-ink-strong hover:text-primary hover:underline ${focusRing}`}>{user.name}</button>
-                          <p className="truncate text-[13px] text-muted-warm">{user.email}</p>
+                          <p className="truncate text-[13px] text-muted-warm">{user.status === 'deleted' ? 'Personal details removed' : user.email}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-ink">{ROLE_LABELS[user.role]}</td>
-                    <td className="hidden px-3 py-2.5 text-ink lg:table-cell">{user.city}</td>
+                    <td className="hidden px-3 py-2.5 text-ink lg:table-cell">{user.city || '—'}</td>
                     <td className="hidden px-3 py-2.5 text-right text-ink tabular-nums lg:table-cell">{user.activeBookings}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-ink">{formatDate(user.createdAt)}</td>
                     <td className="px-3 py-2.5"><StatusBadge status={user.status} /></td>
                     <td className="py-2.5 pr-4">
                       <div className="flex justify-end gap-1.5">
                         <Button size="sm" variant="secondary" icon="eye" onClick={() => openUser(user.id)} aria-label={`View ${user.name}`}>View</Button>
-                        <UserActions user={user} onAction={(action) => setPending({ user, action })} compact />
+                        <UserActions user={user} onAction={(action) => onAction(user, action)} compact />
                       </div>
                     </td>
                   </tr>
@@ -103,7 +123,7 @@ export default function Users() {
                     <Initials name={user.name} className="size-9 text-[12px]" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] font-medium text-ink-strong">{user.name}</span>
-                      <span className="block truncate text-[13px] text-muted-warm">{ROLE_LABELS[user.role]} · {user.city}</span>
+                      <span className="block truncate text-[13px] text-muted-warm">{ROLE_LABELS[user.role]}{user.city ? ` · ${user.city}` : ''}</span>
                     </span>
                     <StatusBadge status={user.status} />
                     <AdminIcon name="chevron-right" className="size-4 text-muted-warm" />
@@ -116,42 +136,48 @@ export default function Users() {
         )}
       </Card>
 
-      <UserPanel userId={openUserId} onClose={() => setParams({ user: '', page: params.page })} onAction={(user, action) => setPending({ user, action })} />
+      <UserPanel userId={openUserId} onClose={() => setParams({ user: '', page: params.page })} onAction={onAction} />
 
       <ConfirmDialog
         open={Boolean(pending)}
         tone={pending ? ACTION_COPY[pending.action].tone : 'primary'}
         title={pending && `${ACTION_COPY[pending.action].title} ${pending.user.name}?`}
         body={pending && ACTION_COPY[pending.action].body}
-        warning={pending && pending.action !== 'unblock' && pending.user.activeBookings > 0 && `${pending.user.name} has ${pending.user.activeBookings} active ${pending.user.activeBookings === 1 ? 'booking' : 'bookings'}. They stay in place; contact the ${pending.user.role === 'venue_owner' ? 'customers' : 'venue owners'} involved before you continue (REQ-47).`}
+        warning={pending && bookingWarning(pending.user, pending.action)}
+        field={REASON_FIELD}
         confirmLabel={pending ? ACTION_COPY[pending.action].confirm : ''}
         onClose={() => setPending(null)}
-        onConfirm={async () => {
-          await setUserState(pending.user.id, pending.action)
+        onConfirm={async (reason) => {
+          await setUserState(pending.user.id, pending.action, reason)
           return `${pending.user.name} ${ACTION_COPY[pending.action].done}`
         }}
       />
+      <RoleDialog user={roleFor} onClose={() => setRoleFor(null)} />
     </>
   )
 }
 
 function UserActions({ user, onAction, compact = false }) {
-  if (user.status === 'removed') return null
+  if (user.status === 'deleted') return null
+  if (user.id === CURRENT_ADMIN.id) return compact ? null : <p className="text-[13px] text-muted-warm">This is your account. Another admin can change it.</p>
   return (
     <>
       {user.status === 'active' ? (
         <Button size={compact ? 'sm' : 'md'} variant="danger-outline" icon="ban" onClick={() => onAction('suspend')} aria-label={`Suspend ${user.name}`}>Suspend</Button>
       ) : (
-        <Button size={compact ? 'sm' : 'md'} variant="secondary" icon="rotate-ccw" onClick={() => onAction('unblock')} aria-label={`Unblock ${user.name}`}>Unblock</Button>
+        <Button size={compact ? 'sm' : 'md'} variant="secondary" icon="rotate-ccw" onClick={() => onAction('reactivate')} aria-label={`Reactivate ${user.name}`}>Reactivate</Button>
+      )}
+      {!compact && user.role !== 'admin' && (
+        <Button variant="secondary" icon="shield" onClick={() => onAction('role')}>Change role</Button>
       )}
       {!compact && (
-        <Button variant="ghost" icon="trash" onClick={() => onAction('remove')} className="text-danger hover:bg-danger-bg">Remove account</Button>
+        <Button variant="ghost" icon="trash" onClick={() => onAction('delete')} className="text-danger hover:bg-danger-bg">Delete account</Button>
       )}
     </>
   )
 }
 
-// Side panel (native modal dialog) with the user's details and their audit history.
+// Side panel (native modal dialog) with the user's details, activity and their audit history.
 function UserPanel({ userId, onClose, onAction }) {
   const ref = useRef(null)
   const { status, data } = useAdminData(() => (userId ? getUser(userId) : Promise.resolve(null)), userId || 'none')
@@ -160,6 +186,8 @@ function UserPanel({ userId, onClose, onAction }) {
     if (userId && !dialog.open) dialog.showModal()
     if (!userId && dialog.open) dialog.close()
   }, [userId])
+  const user = data?.user
+  const act = user?.activity
 
   return (
     <dialog
@@ -187,29 +215,36 @@ function UserPanel({ userId, onClose, onAction }) {
           </div>
         ) : status === 'error' ? (
           <ErrorState title="Couldn’t load this user" />
-        ) : !data ? (
+        ) : !user ? (
           <EmptyState icon="users" title="User not found" />
         ) : (
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
-              <Initials name={data.name} className="size-14 text-[16px]" />
+              <Initials name={user.name} className="size-14 text-[16px]" />
               <div className="min-w-0">
-                <p className="truncate text-[18px] font-semibold text-ink-strong">{data.name}</p>
+                <p className="truncate text-[18px] font-semibold text-ink-strong">{user.name}</p>
                 <p className="flex flex-wrap items-center gap-2 text-[13px] text-muted-warm">
-                  {ROLE_LABELS[data.role]} <StatusBadge status={data.status} />
+                  {ROLE_LABELS[user.role]} <StatusBadge status={user.status} />
                 </p>
               </div>
             </div>
+            {user.status === 'suspended' && user.suspensionReason && (
+              <p className="rounded-lg bg-danger-bg px-3 py-2.5 text-[13px] text-danger">
+                Suspended {formatDateTime(user.suspendedAt)}: {user.suspensionReason}
+              </p>
+            )}
             <dl className="grid gap-3 text-[14px]">
               {[
-                ['Email', data.email],
-                ['Phone', <span key="p" className="tabular-nums">{data.phone}</span>],
-                ['City', data.city],
-                data.businessName && ['Business', data.businessName],
-                ['Joined', formatDate(data.createdAt)],
-                ['Last sign-in', `${ago(data.lastLoginAt)} (${formatDateTime(data.lastLoginAt)})`],
-                ['Active bookings', data.activeBookings],
-                data.deletedAt && ['Removed', formatDateTime(data.deletedAt)],
+                user.status !== 'deleted' && ['Email', user.email],
+                user.status !== 'deleted' && ['Mobile', <span key="p" className="tabular-nums">{user.phone}</span>],
+                ['City', user.city || '—'],
+                user.business && ['Business', user.business.name],
+                user.business?.contactNumber && ['Business phone', <span key="b" className="tabular-nums">{user.business.contactNumber}</span>],
+                ['Joined', formatDate(user.createdAt)],
+                ['Last sign-in', user.lastLoginAt ? `${ago(user.lastLoginAt)} (${formatDateTime(user.lastLoginAt)})` : 'Never'],
+                ['Bookings', `${act.activeBookings} active · ${act.allBookings} in total`],
+                (act.venueCount > 0 || user.role === 'venue_owner') && ['Venues', `${act.venueCount} (${act.liveVenues} live) · ${act.activeVenueBookings} active bookings`],
+                user.deletedAt && ['Deleted', formatDateTime(user.deletedAt)],
               ]
                 .filter(Boolean)
                 .map(([term, value]) => (
@@ -219,15 +254,15 @@ function UserPanel({ userId, onClose, onAction }) {
                   </div>
                 ))}
             </dl>
-            {data.activeBookings > 0 && data.status !== 'removed' && (
+            {user.status !== 'deleted' && bookingWarning(user, 'suspend') && (
               <p className="flex gap-2 rounded-lg bg-pending-bg px-3 py-2.5 text-[13px] text-pending">
                 <AdminIcon name="alert" className="mt-px size-4" />
-                Has {data.activeBookings} active {data.activeBookings === 1 ? 'booking' : 'bookings'}. Check them before suspending or removing.
+                {bookingWarning(user, 'suspend')}
               </p>
             )}
-            {data.status !== 'removed' && (
+            {user.status !== 'deleted' && (
               <div className="flex flex-wrap gap-2">
-                <UserActions user={data} onAction={(action) => onAction(data, action)} />
+                <UserActions user={user} onAction={(action) => onAction(user, action)} />
               </div>
             )}
             <section aria-labelledby="user-history">
@@ -235,11 +270,13 @@ function UserPanel({ userId, onClose, onAction }) {
               {data.history.length === 0 ? (
                 <p className="mt-1 text-[13px] text-muted-warm">No admin actions on this account.</p>
               ) : (
-                <ol className="mt-2 flex flex-col gap-2">
+                <ol className="mt-2 flex flex-col gap-2.5">
                   {data.history.map((entry) => (
-                    <li key={entry.logId} className="text-[13px]">
-                      <span className="font-medium text-ink-strong">{actionLabel(entry.action)}</span> by {entry.adminName}
-                      <span className="block text-[12px] text-muted-warm">{formatDateTime(entry.createdAt)}</span>
+                    <li key={`${entry.action}-${entry.at}`} className="text-[13px]">
+                      <span className="font-medium text-ink-strong">{actionLabel(entry.action)}</span> by {entry.by}
+                      {entry.details?.from && <span className="text-ink"> ({ROLE_LABELS[entry.details.from]} → {ROLE_LABELS[entry.details.to]})</span>}
+                      {entry.details?.reason && <span className="block text-ink">“{entry.details.reason}”</span>}
+                      <span className="block text-[12px] text-muted-warm">{formatDateTime(entry.at)}</span>
                     </li>
                   ))}
                 </ol>
@@ -248,6 +285,113 @@ function UserPanel({ userId, onClose, onAction }) {
           </div>
         )}
       </div>
+    </dialog>
+  )
+}
+
+const ROLE_CHOICES = ['customer', 'venue_owner', 'decorator']
+
+// Change role between customer, venue owner and decorator. The server checks the rules (no venues left behind, no
+// active customer bookings) and signs the user out so the new role applies at their next sign-in.
+function RoleDialog({ user, onClose }) {
+  const ref = useRef(null)
+  const id = useId()
+  const toast = useToast()
+  const [form, setForm] = useState({ role: '', businessName: '', contactNumber: '', bio: '', reason: '' })
+  const [errors, setErrors] = useState({})
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const dialog = ref.current
+    if (user && !dialog.open) {
+      setForm({ role: ROLE_CHOICES.find((r) => r !== user.role), businessName: '', contactNumber: '', bio: '', reason: '' })
+      setErrors({})
+      setError('')
+      setBusy(false)
+      dialog.showModal()
+    } else if (!user && dialog.open) dialog.close()
+  }, [user])
+
+  const set = (name) => (event) => setForm((f) => ({ ...f, [name]: event.target.value }))
+  const needsBusiness = form.role === 'venue_owner' || form.role === 'decorator'
+
+  async function submit(event) {
+    event.preventDefault()
+    if (busy) return
+    const problems = {}
+    if (needsBusiness && !form.businessName.trim()) problems.businessName = 'Add the business name.'
+    if (form.role === 'decorator' && !form.bio.trim()) problems.bio = 'Add a short description of their services.'
+    if (form.reason.trim().length < 5) problems.reason = 'Write at least 5 characters.'
+    setErrors(problems)
+    if (Object.keys(problems).length) return
+    setBusy(true)
+    setError('')
+    try {
+      await changeUserRole(user.id, {
+        role: form.role,
+        reason: form.reason.trim(),
+        ...(needsBusiness && { businessName: form.businessName.trim() }),
+        ...(form.role === 'venue_owner' && form.contactNumber.trim() && { contactNumber: form.contactNumber.trim() }),
+        ...(form.role === 'decorator' && { bio: form.bio.trim() }),
+      })
+      onClose()
+      requestAnimationFrame(() => toast(`${user.name} is now a ${ROLE_LABELS[form.role].toLowerCase()}`))
+    } catch (err) {
+      if (err instanceof ApiError && Object.keys(err.fieldErrors).length) setErrors(err.fieldErrors)
+      setError(err instanceof ApiError && (err.status === 409 || err.status === 400) ? `${err.message} Nothing was changed.` : 'That didn’t work. Nothing was changed; try again.')
+      setBusy(false)
+    }
+  }
+
+  const input = 'w-full rounded-lg border border-outline-strong px-3 py-2 text-[14px] text-ink-strong placeholder:text-placeholder focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-primary/30 aria-invalid:border-danger'
+  const field = (name, label, control, hint) => (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={`${id}-${name}`} className="text-[13px] font-semibold text-ink-strong">{label}</label>
+      {control}
+      {hint && !errors[name] && <p className="text-[12px] text-muted-warm">{hint}</p>}
+      {errors[name] && <p id={`${id}-${name}-error`} role="alert" className="text-[13px] text-danger">{errors[name]}</p>}
+    </div>
+  )
+  const attrs = (name) => ({ id: `${id}-${name}`, value: form[name], onChange: set(name), 'aria-invalid': Boolean(errors[name]), 'aria-describedby': errors[name] ? `${id}-${name}-error` : undefined })
+
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={`${id}-title`}
+      onCancel={(event) => {
+        if (busy) event.preventDefault()
+        else onClose()
+      }}
+      onClick={(event) => event.target === ref.current && !busy && onClose()}
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl bg-white p-0 text-ink shadow-panel backdrop:bg-ink-strong/40"
+    >
+      {user && (
+        <form onSubmit={submit} className="flex flex-col gap-4 p-5 sm:p-6" noValidate>
+          <div>
+            <h2 id={`${id}-title`} className="font-heading text-[18px] font-semibold text-ink-strong">Change {user.name}’s role</h2>
+            <p className="mt-1 text-[14px] leading-relaxed text-muted-warm">Now a {ROLE_LABELS[user.role].toLowerCase()}. They’re signed out and use the new role from their next sign-in. A venue owner with venues, or a customer with active bookings, can’t change role.</p>
+          </div>
+          {field(
+            'role',
+            'New role',
+            <select {...attrs('role')} className={`${input} h-10 cursor-pointer`}>
+              {ROLE_CHOICES.filter((r) => r !== user.role).map((r) => (
+                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+              ))}
+            </select>,
+          )}
+          {needsBusiness && field('businessName', 'Business name', <input {...attrs('businessName')} maxLength={120} className={`${input} h-10`} />)}
+          {form.role === 'venue_owner' && field('contactNumber', 'Business phone (optional)', <input {...attrs('contactNumber')} inputMode="tel" placeholder="03XX-XXXXXXX" className={`${input} h-10`} />, 'Leave empty to use their mobile number.')}
+          {form.role === 'decorator' && field('bio', 'Services', <textarea {...attrs('bio')} rows={3} maxLength={1000} className={input} />)}
+          {field('reason', 'Reason', <textarea {...attrs('reason')} rows={3} maxLength={500} placeholder="e.g. Registered as a customer by mistake" className={input} />, 'Saved in the audit log with your name.')}
+          {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={() => !busy && onClose()} aria-disabled={busy || undefined}>Cancel</Button>
+            <Button type="submit" busy={busy}>Change role</Button>
+          </div>
+        </form>
+      )}
     </dialog>
   )
 }

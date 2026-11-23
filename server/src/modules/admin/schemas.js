@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { phoneSchema } from '../../lib/validators.js'
 
 const STATUSES = ['pending', 'changes_requested', 'approved', 'rejected', 'suspended']
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-11-22.')
@@ -60,5 +61,28 @@ export const revisionsQuerySchema = z
     status: z.enum(['pending', 'approved', 'rejected', 'withdrawn']).optional(),
     page: z.coerce.number().int().min(1).max(10_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  })
+  .strict()
+
+// Admin user management (REQ-47, EUC-33, srs-alignment #40).
+export const userParamsSchema = z.object({ id: z.uuid({ error: 'Unknown user.' }) }).strict()
+export const usersQuerySchema = z
+  .object({
+    q: z.string().trim().max(100).optional(),
+    role: z.enum(['customer', 'venue_owner', 'decorator', 'admin']).optional(),
+    status: z.enum(['active', 'suspended', 'deleted', 'all']).default('all'),
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  })
+  .strict()
+export const userReasonSchema = z.object({ reason: reason('a reason') }).strict()
+export const roleChangeSchema = z
+  .object({
+    role: z.enum(['customer', 'venue_owner', 'decorator'], { error: 'Choose customer, venue owner or decorator.' }),
+    reason: reason('a reason'),
+    businessName: z.string().trim().min(2, 'Business name must be at least 2 characters.').max(150).optional(),
+    contactNumber: phoneSchema.optional(),
+    bio: z.string().trim().min(1).max(500, 'Keep the description to 500 characters or fewer.').optional(),
+    city: z.string().trim().min(2).max(100).optional(),
   })
   .strict()

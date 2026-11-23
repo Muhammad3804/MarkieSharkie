@@ -35,7 +35,7 @@ export default function ConfirmDialog({ open, title, body, confirmLabel, tone = 
   }, [open, field, tone])
 
   const minLength = field?.minLength ?? (field?.required ? 10 : 0)
-  const fieldError = field && touched && text.trim().length < minLength ? (text.trim() ? `Write at least ${minLength} characters so the owner knows what to do.` : `${field.label} is required.`) : ''
+  const fieldError = field && touched && text.trim().length < minLength ? (text.trim() ? (field.tooShort ?? `Write at least ${minLength} characters so the owner knows what to do.`) : `${field.label} is required.`) : ''
 
   async function submit(event) {
     event.preventDefault()
@@ -56,7 +56,8 @@ export default function ConfirmDialog({ open, title, body, confirmLabel, tone = 
       })
     } catch (err) {
       console.error('[admin] action failed', err)
-      setError('That didn’t work. Nothing was changed; try again.')
+      // A refusal the server explained (409 conflict, 400 validation) is shown as is; retrying won't change it.
+      setError(err?.status === 409 || err?.status === 400 ? `${err.message} Nothing was changed.` : 'That didn’t work. Nothing was changed; try again.')
       setBusy(false)
     }
   }

@@ -1,5 +1,6 @@
 import { requestOrigin } from '../../lib/origin.js'
 import * as service from './service.js'
+import * as usersService from './usersService.js'
 
 // Thin. req.user is an admin (requireRole); every write is audited in the service.
 const noStore = (res) => res.set('Cache-Control', 'no-store')
@@ -76,4 +77,26 @@ export async function approveRevision(req, res) {
 export async function rejectRevision(req, res) {
   await service.rejectRevision(req.user.id, req.params.id, req.body)
   res.status(204).end()
+}
+
+// ---------------------------------------------------------------- users (REQ-47, EUC-33)
+export async function listUsers(req, res) {
+  noStore(res)
+  res.json(await usersService.listUsers(req.query))
+}
+export async function getUser(req, res) {
+  noStore(res)
+  res.json(await usersService.getUser(req.params.id))
+}
+export async function suspendUser(req, res) {
+  res.json(await usersService.suspendUser(req.user.id, req.params.id, req.body))
+}
+export async function reactivateUser(req, res) {
+  res.json(await usersService.reactivateUser(req.user.id, req.params.id, req.body))
+}
+export async function changeRole(req, res) {
+  res.json(await usersService.changeRole(req.user.id, req.params.id, req.body))
+}
+export async function deleteUser(req, res) {
+  res.json(await usersService.deleteUser(req.user.id, req.params.id, req.body))
 }

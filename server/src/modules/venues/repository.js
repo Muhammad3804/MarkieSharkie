@@ -47,7 +47,9 @@ export function toCardRow(row) {
 
 const PUBLIC_CARDS_SQL = `SELECT ${CARD_COLUMNS}
   FROM venues v
- WHERE v.approval_status = 'approved' AND v.is_active`
+ WHERE v.approval_status = 'approved' AND v.is_active
+   -- REQ-47: a suspended or deleted owner's venues are hidden (the venue rows are untouched)
+   AND EXISTS (SELECT 1 FROM users ou WHERE ou.user_id = v.owner_id AND ou.is_active AND ou.deleted_at IS NULL)`
 
 // Every public venue as a card row (the landing page builds its rows from these; the catalogue is small).
 export async function listPublicCards(db) {
@@ -60,7 +62,7 @@ export async function listPublicCards(db) {
 const SEARCH_SQL = `WITH matches AS (
   SELECT ${CARD_COLUMNS}
     FROM venues v
-   WHERE v.approval_status = 'approved' AND v.is_active
+   WHERE v.approval_status = 'approved' AND v.is_active AND EXISTS (SELECT 1 FROM users ou WHERE ou.user_id = v.owner_id AND ou.is_active AND ou.deleted_at IS NULL)
      AND ($1::text IS NULL OR v.city ILIKE '%' || $1 || '%' OR v.area ILIKE '%' || $1 || '%' OR v.name ILIKE '%' || $1 || '%')
      AND ($2::date IS NULL OR EXISTS (SELECT 1 FROM time_slots t WHERE t.venue_id = v.venue_id AND t.date = $2 AND t.status = 'available'))
      AND ($3::int IS NULL OR v.capacity >= $3)
@@ -109,7 +111,8 @@ export async function searchPublic(db, f) {
 
 export async function publicPriceRange(db) {
   const { rows } = await db.query(
-    `SELECT min(base_price) AS min, max(base_price) AS max FROM venues WHERE approval_status = 'approved' AND is_active`,
+    `SELECT min(base_price) AS min, max(base_price) AS max FROM venues v
+      WHERE v.approval_status = 'approved' AND v.is_active AND EXISTS (SELECT 1 FROM users ou WHERE ou.user_id = v.owner_id AND ou.is_active AND ou.deleted_at IS NULL)`,
   )
   return rows[0]
 }
@@ -121,7 +124,7 @@ export async function platformStats(db) {
             coalesce(sum((SELECT count(*) FROM halls h WHERE h.venue_id = v.venue_id)), 0)::int AS hall_count,
             avg(v.avg_rating) FILTER (WHERE EXISTS (SELECT 1 FROM reviews r WHERE r.venue_id = v.venue_id AND r.removed_at IS NULL)) AS average_rating
        FROM venues v
-      WHERE v.approval_status = 'approved' AND v.is_active`,
+      WHERE v.approval_status = 'approved' AND v.is_active AND EXISTS (SELECT 1 FROM users ou WHERE ou.user_id = v.owner_id AND ou.is_active AND ou.deleted_at IS NULL)`,
   )
   return rows[0]
 }
@@ -140,7 +143,8 @@ export async function findVenueBase(db, venueId) {
   const { rows } = await db.query(
     `SELECT v.*, v.supported_events::text[] AS supported_events, -- pg returns enum arrays as strings otherwise
             ST_Y(v.location::geometry) AS lat, ST_X(v.location::geometry) AS lng,
-            u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone, o.business_name
+            u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone, o.business_name,
+            (u.is_active AND u.deleted_at IS NULL) AS owner_active
        FROM venues v
        JOIN venue_owners o ON o.user_id = v.owner_id
        JOIN users u ON u.user_id = v.owner_id

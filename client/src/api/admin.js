@@ -8,8 +8,8 @@ import { REPORT_REASONS } from '../features/admin/format.js'
 export { REPORT_REASONS }
 
 // Admin API (REQ-7, 9, 10, 47, 48, NFR-4 audit). Venues, approvals, photo checks, the dashboard and the venue /
-// photo audit log come from the server (/api/admin/...). Users, disputes and listing reports are still a demo in
-// localStorage `markiesharkie:admin` (REQ-47 / REQ-48 come with their own modules); the comments below this line
+// photo audit log come from the server (/api/admin/...), and so do users (REQ-47). Disputes and listing reports are
+// still a demo in localStorage `markiesharkie:admin` (REQ-48 comes with its own module); the comments below this line
 // describe that demo part. Original note: mocked in localStorage until the server
 // exists. Every function maps to a route in docs/api-and-security.md ("/admin/..."); every action that changes
 // something writes an admin_audit_log row (`audit` below). The server re-checks role = admin on each request.
@@ -26,54 +26,16 @@ export const CURRENT_ADMIN = {
   },
 }
 
-const STORE_VERSION = 2 // 2: venues, photos and the venue audit log moved to the server
+const STORE_VERSION = 3 // 2: venues, photos and the venue audit log moved to the server; 3: users moved too
 const HOUR = 3600000
 const DAY = 24 * HOUR
 export const PAGE_SIZE = 10
 
-// Deterministic 0..1 from a string (FNV-1a), so mock scores and dates don't change between loads.
-function hash(text) {
-  let h = 2166136261
-  for (const char of text) h = Math.imul(h ^ char.charCodeAt(0), 16777619)
-  return ((h >>> 0) % 10000) / 10000
-}
-
-
 // ---------------------------------------------------------------------------------------------------------------
 // Seed data
 // ---------------------------------------------------------------------------------------------------------------
-const FIRST = ['Ahmed', 'Fatima', 'Hassan', 'Ayesha', 'Ali', 'Maryam', 'Omar', 'Zainab', 'Usman', 'Hira', 'Bilal', 'Sana', 'Hamza', 'Iqra', 'Saad', 'Mahnoor', 'Fahad', 'Amna', 'Danish', 'Rabia', 'Talha', 'Noor', 'Asad', 'Laiba', 'Waqas', 'Areeba', 'Junaid', 'Mehwish']
-const LAST = ['Khan', 'Malik', 'Butt', 'Qureshi', 'Sheikh', 'Chaudhry', 'Raza', 'Hussain', 'Iqbal', 'Mirza', 'Abbasi', 'Siddiqui', 'Javed', 'Aslam']
-const USER_CITIES = ['Lahore', 'Faisalabad', 'Islamabad', 'Karachi', 'Rawalpindi', 'Multan', 'Chiniot']
-const DECOR_BUSINESSES = ['Gul Decor Studio', 'Rang Events', 'Mehfil Florals', 'Shaadi Lights', 'Noor Stage Works', 'Phool Wala Decor']
-
-function seedUsers(now) {
-  const users = []
-  const add = (role, index, extra = {}) => {
-    const first = FIRST[(index * 7 + role.length) % FIRST.length]
-    const last = LAST[(index * 5 + role.length * 3) % LAST.length]
-    const id = `user-${role}-${index + 1}`
-    const r = hash(id)
-    users.push({
-      id,
-      name: `${first} ${last}`,
-      email: `${first}.${last}${index + 1}@example.pk`.toLowerCase(),
-      phone: `+9230${String(10000000 + Math.floor(r * 89999999)).slice(0, 8)}${index % 10}`,
-      role,
-      city: USER_CITIES[Math.floor(r * USER_CITIES.length)],
-      isActive: !(role === 'customer' && index === 4) && !(role === 'decorator' && index === 2),
-      deletedAt: null,
-      createdAt: new Date(now - (20 + Math.floor(r * 300)) * DAY).toISOString(),
-      lastLoginAt: new Date(now - Math.floor(hash(`${id}:login`) * 20 * DAY)).toISOString(),
-      activeBookings: role === 'customer' ? Math.floor(hash(`${id}:b`) * 3) : role === 'venue_owner' ? Math.floor(hash(`${id}:b`) * 9) : 0,
-      ...extra,
-    })
-  }
-  for (let i = 0; i < 22; i++) add('customer', i)
-  for (let i = 0; i < 9; i++) add('venue_owner', i, { businessName: `${LAST[i % LAST.length]} Events (Pvt) Ltd` })
-  DECOR_BUSINESSES.forEach((business, i) => add('decorator', i, { businessName: business }))
-  return users
-}
+// Demo customer names for the demo disputes only (REQ-48 moves to the server in Part D; users are on the server).
+const DEMO_CUSTOMERS = ['Ayesha Malik', 'Hassan Qureshi', 'Sana Iqbal', 'Omar Sheikh', 'Hira Butt', 'Bilal Raza']
 
 const DISPUTE_REASONS = [
   ['customer', 'The venue charged extra for the SMD screen even though it was in the agreed quotation.'],
@@ -85,11 +47,10 @@ const DISPUTE_REASONS = [
 ]
 const DISPUTE_STATUS = ['open', 'open', 'under_review', 'open', 'resolved', 'under_review']
 
-function seedDisputes(now, venues, users) {
-  const customers = users.filter((u) => u.role === 'customer')
+function seedDisputes(now, venues) {
   return DISPUTE_REASONS.map(([role, reason], i) => {
     const venue = venues[(i * 7) % venues.length]
-    const customer = customers[(i * 3) % customers.length]
+    const customer = { name: DEMO_CUSTOMERS[(i * 3) % DEMO_CUSTOMERS.length] }
     const status = DISPUTE_STATUS[i]
     const createdAt = new Date(now - (i * 2 + 1) * DAY - i * 5 * HOUR).toISOString()
     const guests = 250 + i * 50
@@ -152,17 +113,15 @@ const store = createMockStore('markiesharkie:admin', {
   seed: () => {
     const now = Date.now()
     const venues = DEMO_VENUES
-    const users = seedUsers(now)
     return {
       version: STORE_VERSION,
-      users,
-      disputes: seedDisputes(now, venues, users),
+      disputes: seedDisputes(now, venues),
       reports: seedReports(now, venues),
       audit: [],
       notificationsReadAt: null,
     }
   },
-  isValid: (value) => value?.version === STORE_VERSION && Array.isArray(value.users) && Array.isArray(value.audit),
+  isValid: (value) => value?.version === STORE_VERSION && Array.isArray(value.disputes) && Array.isArray(value.audit),
 })
 
 // One admin_audit_log row (NFR-4). `details` is free-form JSON (reason, note, counts...).
@@ -384,38 +343,38 @@ export async function unsuspendVenue(id) {
 // ---------------------------------------------------------------------------------------------------------------
 // Users (REQ-47)
 // ---------------------------------------------------------------------------------------------------------------
-const userStatus = (user) => (user.deletedAt ? 'removed' : user.isActive ? 'active' : 'suspended')
+// GET/POST/DELETE /api/admin/users... (server/openapi.yaml "Admin", srs-alignment #40). Every action needs a reason
+// and is written to admin_audit_log by the server.
+export const USER_STATUSES = ['active', 'suspended', 'deleted']
 
-// params: { role, status, q, page }
+// params: { role, status, q, page } -> { rows, total, page, pageCount, pageSize, counts }
 export async function listUsers(params) {
-  await latency()
-  const all = store.get().users
-  const rows = all
-    .filter((user) => (!params.role || user.role === params.role) && (!params.status || userStatus(user) === params.status) && matchesQuery(params.q, user.name, user.email, user.phone, user.city, user.businessName))
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-    .map((user) => ({ ...user, status: userStatus(user) }))
-  const roles = ['customer', 'venue_owner', 'decorator']
-  return { ...paginate(rows, params.page), counts: Object.fromEntries(roles.map((role) => [role, all.filter((u) => u.role === role && !u.deletedAt).length])) }
+  return apiFetch(`/admin/users?${query({ role: params.role, status: params.status || 'all', q: params.q?.trim(), page: params.page || 1, pageSize: PAGE_SIZE })}`)
 }
 
+// -> { user, history } or null when it doesn't exist
 export async function getUser(id) {
-  await latency(150)
-  const user = store.get().users.find((u) => u.id === id)
-  if (!user) return null
-  const history = store.get().audit.filter((entry) => entry.targetId === id)
-  return { ...user, status: userStatus(user), history }
+  try {
+    return await apiFetch(`/admin/users/${encodeURIComponent(id)}`)
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 400)) return null
+    throw error
+  }
 }
 
-// action: 'suspend' | 'unblock' | 'remove'. Removal is a soft delete (users.deleted_at, personal fields anonymised
-// on the server). The UI warns first when the user has active bookings (REQ-47).
-export async function setUserState(id, action) {
-  await latency(250)
-  store.update((state) => {
-    const user = state.users.find((u) => u.id === id)
-    const patch = action === 'suspend' ? { isActive: false } : action === 'unblock' ? { isActive: true } : { isActive: false, deletedAt: new Date().toISOString() }
-    const next = { ...state, users: state.users.map((u) => (u.id === id ? { ...u, ...patch } : u)) }
-    return audit(next, { action: `user.${action}`, targetTable: 'users', targetId: id, targetLabel: `${user.name} (${user.role.replace('_', ' ')})`, details: user.activeBookings ? { activeBookings: user.activeBookings } : {} })
-  })
+// action: 'suspend' | 'reactivate' | 'delete'. 409s (SELF_ACTION, LAST_ADMIN, INVALID_STATUS) carry a message.
+export async function setUserState(id, action, reason) {
+  const path = `/admin/users/${encodeURIComponent(id)}`
+  if (action === 'delete') await apiFetch(path, { method: 'DELETE', body: { reason } })
+  else await apiFetch(`${path}/${action}`, { method: 'POST', body: { reason } })
+  changed()
+}
+
+// body: { role, reason, businessName?, contactNumber?, bio?, city? }. 409 HAS_VENUES / HAS_ACTIVE_BOOKINGS.
+export async function changeUserRole(id, body) {
+  const result = await apiFetch(`/admin/users/${encodeURIComponent(id)}/role`, { method: 'POST', body })
+  changed()
+  return result
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -487,7 +446,7 @@ export async function reportListing({ venueId, venueName, reason, details }) {
 // Audit log (NFR-4): venue and photo decisions from GET /api/admin/audit; user, dispute and report actions are
 // still the local demo log until those modules exist on the server.
 // ---------------------------------------------------------------------------------------------------------------
-const LOCAL_ACTIONS = new Set(['user', 'dispute', 'report'])
+const LOCAL_ACTIONS = new Set(['dispute', 'report'])
 
 export async function listAudit({ q, action, page }) {
   if (LOCAL_ACTIONS.has(action)) {
@@ -584,7 +543,7 @@ export function markNotificationsRead() {
   store.update((state) => ({ ...state, notificationsReadAt: new Date().toISOString() }))
 }
 
-// Global search in the top bar: venues of any status (server) and the demo users by name.
+// Global search in the top bar: venues of any status and users by name, email or mobile (both from the server).
 export async function searchAdmin(q) {
   if (!q.trim()) return []
   const data = await apiFetch(`/admin/venues?${query({ q: q.trim(), sort: 'name', pageSize: 6 })}`).catch(() => ({ rows: [] }))
@@ -598,14 +557,12 @@ export async function searchAdmin(q) {
       to: live ? `/admin/venues?q=${encodeURIComponent(v.name)}${v.status === 'suspended' ? '&status=suspended' : ''}` : `/admin/approvals/${v.id}`,
     }
   })
-  const users = store
-    .get()
-    .users.filter((u) => matchesQuery(q, u.name, u.email))
-    .map((u) => ({ id: u.id, kind: 'User', label: u.name, detail: u.email, to: `/admin/users?q=${encodeURIComponent(u.email)}&user=${u.id}` }))
+  const people = await apiFetch(`/admin/users?${query({ q: q.trim(), status: 'all', pageSize: 4 })}`).catch(() => ({ rows: [] }))
+  const users = people.rows.map((u) => ({ id: u.id, kind: 'User', label: u.name, detail: u.email, to: `/admin/users?q=${encodeURIComponent(u.email)}&user=${u.id}` }))
   return [...venues, ...users].slice(0, 8)
 }
 
-// Resets the demo-only admin data (users, disputes, reports). Bookings and invitations are on the server.
+// Resets the demo-only admin data (disputes, reports). Users, bookings and invitations are on the server.
 export function resetDemoData() {
   store.reset()
 }

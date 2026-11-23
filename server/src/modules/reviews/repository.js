@@ -6,7 +6,8 @@ export async function findPublicReview(db, { venueId, reviewId }) {
     `SELECT r.review_id, r.customer_id, r.venue_id
        FROM reviews r JOIN venues v ON v.venue_id = r.venue_id
       WHERE r.review_id = $1 AND r.venue_id = $2 AND r.removed_at IS NULL
-        AND v.approval_status = 'approved' AND v.is_active`,
+        AND v.approval_status = 'approved' AND v.is_active
+        AND EXISTS (SELECT 1 FROM users ou WHERE ou.user_id = v.owner_id AND ou.is_active AND ou.deleted_at IS NULL)`,
     [reviewId, venueId],
   )
   return rows[0] ?? null

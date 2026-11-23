@@ -15,7 +15,8 @@ Last updated: 2026-11-22
   image checks); admin `/api/admin/venues[...]` (queue, review, decisions, bulk), `/api/admin/images`, `/stats`,
   `/audit`. Photos go through the AI check (Sightengine; fake without keys). Files under `server/uploads/` served at
   `/uploads`. The home page, Explore, venue pages, Become a host and the admin approvals / venues / photos / overview /
-  audit pages use real data; admin users, disputes and reports, bookings and invitations are still browser mocks.
+  audit / users pages, bookings and invitations use real data; admin disputes and listing reports are still browser
+  mocks (Part D).
 
 - Node 20, ES modules, Express 4.22, `pg` 8 (raw SQL, `$n` params only), node-pg-migrate 9 (SQL migrations), Zod 4,
   dotenv 18 (loads the repo-root `.env`; shell vars win), helmet, cors, cookie-parser, express-rate-limit 8, argon2
@@ -409,8 +410,9 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   the Lightbox with a mock AI score, map, MenuCard, policies; checklist photos / details / location with automatic
   hints, Approve needs all three ticked; Reject needs a reason ≥ 10 chars; Request changes needs a note; history;
   sticky action bar below xl), Flagged images (grid, AI score meter, Keep / Remove), All venues (Live / Suspended,
-  suspend with optional reason, unsuspend), Users (role tabs, status filter, side panel `?user=`, suspend / unblock /
-  remove with an active-bookings warning), Disputes & reports (booking disputes with quotation + payments, listing
+  suspend with optional reason, unsuspend), Users (server since 2026-11-23: role tabs incl. admins, status filter,
+  search, side panel `?user=` with activity and admin history, suspend / reactivate / change role / delete, each with a
+  required reason and an active-bookings warning), Disputes & reports (booking disputes with quotation + payments, listing
   reports; Start review → Resolve with a required resolution), Audit log (search, action type), Settings (platform
   facts, demo account, Reset demo data)
 - Every action has a confirm `<dialog>` (`ConfirmDialog`: Esc / backdrop cancel, focus on Cancel for destructive
@@ -558,6 +560,24 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
   `useAuth` / `useRequireAuth` so the real auth can replace `api/auth.js`
 
 ## Changelog (newest first)
+
+- 2026-11-23: **Admin user management on the server (EUC-33, REQ-47), Part C.** Migration **012**
+  (`users.suspension_reason`, `suspended_at`; the mobile-format CHECK skips deleted rows so anonymised accounts free
+  their number); srs-alignment #40. Server `admin/usersRepository.js` + `usersService.js`: `GET /api/admin/users`
+  (search name / email / mobile with literal wildcards, role, status active / suspended / deleted / all, pages,
+  counts), `GET /api/admin/users/:id` (role details, activity: active and total bookings, venues, live venues, active
+  bookings on their venues; admin history), `POST .../suspend|reactivate|role`, `DELETE /api/admin/users/:id`. Every
+  action needs a reason, locks the user and is audited. Suspend revokes every refresh token (login refused with
+  ACCOUNT_SUSPENDED; the auth middleware already re-reads status and role per request); a suspended or deleted
+  owner's venues drop out of search, landing stats, the venue page, availability and reviews; bookings are kept.
+  Role change only between customer / venue owner / decorator (refused HAS_VENUES / HAS_ACTIVE_BOOKINGS), signs the
+  user out. Delete = anonymise (name, email, mobile, password, role details, search history). Nobody acts on
+  themselves (SELF_ACTION); the last active admin can't be removed (LAST_ADMIN, all active admins locked, so two
+  admins removing each other at once can't both win). Audit log rows for users show the user's name.
+  Tests: `tests/admin-users.test.js` (11). Client: `api/admin.js` users on the API (seeded demo users removed, store
+  version 3), Users page rewritten (Admins tab, reason on every action, Change role dialog, server messages for
+  refusals, your own row has no actions), global search finds real users, `ConfirmDialog` shows a 409 / 400 message
+  from the server, Settings "Reset demo data" copy now says it only resets disputes and reports.
 
 - 2026-11-23: **Invitations, guests and replies on the server (EUC-25, 26, 27), Part B.** Migration **011**
   (invitation card fields + dress code + notes, one per booking; guests with email and / or mobile, hashed link
@@ -874,8 +894,8 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - Explore saves the same search twice in development (React StrictMode runs the search effect twice), so
   "Past searches" shows pairs locally; production builds save once
 - Auth server, not built yet: reset code by SMS (REQ-2 "email or mobile"; only email is built), change password,
-  change email, account deletion with anonymisation (NFR-8, REQ-47), admin user management (suspend / unblock /
-  remove / create admin, with `admin_audit_log`), ownership helpers (come with venues/bookings)
+  change email, self-service account deletion (NFR-8; admin delete = anonymise is built, REQ-47), creating admins
+  from the dashboard (CLI only, REQ-1)
 - Auth client leftovers (not built): one-step "phone or email + password" form (today: identifier, then password);
   role-based redirect to `homePath` after login (`/app`, `/owner`, `/decorator` don't exist yet); `RequireRole` on `/host/new` (venue_owner) and the future role dashboards; refresh while the user
   is active (inactivity counts from the last refresh, REQ-2). Done: in-memory token, single-flight refresh across tabs
@@ -928,7 +948,7 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 - `/owner`: not built. Owners only see their last submission's status on `/host/submitted` (one per browser)
 - Admin: no auth (`TODO(auth)` RequireRole('admin') in `app/adminRoutes.jsx` / `app/router.jsx`); `CURRENT_ADMIN` is
   a demo account; "Sign out" and "create admin" aren't built. Notifications to owners (REQ-7/10/45) aren't sent
-- Admin mocks: users, disputes, bookings-this-month KPI, AI image scores, flagged images (seeded from gallery
+- Admin mocks: disputes, listing reports, bookings-this-month KPI, AI image scores, flagged images (seeded from gallery
   photos), catalogue "listed" dates for the chart. Uploaded listing photos get a mock AI score on the review page but
   never enter the flagged queue. Flagged-image decisions don't change any venue's gallery
 - Admin "Remove" user is a soft delete flag only; suspended users can still use the public site (no accounts)

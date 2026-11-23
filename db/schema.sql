@@ -79,7 +79,10 @@ CREATE TABLE users (
   last_login_at         timestamptz,                                         -- [SRS] REQ-2
   deleted_at            timestamptz,                                         -- [SRS] REQ-47 remove, NFR-8 deletion request
   updated_at            timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT users_phone_pk_format CHECK (phone ~ '^\+923[0-9]{9}$')
+  suspension_reason     text CHECK (char_length(suspension_reason) <= 500),  -- [SRS] #40 (migration 012) REQ-47
+  suspended_at          timestamptz,                                         -- [SRS] #40 (migration 012)
+  -- #40: a deleted (anonymised) user's phone is 'deleted:<user_id>'
+  CONSTRAINT users_phone_pk_format CHECK (deleted_at IS NOT NULL OR phone ~ '^\+923[0-9]{9}$')
 );
 CREATE TRIGGER users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
