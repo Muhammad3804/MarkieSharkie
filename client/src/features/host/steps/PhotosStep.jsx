@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { photoCheckCounts, retryPhotoCheck, uploadPhotoForCheck } from '../../../api/host.js'
 import { useWizard } from '../WizardContext.js'
 import { ErrorText, StepHeading } from '../fields.jsx'
 import { HALL_PHOTO_CATEGORIES, MAX_PHOTOS, MIN_PHOTOS, PHOTO_MAX_BYTES, PHOTO_TYPES, VENUE_PHOTO_CATEGORIES } from '../options.js'
 import { ensureCover, newId } from '../draft.js'
-import { deletePhotos, savePhoto, usePhotoUrls } from '../photoStore.js'
+import { deletePhotos, readPhotoFiles, savePhoto, usePhotoUrls } from '../photoStore.js'
 import HostIcon from '../icons.jsx'
 
 // Photos per hall and category. Files: JPEG/PNG up to 5 MB (REQ-8). Order in draft.venueImages is display order;
 // moving a photo only swaps it with its neighbours in the same zone. One photo across the listing is the cover.
+// srs-alignment #42: each photo is uploaded as soon as it's added and checked by our AI check against the admin's
+// threshold; the result (and score) shows under the photo. A photo that looks AI-generated is never shown on the
+// listing; if the check couldn't run, the photo says so with a Retry (it is never rejected for that).
 const iconButton =
   'flex size-9 cursor-pointer items-center justify-center rounded-full bg-white/95 text-ink-strong shadow-chip transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary aria-disabled:cursor-not-allowed aria-disabled:opacity-40'
 
@@ -18,6 +22,52 @@ export default function PhotosStep() {
   const { venueImages, halls } = draft
   const photos = usePhotoUrls(venueImages.map((image) => image.imageId))
   const hallsWithPhotos = halls.filter((hall) => venueImages.some((image) => image.hallId === hall.hallId)).length
+  const checks = photoCheckCounts(venueImages)
+
+  // Upload + AI check per photo. `checking` = in flight (not saved in the draft); `attempted` stops a second start.
+  const [checking, setChecking] = useState(() => new Set())
+  const attempted = useRef(new Set())
+  const setUpload = useCallback(
+    (imageId, upload) => update((current) => ({ ...current, venueImages: current.venueImages.map((image) => (image.imageId === imageId ? { ...image, upload } : image)) })),
+    [update],
+  )
+  const checkPhoto = useCallback(
+    async (imageId, { file = null, retryUploadId = null } = {}) => {
+      attempted.current.add(imageId)
+      setChecking((current) => new Set(current).add(imageId))
+      try {
+        let result
+        if (retryUploadId) result = await retryPhotoCheck(retryUploadId)
+        else {
+          const blob = file ?? (await readPhotoFiles([imageId]))[imageId]
+          if (!blob) return
+          result = await uploadPhotoForCheck(blob, file?.name || 'photo.jpg')
+        }
+        if (result) setUpload(imageId, result)
+      } catch (error) {
+        console.warn('[host] photo upload or check failed', error)
+        setUpload(imageId, { uploadId: retryUploadId, status: 'pending', aiScore: null, canRetry: true, failed: true })
+      } finally {
+        setChecking((current) => {
+          const next = new Set(current)
+          next.delete(imageId)
+          return next
+        })
+      }
+    },
+    [setUpload],
+  )
+  const retry = (image) => checkPhoto(image.imageId, { retryUploadId: image.upload?.uploadId ?? null })
+
+  // Photos added before this check existed (or whose upload never finished) are checked once when the step opens.
+  const unchecked = venueImages.filter((image) => !image.upload && !image.missing).map((image) => image.imageId).join(',')
+  useEffect(() => {
+    if (!unchecked) return
+    const todo = unchecked.split(',').filter((imageId) => !attempted.current.has(imageId))
+    for (const imageId of todo) attempted.current.add(imageId)
+    // Started after this render (the upload is the external system being synchronised with).
+    Promise.resolve().then(() => todo.forEach((imageId) => checkPhoto(imageId)))
+  }, [unchecked, checkPhoto])
 
   // A file that's gone from this device (storage cleared, or never stored) can't be submitted: flag it so
   // validation blocks Next until the host removes it.
@@ -56,7 +106,9 @@ export default function PhotosStep() {
     }
     // The first photo ever added becomes the cover until the host picks another.
     if (accepted.length) update((current) => ({ ...current, venueImages: ensureCover([...current.venueImages, ...accepted.map((a) => a.image)]) }))
+    for (const { image } of accepted) attempted.current.add(image.imageId)
     const stored = Promise.all(accepted.map(({ image, file }) => savePhoto(image.imageId, file))).then((results) => results.every(Boolean))
+    for (const { image, file } of accepted) checkPhoto(image.imageId, { file })
     return { added: accepted.length, rejected, stored }
   }
 
@@ -84,7 +136,7 @@ export default function PhotosStep() {
     })
   }
 
-  const zoneProps = { images: venueImages, photos, addFiles, remove, makeCover, moveTo }
+  const zoneProps = { images: venueImages, photos, addFiles, remove, makeCover, moveTo, checking, retry }
   const countError = errorFor('venueImages')
   const coverError = errorFor('photos.cover')
 
@@ -103,7 +155,16 @@ export default function PhotosStep() {
             {hallsWithPhotos} of {halls.length} {halls.length === 1 ? 'hall' : 'halls'} with a photo
           </Requirement>
           <Requirement done={venueImages.some((image) => image.isCover)}>Cover photo chosen</Requirement>
+          <Requirement done={checks.accepted >= MIN_PHOTOS}>
+            {checks.accepted} of {MIN_PHOTOS} accepted by our photo check
+          </Requirement>
         </ul>
+        {checks.rejected_ai > 0 && (
+          <p role="status" className="mt-2 rounded-xl bg-danger-bg px-3 py-2 text-[14px] text-danger">
+            {checks.rejected_ai === 1 ? '1 photo looks' : `${checks.rejected_ai} photos look`} AI-generated, so {checks.rejected_ai === 1 ? 'it' : 'they'} won’t be shown and the listing can’t be approved with {checks.rejected_ai === 1 ? 'it' : 'them'}. Remove {checks.rejected_ai === 1 ? 'it' : 'them'} and upload real photographs taken at your venue.
+            {checks.accepted + checks.unchecked < MIN_PHOTOS && ` With fewer than ${MIN_PHOTOS} accepted photos, the listing would be rejected.`}
+          </p>
+        )}
         <ErrorText id="field-venueImages-error">{countError}</ErrorText>
         <ErrorText id="field-photos-cover-error">{coverError}</ErrorText>
         <ErrorText id="field-photos-missing-error">{errorFor('photos.missing')}</ErrorText>
@@ -150,7 +211,34 @@ function Requirement({ done, children }) {
   )
 }
 
-function PhotoZone({ hallId, category, hallName, images, photos, addFiles, remove, makeCover, moveTo }) {
+// The AI check result under one photo (#42): friendly text, the score, or a Retry when the check couldn't run.
+function CheckCaption({ image, checking, retry, label }) {
+  const upload = image.upload
+  if (checking) return <p className="text-[13px] text-muted-warm" role="status">Checking this photo…</p>
+  if (!upload) return null
+  if (upload.status === 'accepted')
+    return (
+      <p className="flex items-center gap-1 text-[13px] text-success">
+        <HostIcon name="check" className="size-3.5" strokeWidth={3} /> Accepted · AI score {upload.aiScore}%
+      </p>
+    )
+  if (upload.status === 'rejected_ai')
+    return (
+      <p className="text-[13px] leading-snug text-danger">
+        Looks AI-generated (AI score {upload.aiScore}%). It won’t be shown. Use a real photo of your venue.
+      </p>
+    )
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-pending">
+      {upload.failed ? 'Couldn’t upload or check this photo.' : 'Our photo check is busy. We’ll keep trying.'}
+      <button type="button" onClick={() => retry(image)} className="cursor-pointer font-semibold underline underline-offset-2 hover:text-ink-strong focus-visible:outline-2 focus-visible:outline-primary">
+        Retry<span className="sr-only"> the check of {label}</span>
+      </button>
+    </p>
+  )
+}
+
+function PhotoZone({ hallId, category, hallName, images, photos, addFiles, remove, makeCover, moveTo, checking, retry }) {
   const input = useRef(null)
   const uploadButton = useRef(null)
   const list = useRef(null)
@@ -236,10 +324,13 @@ function PhotoZone({ hallId, category, hallName, images, photos, addFiles, remov
                     moveTo(dragging, image.imageId)
                     setDragging(null)
                   }}
-                  className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-xl bg-surface active:cursor-grabbing ${dragging === image.imageId ? 'opacity-50' : ''} ${
-                    image.isCover ? 'ring-2 ring-primary ring-offset-2' : ''
-                  }`}
+                  className={`flex cursor-grab flex-col gap-1.5 active:cursor-grabbing ${dragging === image.imageId ? 'opacity-50' : ''}`}
                 >
+                  <div
+                    className={`group relative aspect-[4/3] overflow-hidden rounded-xl bg-surface ${image.isCover ? 'ring-2 ring-primary ring-offset-2' : ''} ${
+                      image.upload?.status === 'rejected_ai' ? 'outline-2 outline-danger' : ''
+                    }`}
+                  >
                   {url ? (
                     <img src={url} alt={label} className="size-full object-cover" draggable={false} />
                   ) : (
@@ -291,6 +382,8 @@ function PhotoZone({ hallId, category, hallName, images, photos, addFiles, remov
                       <HostIcon name="trash" className="size-4" strokeWidth={2} />
                     </button>
                   </div>
+                  </div>
+                  <CheckCaption image={image} checking={checking.has(image.imageId)} retry={retry} label={label} />
                 </li>
               )
             })}

@@ -16,7 +16,8 @@ const LIST_SQL = `WITH rows AS (
          u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone,
          (SELECT count(*) FROM halls h WHERE h.venue_id = v.venue_id)::int AS hall_count,
          (SELECT count(*) FROM venue_images i WHERE i.venue_id = v.venue_id)::int AS photo_count,
-         (SELECT count(*) FROM venue_images i WHERE i.venue_id = v.venue_id AND i.verification_status = 'flagged')::int AS flagged_count,
+         (SELECT count(*) FROM venue_images i WHERE i.venue_id = v.venue_id
+            AND i.decision IN ('rejected_ai', 'flagged_for_review'))::int AS flagged_count,
          (SELECT count(*) FROM reviews r WHERE r.venue_id = v.venue_id AND r.removed_at IS NULL)::int AS review_count,
          (SELECT i.image_url FROM venue_images i WHERE i.venue_id = v.venue_id
            ORDER BY i.is_cover DESC, i.sort_order LIMIT 1) AS cover_url
@@ -81,16 +82,9 @@ export async function approveVenue(db, { venueId, adminId }) {
       WHERE venue_id = $1`,
     [venueId, adminId],
   )
-  // D1 + REQ-9: photos the detector couldn't check yet were reviewed by the admin with the listing -> approved.
-  // Genuine and approved photos are published; flagged ones wait for the admin's image decision (REQ-10).
-  await db.query(
-    `UPDATE venue_images
-        SET verification_status = CASE WHEN verification_status = 'pending' THEN 'approved'::verification_status
-                                       ELSE verification_status END,
-            is_published = verification_status IN ('genuine', 'approved', 'pending')
-      WHERE venue_id = $1`,
-    [venueId],
-  )
+  // srs-alignment #42 (supersedes #28): approval is only possible when every photo is accepted (checked by the
+  // service), so exactly the accepted photos are published.
+  await db.query(`UPDATE venue_images SET is_published = (decision = 'accepted') WHERE venue_id = $1`, [venueId])
 }
 
 export async function setDecision(db, { venueId, status, rejectionReason = null, changesNote = null }) {
@@ -124,57 +118,62 @@ export async function venueHistory(db, venueId) {
 
 // ---------------------------------------------------------------- images (REQ-9, REQ-10)
 
+// The admin's photo queue (#42). status: review (rejected as AI-generated or flagged) | accepted | removed.
+const IMAGE_QUEUE_SQL = `SELECT i.image_id, i.venue_id, i.image_url, i.category, i.verification_status, i.uploaded_at,
+       i.size_bytes, i.ai_score, i.decision, i.detection_status, i.threshold_applied, i.checked_at, i.decision_reason,
+       v.name AS venue_name, v.approval_status, u.name AS owner_name
+  FROM venue_images i
+  JOIN venues v ON v.venue_id = i.venue_id
+  JOIN users u ON u.user_id = v.owner_id
+ WHERE CASE $1::text
+         WHEN 'review' THEN i.decision IN ('rejected_ai', 'flagged_for_review')
+         WHEN 'accepted' THEN i.decision = 'accepted' AND i.ai_score IS NOT NULL
+         ELSE i.decision = 'rejected_admin'
+       END
+ ORDER BY i.ai_score DESC NULLS LAST, i.uploaded_at
+ LIMIT 200`
+
 export async function listImages(db, { status }) {
-  const { rows } = await db.query(
-    `SELECT i.image_id, i.venue_id, i.image_url, i.category, i.verification_status, i.uploaded_at, i.size_bytes,
-            v.name AS venue_name, v.approval_status, u.name AS owner_name,
-            (SELECT x.ai_score FROM image_verifications x WHERE x.image_id = i.image_id AND x.ai_score IS NOT NULL
-              ORDER BY x.checked_at DESC LIMIT 1) AS ai_score,
-            (SELECT x.checked_at FROM image_verifications x WHERE x.image_id = i.image_id
-              ORDER BY x.checked_at DESC LIMIT 1) AS checked_at
-       FROM venue_images i
-       JOIN venues v ON v.venue_id = i.venue_id
-       JOIN users u ON u.user_id = v.owner_id
-      WHERE i.verification_status = $1::verification_status
-        AND EXISTS (SELECT 1 FROM image_verifications x WHERE x.image_id = i.image_id)
-      ORDER BY ai_score DESC NULLS LAST, i.uploaded_at
-      LIMIT 200`,
-    [status],
-  )
+  const { rows } = await db.query(IMAGE_QUEUE_SQL, [status])
   return rows
 }
 
-// Counts of photos the detector or an admin has looked at, by status.
 export async function imageCounts(db) {
   const { rows } = await db.query(
-    `SELECT verification_status::text AS status, count(*)::int AS n FROM venue_images i
-      WHERE EXISTS (SELECT 1 FROM image_verifications x WHERE x.image_id = i.image_id)
-      GROUP BY 1`,
+    `SELECT count(*) FILTER (WHERE decision IN ('rejected_ai', 'flagged_for_review'))::int AS review,
+            count(*) FILTER (WHERE decision = 'accepted' AND ai_score IS NOT NULL)::int AS accepted,
+            count(*) FILTER (WHERE decision = 'rejected_admin')::int AS removed
+       FROM venue_images`,
   )
-  return rows
+  return rows[0]
 }
 
 export async function lockImage(db, imageId) {
   const { rows } = await db.query(
-    `SELECT i.image_id, i.venue_id, i.verification_status, v.name AS venue_name, v.approval_status
+    `SELECT i.image_id, i.venue_id, i.verification_status, i.decision, i.image_url, i.ai_score, v.name AS venue_name,
+            v.approval_status, v.rejection_reason
        FROM venue_images i JOIN venues v USING (venue_id) WHERE i.image_id = $1 FOR UPDATE OF i`,
     [imageId],
   )
   return rows[0] ?? null
 }
 
-export async function decideImage(db, { imageId, adminId, decision }) {
+// keep -> accepted (published if the venue is live); remove -> rejected_admin (never published). With the reason.
+export async function decideImage(db, { imageId, adminId, keep, reason, imageUrl }) {
   await db.query(
     `UPDATE venue_images i
-        SET verification_status = $2::verification_status,
-            is_published = ($2 = 'approved' AND EXISTS (
+        SET decision = CASE WHEN $2 THEN 'accepted' ELSE 'rejected_admin' END,
+            verification_status = CASE WHEN $2 THEN 'approved'::verification_status ELSE 'rejected'::verification_status END,
+            decided_by = $3, decision_reason = $4, image_url = $5,
+            quarantined_at = CASE WHEN $2 THEN NULL ELSE coalesce(quarantined_at, now()) END,
+            is_published = ($2 AND EXISTS (
               SELECT 1 FROM venues v WHERE v.venue_id = i.venue_id AND v.approval_status IN ('approved', 'suspended')))
       WHERE i.image_id = $1`,
-    [imageId, decision],
+    [imageId, keep, adminId, reason, imageUrl],
   )
   await db.query(
     `INSERT INTO image_verifications (image_id, ai_score, result, reviewed_by) VALUES ($1, NULL, $2::verification_status, $3)`,
-    [imageId, decision, adminId],
+    [imageId, keep ? 'approved' : 'rejected', adminId],
   )
 }
 
@@ -193,7 +192,7 @@ export async function dashboardNumbers(db) {
        (SELECT count(*) FROM users WHERE deleted_at IS NULL AND role = 'decorator')::int AS decorators,
        (SELECT count(*) FROM bookings
          WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'Asia/Karachi') AT TIME ZONE 'Asia/Karachi')::int AS bookings_this_month,
-       (SELECT count(*) FROM venue_images WHERE verification_status = 'flagged')::int AS flagged_images,
+       (SELECT count(*) FROM venue_images WHERE decision IN ('rejected_ai', 'flagged_for_review'))::int AS flagged_images,
        (SELECT count(*) FROM venue_revisions WHERE status = 'pending')::int AS pending_edits,
        (SELECT count(*) FROM reviews WHERE is_flagged AND removed_at IS NULL)::int AS reported_reviews,
        (SELECT count(*) FROM disputes WHERE status = 'open')::int AS open_disputes,

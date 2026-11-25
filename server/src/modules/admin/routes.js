@@ -15,6 +15,7 @@ import {
   imageDecisionBodySchema,
   imageParamsSchema,
   imagesQuerySchema,
+  venueEmailParamsSchema,
   listVenuesQuerySchema,
   rejectBodySchema,
   revisionParamsSchema,
@@ -98,6 +99,14 @@ export function adminRouter({ rateLimits }) {
   router.post('/users/:id/reactivate', writes, userAction(userReasonSchema), asyncHandler(controller.reactivateUser))
   router.post('/users/:id/role', writes, userAction(roleChangeSchema), asyncHandler(controller.changeRole))
   router.delete('/users/:id', writes, userAction(userReasonSchema), asyncHandler(controller.deleteUser))
+
+  // #42: resend an owner email (onboarded / AI-rejected) that wasn't delivered.
+  router.post(
+    '/venues/:id/emails/:emailId/resend',
+    writes,
+    validate({ params: venueEmailParamsSchema, body: emptyBodySchema }),
+    asyncHandler(controller.resendVenueEmail),
+  )
 
   router.get('/images', validate({ query: imagesQuerySchema }), asyncHandler(controller.listImages))
   router.post(

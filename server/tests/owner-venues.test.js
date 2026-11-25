@@ -250,7 +250,7 @@ describe('POST /api/owner/venues: submit (REQ-5, REQ-6, EUC-04)', () => {
 })
 
 describe('AI image check after submit (REQ-9)', () => {
-  it('marks each photo genuine or flagged from the detector score and records the check', async () => {
+  it('scores each photo at upload against the threshold, records the check and applies the venue rule (#42)', async () => {
     let n = 0
     setImageDetector(async () => ({ score: n++ === 2 ? 0.93 : 0.04 }))
     const agent = api()
@@ -259,17 +259,19 @@ describe('AI image check after submit (REQ-9)', () => {
     await settleVerifications()
     const rows = (
       await pool.query(
-        'SELECT verification_status::text AS s, count(*)::int AS n FROM venue_images WHERE venue_id = $1 GROUP BY 1 ORDER BY 1',
+        'SELECT decision, count(*)::int AS n FROM venue_images WHERE venue_id = $1 GROUP BY 1 ORDER BY 1',
         [id],
       )
     ).rows
     expect(rows).toEqual([
-      { s: 'flagged', n: 1 },
-      { s: 'genuine', n: 4 },
+      { decision: 'accepted', n: 4 },
+      { decision: 'rejected_ai', n: 1 },
     ])
     expect(await count('SELECT count(*) FROM image_verifications')).toBe(5)
     const mine = (await agent.get('/api/owner/venues').set(...auth(s))).body.data[0]
-    expect(mine.photoChecks).toMatchObject({ genuine: 4, flagged: 1, pending: 0 })
+    expect(mine.photoChecks).toMatchObject({ accepted: 4, rejected_ai: 1, pending: 0 })
+    // 4 accepted is below the minimum of 5: rejected for AI-generated images (rule 4).
+    expect(mine).toMatchObject({ approvalStatus: 'rejected', rejectionReason: 'AI-generated images' })
   })
 
   it('keeps photos pending when the detector is down, and the owner can retry later', async () => {
@@ -280,9 +282,8 @@ describe('AI image check after submit (REQ-9)', () => {
     const s = await signedIn(agent, 'venue_owner')
     const { id } = await submitListing(agent, s.accessToken)
     await settleVerifications()
-    expect(
-      await count(`SELECT count(*) FROM venue_images WHERE venue_id = $1 AND verification_status = 'pending'`, [id]),
-    ).toBe(5)
+    expect(await count(`SELECT count(*) FROM venue_images WHERE venue_id = $1 AND decision IS NULL`, [id])).toBe(5)
+    expect((await one('SELECT approval_status FROM venues WHERE venue_id = $1', [id])).approval_status).toBe('pending')
 
     setImageDetector(async () => ({ score: 0.01 }))
     const retry = await agent.post(`/api/owner/venues/${id}/images/verify`).set(...auth(s))

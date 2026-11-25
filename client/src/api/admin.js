@@ -105,7 +105,7 @@ export async function getApproval(id) {
     if (error instanceof ApiError && error.status === 404) return null
     throw error
   }
-  const { listing: server, venue, history } = data
+  const { listing: server, venue, history, photoCheck, emails } = data
   const { draft, files } = listingToDraft(server)
   const suspended = server.status === 'suspended'
   const listing = {
@@ -121,7 +121,30 @@ export async function getApproval(id) {
     draft,
   }
   const aiScores = Object.fromEntries(server.images.map((image) => [image.imageId, image.aiScore ?? 0]))
-  return { listing, venue, urls: Object.fromEntries(files.map((file) => [file.id, file.url])), checks: autoChecks(listing, aiScores), aiScores, suspended }
+  // srs-alignment #42: each photo's AI check (score %, decision, threshold), what blocks approval, the owner emails.
+  const photoChecks = Object.fromEntries(server.images.map((image) => [image.imageId, image.check]))
+  return { listing, venue, urls: Object.fromEntries(files.map((file) => [file.id, file.url])), checks: autoChecks(listing, aiScores), aiScores, photoChecks, photoGate: photoCheck, emails, suspended }
+}
+
+// Resend an owner email that wasn't delivered. 409 ALREADY_SENT if it was. -> { status, emails }
+export async function resendVenueEmail(venueId, emailId) {
+  const result = await apiFetch(`/admin/venues/${encodeURIComponent(venueId)}/emails/${encodeURIComponent(emailId)}/resend`, { method: 'POST', body: {} })
+  changed()
+  return result
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// AI-likelihood threshold (srs-alignment #42): GET/PUT /api/admin/settings/ai-threshold
+// ---------------------------------------------------------------------------------------------------------------
+// -> { threshold (0-100), updatedAt, updatedBy }
+export function getAiThreshold() {
+  return apiFetch('/admin/settings/ai-threshold')
+}
+
+export async function setAiThreshold(threshold) {
+  const result = await apiFetch('/admin/settings/ai-threshold', { method: 'PUT', body: { threshold } })
+  changed()
+  return result
 }
 
 // One id: POST /admin/venues/:id/approve (with the checklist). Several: POST /admin/venues/approve (all or nothing).
@@ -146,23 +169,19 @@ export async function requestListingChanges(id, note) {
 // ---------------------------------------------------------------------------------------------------------------
 // Photos checked by the AI detector (REQ-9, REQ-10): GET /api/admin/images, POST /api/admin/images/:id/decision
 // ---------------------------------------------------------------------------------------------------------------
-export async function listFlaggedImages({ status = 'flagged' }) {
+// status: review (rejected as AI-generated or flagged) | accepted | removed (srs-alignment #42)
+export const IMAGE_QUEUES = ['review', 'accepted', 'removed']
+export async function listFlaggedImages({ status = 'review' }) {
   const data = await apiFetch(`/admin/images?status=${encodeURIComponent(status)}`)
-  cachedCounts.images = data.counts.flagged
-  return {
-    images: data.images.map((image) => ({
-      ...image,
-      aiScore: image.aiScore ?? 0,
-      aiLabel: image.aiScore === null ? 'Needs a look' : image.highConfidence ? 'Likely AI-generated' : 'Possibly AI-generated',
-    })),
-    counts: { flagged: data.counts.flagged, approved: data.counts.approved, rejected: data.counts.rejected },
-  }
+  cachedCounts.images = data.counts.review
+  return { images: data.images, counts: data.counts }
 }
 
-// decision: 'approved' (keep, publish) | 'rejected' (remove, never published). 409 if already decided.
-export async function decideImage(id, decision) {
-  await apiFetch(`/admin/images/${encodeURIComponent(id)}/decision`, { method: 'POST', body: { decision } })
+// decision: 'approved' (keep) | 'rejected' (remove); a reason is required (audited). -> { reopened }
+export async function decideImage(id, decision, reason) {
+  const result = await apiFetch(`/admin/images/${encodeURIComponent(id)}/decision`, { method: 'POST', body: { decision, reason: reason.trim() } })
   changed()
+  return result
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -439,7 +458,7 @@ export function getImageDetectionStatus() {
 }
 
 // Runs one photo through the live AI check (nothing is stored but an audit row).
-// -> { provider, live, score (0..1), verdict: 'genuine' | 'flagged', highConfidence, thresholds, durationMs }
+// -> { provider, live, score (0..1), scorePercent, verdict: 'accepted' | 'rejected_ai', threshold, durationMs }
 export async function testImageDetection(file) {
   const form = new FormData()
   form.append('file', file, file.name || 'photo.jpg')

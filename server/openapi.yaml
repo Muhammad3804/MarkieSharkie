@@ -1553,6 +1553,30 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /owner/uploads/{id}/check:
+    post:
+      tags: [Owner]
+      operationId: retryUploadCheck
+      summary: Try the AI check of one uploaded photo again (the detector was down)
+      description: Only the owner's own photo uploads (others are 404). A photo is never rejected because the check failed.
+      x-srs: [REQ-9, EUC-05]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The check result (accepted / rejected_ai / still pending) and the photo's url.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /owner/venues:
     get:
       tags: [Owner]
@@ -3231,16 +3255,124 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /admin/settings/ai-threshold:
+    get:
+      tags: [Admin]
+      operationId: adminGetAiThreshold
+      summary: The AI-likelihood threshold for venue photos (srs-alignment #42)
+      x-srs: [REQ-9, SYS-02, EUC-05]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The threshold in percent, when and by whom it was last changed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threshold: { type: number, minimum: 0, maximum: 100 }
+                  updatedAt: { type: [string, 'null'], format: date-time }
+                  updatedBy: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [Admin]
+      operationId: adminSetAiThreshold
+      summary: Change the threshold (0-100, up to 2 decimals); applies to checks made from now on
+      description: A photo whose AI score is at or above the threshold is rejected as AI-generated. Audited with the old and new value.
+      x-srs: [REQ-9, SYS-02, NFR-4]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [threshold],
+                properties: { threshold: { type: number, minimum: 0, maximum: 100 } },
+              }
+      responses:
+        '200':
+          description: Saved; the current setting.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/venues/{id}/emails/{emailId}/resend:
+    post:
+      tags: [Admin]
+      operationId: adminResendVenueEmail
+      summary: Resend an owner email (onboarded / AI-rejected) that wasn't delivered (REQ-7, srs-alignment #42)
+      description: 409 ALREADY_SENT when it was delivered; an email is never sent twice. Audited.
+      x-srs: [REQ-7, NFR-4]
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: emailId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: The result (sent / failed / skipped) and the venue's emails.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidStatus' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /files/quarantine:
+    get:
+      tags: [Venues]
+      operationId: getQuarantinedPhoto
+      summary: An AI-rejected photo by its short-lived signed link (srs-alignment #42)
+      description: |
+        Quarantined photos are never served from /uploads. Owner and admin responses carry a signed link (valid for an
+        hour) to this route. A missing, wrong or expired signature is a 404.
+      x-srs: [REQ-9, NFR-4]
+      parameters:
+        - { in: query, name: key, required: true, schema: { type: string } }
+        - { in: query, name: exp, required: true, schema: { type: integer } }
+        - { in: query, name: sig, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The image.
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /admin/images:
     get:
       tags: [Admin]
       operationId: adminListImages
-      summary: Photos checked by the AI detector, by status (REQ-9, REQ-10)
-      x-srs: [REQ-9, REQ-10]
+      summary: Photos by AI-check outcome (REQ-9, REQ-10, srs-alignment #42)
+      description: |
+        review = rejected as AI-generated (score at or above the threshold) or flagged; accepted = scored and accepted;
+        removed = removed by an admin. Each row has the score in percent, the threshold that applied and the decision.
+      x-srs: [REQ-9, REQ-10, EUC-34]
       security:
         - bearerAuth: []
       parameters:
-        - { in: query, name: status, schema: { type: string, enum: [flagged, approved, rejected] } }
+        - { in: query, name: status, schema: { type: string, enum: [review, accepted, removed] } }
       responses:
         '200':
           description: OK
@@ -3256,8 +3388,12 @@ paths:
     post:
       tags: [Admin]
       operationId: adminDecideImage
-      summary: Keep (publish) or remove a flagged photo (REQ-10)
-      x-srs: [REQ-10, NFR-4]
+      summary: Override one photo's decision, keep or remove, with a reason (REQ-10, srs-alignment #42)
+      description: |
+        approved = keep (accepted; moved out of quarantine; published if the venue is live), rejected = remove (never
+        published; quarantined, not deleted). Audited with the reason. Keeping a photo of a venue rejected for
+        AI-generated images reopens it to pending once it has 5 accepted-or-unchecked photos (reopened = true).
+      x-srs: [REQ-10, NFR-4, EUC-34]
       security:
         - bearerAuth: []
       parameters:
@@ -3269,12 +3405,19 @@ paths:
             schema:
               {
                 type: object,
-                required: [decision],
-                properties: { decision: { type: string, enum: [approved, rejected] } },
+                required: [decision, reason],
+                properties:
+                  {
+                    decision: { type: string, enum: [approved, rejected] },
+                    reason: { type: string, minLength: 5, maxLength: 500 },
+                  },
               }
       responses:
-        '204':
+        '200':
           description: Decided.
+          content:
+            application/json:
+              schema: { type: object, properties: { reopened: { type: boolean } } }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrSuspended' }
@@ -3626,6 +3769,16 @@ components:
         url: { type: string, format: uri }
         mimeType: { type: string }
         size: { type: integer }
+        check:
+          description: |
+            Photos only (srs-alignment #42): the AI check against the admin's threshold, made during the upload.
+            pending = the detector didn't answer (never a rejection); retry with POST /owner/uploads/{id}/check.
+            A rejected photo's url is a short-lived signed link (the file is quarantined).
+          type: object
+          properties:
+            status: { type: string, enum: [accepted, rejected_ai, pending] }
+            aiScore: { type: [number, 'null'], description: 'AI likelihood in percent (0-100)' }
+            canRetry: { type: boolean }
     ListingSubmission:
       type: object
       description: |
@@ -3865,6 +4018,8 @@ components:
         - HAS_VENUES
         - HAS_ACTIVE_BOOKINGS
         - NOT_DISPUTABLE
+        - IMAGES_NOT_READY
+        - ALREADY_SENT
         - DISPUTE_EXISTS
         - DISPUTE_CLOSED
         - OWN_VENUE

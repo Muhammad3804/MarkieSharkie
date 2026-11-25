@@ -1,6 +1,7 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { approveListings, getApproval, rejectListing, requestListingChanges } from '../../api/admin.js'
+import { approveListings, decideImage, getApproval, rejectListing, requestListingChanges, resendVenueEmail } from '../../api/admin.js'
+import { useToast } from '../../features/admin/toastContext.js'
 import { useAdminData } from '../../features/admin/hooks.js'
 import { useCrumb } from '../../features/admin/crumbs.js'
 import ConfirmDialog from '../../features/admin/ConfirmDialog.jsx'
@@ -74,7 +75,7 @@ export default function ApprovalReview() {
 }
 
 function Review({ data }) {
-  const { listing, venue, urls, checks, aiScores } = data
+  const { listing, venue, urls, checks, aiScores, photoChecks, photoGate, emails } = data
   const { draft } = listing
   const [ticked, setTicked] = useState({ photos: false, details: false, location: false })
   const [dialog, setDialog] = useState(null) // 'approve' | 'reject' | 'changes'
@@ -156,11 +157,12 @@ function Review({ data }) {
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-8 pb-20 xl:pb-0">
           <AboutPhase draft={draft} venue={venue} />
-          <StandOutPhase draft={draft} urls={urls} aiScores={aiScores} />
+          <StandOutPhase draft={draft} urls={urls} aiScores={aiScores} photoChecks={photoChecks} />
           <FinishPhase draft={draft} venue={venue} />
         </div>
 
         <aside aria-label="Review decision" className="flex flex-col gap-4 xl:sticky xl:top-[72px]">
+          <PhotoGateCard venueId={listing.id} gate={photoGate} emails={emails} decidable={decidable} />
           {decidable && (
             <Card title="Review checklist">
               <fieldset ref={checklistRef} aria-describedby={checklistError && !allTicked ? 'checklist-error' : undefined}>
@@ -433,7 +435,78 @@ function AboutPhase({ draft, venue }) {
   )
 }
 
-function StandOutPhase({ draft, urls, aiScores }) {
+// srs-alignment #42: the photo gate (approval needs enough accepted photos and none rejected or unchecked) and the
+// owner emails (onboarded / AI-rejected) with their delivery status and a Resend for one that wasn't delivered.
+const EMAIL_LABELS = { onboarded: 'Onboarded email', ai_rejected: 'AI rejection email' }
+function PhotoGateCard({ venueId, gate, emails, decidable }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(null)
+  const [error, setError] = useState('')
+  if (!gate) return null
+  const c = gate.counts
+  async function resend(email) {
+    setBusy(email.id)
+    setError('')
+    try {
+      const { status } = await resendVenueEmail(venueId, email.id)
+      toast(status === 'sent' ? 'Email sent to the owner' : 'Still not delivered. Try again later.')
+    } catch (err) {
+      setError(err?.message ?? 'Couldn’t resend it.')
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <Card title="Photo check and emails">
+      <p className="text-[13px] text-muted-warm">AI threshold {gate.threshold}% · at least {gate.minimum} accepted photos needed.</p>
+      <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[13px]">
+        <li className="text-ink">Accepted <span className="font-semibold tabular-nums text-ink-strong">{c.accepted}</span></li>
+        <li className="text-ink">AI-rejected <span className={`font-semibold tabular-nums ${c.rejected_ai ? 'text-danger' : 'text-ink-strong'}`}>{c.rejected_ai}</span></li>
+        <li className="text-ink">Checking <span className="font-semibold tabular-nums text-ink-strong">{c.unchecked}</span></li>
+        <li className="text-ink">Flagged / removed <span className="font-semibold tabular-nums text-ink-strong">{c.flagged + c.removed}</span></li>
+      </ul>
+      {decidable && (gate.blockers.length ? (
+        <div id="photo-blockers" className="mt-3 rounded-lg bg-pending-bg px-3 py-2 text-[13px] text-pending">
+          <p className="font-semibold">Can’t be approved yet</p>
+          <ul className="mt-1 list-disc pl-4">{gate.blockers.map((b) => <li key={b}>{b}</li>)}</ul>
+          <p className="mt-1">Override photos below, or request changes so the owner replaces them.</p>
+        </div>
+      ) : (
+        <p className="mt-3 flex items-center gap-1.5 text-[13px] text-success"><AdminIcon name="check-circle" className="size-4" /> Photos are ready for approval.</p>
+      ))}
+      {emails?.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+          {emails.map((email) => (
+            <li key={email.id} className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+              <span className="text-ink-strong">{EMAIL_LABELS[email.kind] ?? email.kind}</span>
+              {email.status === 'sent' ? (
+                <StatusBadge status="approved" label={`Sent ${formatDateTime(email.sentAt)}`} />
+              ) : (
+                <span className="flex items-center gap-2">
+                  <StatusBadge status="rejected" label={email.status === 'failed' ? `Not delivered (${email.attempts} tries)` : 'Sending'} />
+                  <Button size="sm" variant="secondary" icon="rotate-ccw" busy={busy === email.id} onClick={() => resend(email)}>Resend</Button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p role="alert" className="mt-2 text-[13px] text-danger">{error}</p>}
+    </Card>
+  )
+}
+
+const DECISION_BADGE = {
+  accepted: { tone: 'bg-white/90 text-ink-strong', label: 'Accepted' },
+  rejected_ai: { tone: 'bg-danger text-white', label: 'AI-rejected' },
+  flagged_for_review: { tone: 'bg-pending text-white', label: 'Flagged' },
+  rejected_admin: { tone: 'bg-ink-strong text-white', label: 'Removed' },
+  pending: { tone: 'bg-white/90 text-ink-strong', label: 'Checking' },
+}
+const REASON_FIELD = { label: 'Reason', required: true, minLength: 5, tooShort: 'Write at least 5 characters.', hint: 'Saved in the audit log with your name.' }
+
+function StandOutPhase({ draft, urls, aiScores, photoChecks = {} }) {
+  const [override, setOverride] = useState(null) // { imageId, keep, label }
   const { venue: v, halls, venueImages } = draft
   const facilities = [...v.facilities.map((key) => AMENITY_LABELS[key] ?? key), ...v.customFacilities]
   const groups = [
@@ -443,7 +516,7 @@ function StandOutPhase({ draft, urls, aiScores }) {
   const [viewer, setViewer] = useState(null) // { groupId, index, opener }
   const viewerGroup = viewer && groups.find((g) => g.id === viewer.groupId)
   const lightboxImages = viewerGroup?.images.filter((image) => urls[image.imageId]).map((image) => ({ imageId: image.imageId, imageUrl: urls[image.imageId], alt: `${viewerGroup.title}: ${PHOTO_LABELS[image.category] ?? image.category}${image.isCover ? ' (cover)' : ''}` }))
-  const flagged = venueImages.filter((image) => aiScores[image.imageId] >= 0.6).length
+  const flagged = venueImages.filter((image) => ['rejected_ai', 'flagged_for_review'].includes(photoChecks[image.imageId]?.status)).length
 
   return (
     <Phase id="stand-out" index={2} title="Make it stand out">
@@ -460,8 +533,8 @@ function StandOutPhase({ draft, urls, aiScores }) {
         <p className="mt-3 text-[14px] text-ink">{v.parkingSpaces ? `Parking for ${number(v.parkingSpaces)} cars` : <span className="text-pending">Parking spaces not given</span>}</p>
       </Card>
 
-      <Card title={`Photos (${venueImages.length})`} actions={flagged > 0 && <StatusBadge status="flagged" label={`${flagged} high AI score`} />}>
-        <p className="mb-4 text-[13px] text-muted-warm">The AI score is the mock detector’s confidence that a photo is AI-generated or stock (REQ-9). 60% or more needs a closer look. Click a photo to open it full size.</p>
+      <Card title={`Photos (${venueImages.length})`} actions={flagged > 0 && <StatusBadge status="rejected" label={`${flagged} rejected as AI-generated`} />}>
+        <p className="mb-4 text-[13px] text-muted-warm">Each photo shows the AI check’s score (how likely it is AI-generated) and the decision against the threshold that applied when it was checked. Rejected photos are never published. Keep or remove any photo with a reason. Click a photo to open it full size.</p>
         <div className="flex flex-col gap-5">
           {groups.map((group) => (
             <div key={group.id}>
@@ -470,8 +543,11 @@ function StandOutPhase({ draft, urls, aiScores }) {
               </h3>
               <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                 {group.images.map((image) => {
-                  const score = aiScores[image.imageId]
+                  const check = photoChecks[image.imageId] ?? { status: 'pending' }
+                  const score = check.aiScorePercent ?? Math.round((aiScores[image.imageId] ?? 0) * 100)
+                  const badge = DECISION_BADGE[check.status] ?? DECISION_BADGE.pending
                   const url = urls[image.imageId]
+                  const photoLabel = `${PHOTO_LABELS[image.category] ?? image.category} photo`
                   const index = lightboxIndex(group, image, urls)
                   return (
                     <li key={image.imageId} className="flex flex-col gap-1">
@@ -479,17 +555,28 @@ function StandOutPhase({ draft, urls, aiScores }) {
                         <button
                           type="button"
                           onClick={(event) => setViewer({ groupId: group.id, index, opener: event.currentTarget })}
-                          aria-label={`Open ${PHOTO_LABELS[image.category] ?? image.category} photo${image.isCover ? ' (cover)' : ''}, AI score ${Math.round(score * 100)}%`}
+                          aria-label={`Open ${photoLabel}${image.isCover ? ' (cover)' : ''}, ${badge.label}${check.aiScorePercent != null ? `, AI score ${score}%` : ''}`}
                           className={`group relative aspect-[4/3] overflow-hidden rounded-lg bg-surface ${focusRing}`}
                         >
                           <img src={url} alt="" loading="lazy" width="240" height="180" className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transition-none" />
                           {image.isCover && <span className="absolute top-1.5 left-1.5 rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-semibold text-ink-strong">Cover</span>}
-                          <span className={`absolute right-1.5 bottom-1.5 rounded px-1.5 py-0.5 text-[11px] font-semibold ${score >= 0.6 ? 'bg-danger text-white' : 'bg-white/90 text-ink-strong'}`}>AI {Math.round(score * 100)}%</span>
+                          <span className={`absolute right-1.5 bottom-1.5 rounded px-1.5 py-0.5 text-[11px] font-semibold ${badge.tone}`}>
+                            {badge.label}{check.aiScorePercent != null ? ` · ${score}%` : ''}
+                          </span>
                         </button>
                       ) : (
                         <span className="grid aspect-[4/3] place-items-center rounded-lg bg-danger-bg p-2 text-center text-[12px] text-danger">File missing</span>
                       )}
-                      <span className="truncate text-[12px] text-muted-warm" title={image.fileName}>{PHOTO_LABELS[image.category] ?? image.category} · {image.fileName}</span>
+                      <span className="truncate text-[12px] text-muted-warm" title={image.fileName}>{PHOTO_LABELS[image.category] ?? image.category}{check.thresholdApplied != null ? ` · threshold ${check.thresholdApplied}%` : ''}</span>
+                      {check.reason && <span className="text-[12px] text-ink">Admin: {check.reason}</span>}
+                      <span className="flex gap-1">
+                        {check.status !== 'accepted' && check.status !== 'pending' && (
+                          <Button size="sm" variant="secondary" onClick={() => setOverride({ imageId: image.imageId, keep: true, label: photoLabel })} aria-label={`Keep ${photoLabel}`}>Keep</Button>
+                        )}
+                        {check.status === 'accepted' && (
+                          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" onClick={() => setOverride({ imageId: image.imageId, keep: false, label: photoLabel })} aria-label={`Remove ${photoLabel}`}>Remove</Button>
+                        )}
+                      </span>
                     </li>
                   )
                 })}
@@ -498,6 +585,20 @@ function StandOutPhase({ draft, urls, aiScores }) {
           ))}
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(override)}
+        tone={override?.keep ? 'primary' : 'danger'}
+        title={override?.keep ? `Keep this ${override?.label}?` : `Remove this ${override?.label}?`}
+        body={override?.keep ? 'It is accepted and published once the venue is live. If the venue was rejected for AI-generated images and now has enough photos, it goes back to review.' : 'It will not be published. The file is kept privately, not deleted.'}
+        confirmLabel={override?.keep ? 'Keep photo' : 'Remove photo'}
+        field={REASON_FIELD}
+        onClose={() => setOverride(null)}
+        onConfirm={async (reason) => {
+          const { reopened } = await decideImage(override.imageId, override.keep ? 'approved' : 'rejected', reason)
+          return override.keep ? (reopened ? 'Photo kept. The listing is back in review.' : 'Photo kept') : 'Photo removed'
+        }}
+      />
 
       <Card title="3D walkthroughs">
         <ul className="grid gap-2 text-[14px] text-ink">

@@ -111,6 +111,36 @@ async function uploadFile(kind, blob, name) {
   return uploadId
 }
 
+// srs-alignment #42: a wizard photo is uploaded as soon as it's added, so the server's AI check (made during the
+// upload) can be shown per photo. -> { uploadId, check: { status: accepted | rejected_ai | pending, aiScore, canRetry } }
+// Only for venue owner accounts (null otherwise: the photo is uploaded at submit as before).
+export async function uploadPhotoForCheck(blob, name) {
+  if (!isOwner()) return null
+  const form = new FormData()
+  form.append('kind', 'photo')
+  form.append('file', blob, name)
+  const { uploadId, check } = await apiFetch('/owner/uploads', { method: 'POST', body: form })
+  return { uploadId, ...check }
+}
+
+// The detector didn't answer: try the check of one uploaded photo again. -> same shape as above.
+export async function retryPhotoCheck(uploadId) {
+  const { check } = await apiFetch(`/owner/uploads/${encodeURIComponent(uploadId)}/check`, { method: 'POST', body: {} })
+  return { uploadId, ...check }
+}
+
+// Counts of the wizard's photo checks (#42). unchecked = not uploaded yet or the detector didn't answer.
+export function photoCheckCounts(venueImages) {
+  const counts = { accepted: 0, rejected_ai: 0, unchecked: 0 }
+  for (const image of venueImages) {
+    const status = image.upload?.status
+    if (status === 'accepted') counts.accepted += 1
+    else if (status === 'rejected_ai') counts.rejected_ai += 1
+    else counts.unchecked += 1
+  }
+  return counts
+}
+
 // Runs tasks a few at a time (uploads), keeping their order in the results.
 async function inBatches(tasks, size = 3) {
   const results = []
@@ -215,12 +245,15 @@ export async function submitListing(draft) {
     ]),
   ].filter(Boolean)
   const blobs = await readPhotoFiles(files.map((f) => f.id))
-  const missing = files.filter((f) => !blobs[f.id])
+  const uploadedIds = new Set(draft.venueImages.filter((image) => image.upload?.uploadId).map((image) => image.imageId))
+  const missing = files.filter((f) => !blobs[f.id] && !uploadedIds.has(f.id))
   if (missing.length) throw new SubmitError('Some photos or files are no longer saved on this device. Remove the ones marked “not available” and add them again.')
 
+  // Photos already uploaded (and checked) while adding them are reused, not sent again (#42).
+  const already = Object.fromEntries(draft.venueImages.filter((image) => image.upload?.uploadId).map((image) => [image.imageId, image.upload.uploadId]))
   let uploaded
   try {
-    uploaded = await inBatches(files.map((f) => () => uploadFile(f.kind, blobs[f.id], f.name)))
+    uploaded = await inBatches(files.map((f) => () => (already[f.id] ? Promise.resolve(already[f.id]) : uploadFile(f.kind, blobs[f.id], f.name))))
   } catch (error) {
     throw new SubmitError(error instanceof ApiError ? error.message : 'We couldn’t upload your photos. Check your connection and try again.')
   }
@@ -281,7 +314,9 @@ export async function listMyVenues() {
 // back into the wizard. Submitting again updates the same listing (back to 'pending').
 export async function reopenListingForChanges(venueId) {
   const { listing } = await apiFetch(`/owner/venues/${encodeURIComponent(venueId)}`)
-  if (listing.status !== 'changes_requested' && listing.status !== 'rejected') return false
+  // #42: a listing in review with rejected photos can be resubmitted too (the server allows the same).
+  const rejectedPhotos = listing.images.some((image) => ['rejected_ai', 'flagged_for_review', 'rejected_admin'].includes(image.check?.status))
+  if (listing.status !== 'changes_requested' && listing.status !== 'rejected' && !(listing.status === 'pending' && rejectedPhotos)) return false
   const { draft, files } = listingToDraft(listing)
   await Promise.all(
     files.map(async (file) => {

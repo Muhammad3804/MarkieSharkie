@@ -1,3 +1,5 @@
+import { signedQuarantineUrl } from '../../lib/quarantineUrl.js'
+
 // DB rows -> the JSON shapes the client already renders (client/src/features/venues/mockVenues.js getMockVenue and
 // client/src/api/listings.js listingToVenue), so venue pages, cards and the admin review work unchanged.
 // Money stays a decimal string (never a JS float). File URLs are made absolute with the API's origin.
@@ -41,7 +43,12 @@ const CATEGORY_LABELS = {
 const POLICY_LABELS = { flexible: 'Flexible', moderate: 'Moderate', strict: 'Strict', custom: 'Custom' }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-export const absolute = (origin, url) => (url && url.startsWith('/uploads/') ? `${origin}${url}` : (url ?? ''))
+// Quarantined photos (AI-rejected, srs-alignment #42) are never public: they get a short-lived signed link. Only owner
+// and admin responses can contain them (public queries read published photos only).
+export const absolute = (origin, url) => {
+  if (url && url.startsWith('/uploads/quarantine/')) return signedQuarantineUrl(origin, url.slice('/uploads/'.length))
+  return url && url.startsWith('/uploads/') ? `${origin}${url}` : (url ?? '')
+}
 const isoDay = (value) =>
   value instanceof Date ? value.toISOString().slice(0, 10) : value ? String(value).slice(0, 10) : null
 const iso = (value) => (value instanceof Date ? value.toISOString() : (value ?? null))
@@ -393,6 +400,16 @@ export function toListing(bundle, origin) {
       verificationStatus: image.verification_status,
       isPublished: image.is_published,
       aiScore: image.ai_score === null || image.ai_score === undefined ? null : Number(image.ai_score),
+      // srs-alignment #42: the AI check against the threshold (owner and admin views only).
+      check: {
+        status: image.decision ?? 'pending',
+        detection: image.detection_status,
+        aiScorePercent:
+          image.ai_score === null || image.ai_score === undefined ? null : Math.round(image.ai_score * 10_000) / 100,
+        thresholdApplied: image.threshold_applied === null ? null : Number(image.threshold_applied),
+        checkedAt: image.checked_at instanceof Date ? image.checked_at.toISOString() : null,
+        reason: image.decision_reason ?? null,
+      },
     })),
     menuPackages: bundle.menus.map((m) => ({
       menuId: m.menu_id,

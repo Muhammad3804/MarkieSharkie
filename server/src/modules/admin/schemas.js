@@ -41,9 +41,22 @@ export const bulkApproveBodySchema = z
   .strict()
 
 export const imagesQuerySchema = z
-  .object({ status: z.enum(['flagged', 'approved', 'rejected']).default('flagged') })
+  .object({ status: z.enum(['review', 'accepted', 'removed']).default('review') })
   .strict()
-export const imageDecisionBodySchema = z.object({ decision: z.enum(['approved', 'rejected']) }).strict()
+// #42: keep (approved) or remove (rejected) one photo, with a required reason (audited).
+export const imageDecisionBodySchema = z
+  .object({
+    decision: z.enum(['approved', 'rejected'], { error: 'Choose keep or remove.' }),
+    reason: z
+      .string({ error: 'Add a reason.' })
+      .trim()
+      .min(5, 'Add a reason (at least 5 characters).')
+      .max(500, 'Keep the reason under 501 characters.'),
+  })
+  .strict()
+export const venueEmailParamsSchema = z
+  .object({ id: z.uuid({ error: 'Unknown venue.' }), emailId: z.uuid({ error: 'Unknown email.' }) })
+  .strict()
 
 export const auditQuerySchema = z
   .object({

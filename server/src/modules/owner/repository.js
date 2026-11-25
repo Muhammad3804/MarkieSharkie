@@ -50,7 +50,8 @@ export async function insertUpload(db, { ownerId, kind, storageKey, mimeType, si
 // The owner's own uploads with these ids, locked for the submission. Others' ids simply don't come back.
 export async function findUploadsForUpdate(db, { ownerId, ids }) {
   const { rows } = await db.query(
-    `SELECT upload_id, kind, storage_key, mime_type, size_bytes, venue_id
+    `SELECT upload_id, kind, storage_key, mime_type, size_bytes, venue_id, ai_score, detection_status, decision,
+            threshold_applied, checked_at, quarantined_at
        FROM media_uploads WHERE owner_id = $1 AND upload_id = ANY ($2::uuid[]) FOR UPDATE`,
     [ownerId, ids],
   )
@@ -65,7 +66,10 @@ export async function attachUploads(db, { venueId, ids }) {
 
 export async function findOwnedVenueForUpdate(db, { venueId, ownerId }) {
   const { rows } = await db.query(
-    `SELECT venue_id, owner_id, approval_status FROM venues WHERE venue_id = $1 AND owner_id = $2 FOR UPDATE`,
+    `SELECT venue_id, owner_id, approval_status, submitted_at,
+            EXISTS (SELECT 1 FROM venue_images i WHERE i.venue_id = venues.venue_id
+                     AND i.decision IN ('rejected_ai', 'flagged_for_review', 'rejected_admin')) AS has_rejected_photos
+       FROM venues WHERE venue_id = $1 AND owner_id = $2 FOR UPDATE`,
     [venueId, ownerId],
   )
   return rows[0] ?? null
@@ -191,13 +195,22 @@ export async function insertHall(db, venueId, h) {
   )
 }
 
+// The AI check of each photo comes with it (srs-alignment #42): a fresh check from the wizard upload is kept; a
+// photo with check = null starts unchecked and is scored after the commit.
+const VERIFICATION_FOR = { accepted: 'genuine', rejected_ai: 'rejected' }
+
 export async function insertImages(db, venueId, images) {
+  const check = (i) => i.check ?? null
   await db.query(
     `INSERT INTO venue_images (venue_id, hall_id, category, image_url, sort_order, is_cover, mime_type, size_bytes,
-                               verification_status, is_published)
-     SELECT $1, hall, cat, url, ord, cover, mime, size, 'pending', false
-       FROM unnest($2::uuid[], $3::text[], $4::text[], $5::smallint[], $6::boolean[], $7::text[], $8::int[])
-            AS t(hall, cat, url, ord, cover, mime, size)`,
+                               verification_status, is_published, ai_score, detection_status, decision,
+                               threshold_applied, checked_at, quarantined_at)
+     SELECT $1, hall, cat, url, ord, cover, mime, size, coalesce(vstat, 'pending')::verification_status, false, score,
+            CASE WHEN dec IS NULL THEN 'pending' ELSE 'scored' END, dec, thr, chk,
+            CASE WHEN dec = 'rejected_ai' THEN chk END
+       FROM unnest($2::uuid[], $3::text[], $4::text[], $5::smallint[], $6::boolean[], $7::text[], $8::int[],
+                   $9::real[], $10::text[], $11::numeric[], $12::timestamptz[], $13::text[])
+            AS t(hall, cat, url, ord, cover, mime, size, score, dec, thr, chk, vstat)`,
     [
       venueId,
       images.map((i) => i.hallId),
@@ -207,7 +220,20 @@ export async function insertImages(db, venueId, images) {
       images.map((i) => i.isCover),
       images.map((i) => i.mimeType),
       images.map((i) => i.size),
+      images.map((i) => check(i)?.aiScore ?? null),
+      images.map((i) => check(i)?.decision ?? null),
+      images.map((i) => check(i)?.threshold ?? null),
+      images.map((i) => check(i)?.checkedAt ?? null),
+      images.map((i) => (check(i) ? VERIFICATION_FOR[check(i).decision] : null)),
     ],
+  )
+  // The ERD's check history (image_verifications) also records the checks made at upload time.
+  await db.query(
+    `INSERT INTO image_verifications (image_id, ai_score, result, checked_at)
+     SELECT image_id, ai_score, verification_status, checked_at FROM venue_images
+      WHERE venue_id = $1 AND decision IS NOT NULL AND ai_score IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM image_verifications v WHERE v.image_id = venue_images.image_id)`,
+    [venueId],
   )
 }
 
@@ -274,7 +300,7 @@ export async function listOwnerVenues(db, ownerId) {
                FROM venue_revisions r WHERE r.venue_id = v.venue_id
               ORDER BY r.submitted_at DESC, r.revision_id DESC LIMIT 1) AS revision,
             (SELECT jsonb_object_agg(s, n) FROM (
-               SELECT verification_status::text AS s, count(*)::int AS n FROM venue_images i
+               SELECT coalesce(i.decision, 'pending') AS s, count(*)::int AS n FROM venue_images i
                 WHERE i.venue_id = v.venue_id GROUP BY 1) x) AS photo_checks
        FROM venues v
       WHERE v.owner_id = $1
@@ -282,4 +308,14 @@ export async function listOwnerVenues(db, ownerId) {
     [ownerId],
   )
   return rows
+}
+
+// One of the owner's photo uploads (srs-alignment #42 retry). Others' ids don't come back.
+export async function findOwnPhotoUpload(db, { ownerId, uploadId }) {
+  const { rows } = await db.query(
+    `SELECT upload_id, kind, storage_key, detection_status, decision, ai_score
+       FROM media_uploads WHERE upload_id = $1 AND owner_id = $2 AND kind = 'photo'`,
+    [uploadId, ownerId],
+  )
+  return rows[0] ?? null
 }

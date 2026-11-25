@@ -1,7 +1,7 @@
 import { pool } from '../../db/pool.js'
 import { withTransaction } from '../../db/withTransaction.js'
-import { env } from '../../config/env.js'
-import { classifyScore, detectAiImage, detectorInfo } from '../../integrations/imageDetection.js'
+import { decideByThreshold, detectAiImage, detectorInfo, scorePercent } from '../../integrations/imageDetection.js'
+import { getStorage, keyFromUrl } from '../../integrations/storage.js'
 import { AppError, notFoundError } from '../../lib/AppError.js'
 import { detectFileType, UPLOAD_RULES } from '../../lib/fileType.js'
 import { logger } from '../../lib/logger.js'
@@ -10,12 +10,24 @@ import { generateSlots, loadVenueBundle } from '../venues/repository.js'
 import * as edits from '../owner/editRepository.js'
 import { applyRevision, removeFiles } from '../owner/editService.js'
 import { revisionDiff } from '../owner/revisionModel.js'
+import {
+  AI_REJECTION_REASON,
+  MIN_VENUE_PHOTOS,
+  approvalBlockers,
+  evaluateVenue,
+  moveForDecision,
+  photoCounts,
+  recordMove,
+} from '../venues/imageVerification.js'
+import { deliverQuietly, deliverVenueEmail, queueVenueEmail, venueEmailsFor } from '../venues/venueEmails.js'
+import { currentThreshold } from '../settings/service.js'
 import * as repo from './repository.js'
 
 // Admin venue moderation (REQ-7, REQ-9, REQ-10, srs-alignment #18 / #29). Each decision locks the venue row,
 // checks the transition, changes it and writes admin_audit_log in ONE transaction (NFR-4).
 //
-//   pending / changes_requested --approve--> approved (photos published, 60 days of slots created)
+//   pending / changes_requested --approve--> approved (photos published, 60 days of slots created, owner emailed)
+//     only with >= 5 accepted photos and no rejected, flagged or unchecked ones (srs-alignment #42)
 //   pending / changes_requested --reject (reason)--> rejected
 //   pending --request changes (note)--> changes_requested
 //   approved --suspend (reason)--> suspended --unsuspend--> approved
@@ -84,20 +96,28 @@ export async function listVenues(query, { origin }) {
 export async function getVenue(id, { origin }) {
   const bundle = await loadVenueBundle(pool, id, { publishedOnly: false })
   if (!bundle) throw venueNotFound()
-  const history = await repo.venueHistory(pool, id)
+  const [history, counts, emails, threshold] = await Promise.all([
+    repo.venueHistory(pool, id),
+    photoCounts(pool, id),
+    venueEmailsFor(pool, id),
+    currentThreshold(),
+  ])
   return {
     listing: toListing(bundle, origin),
     venue: toVenueDetail(bundle, { origin }),
     history: history.map((h) => ({ action: h.action, details: h.details, at: iso(h.created_at), by: h.admin_name })),
+    // #42: the photo gate (what blocks approval) and the owner emails with their delivery status.
+    photoCheck: { threshold, minimum: MIN_VENUE_PHOTOS, counts, blockers: approvalBlockers(counts) },
+    emails,
   }
 }
 
 async function decide(adminId, id, { allowed, apply, action, details }) {
-  await withTransaction(async (client) => {
+  return withTransaction(async (client) => {
     const [venue] = await repo.lockVenues(client, [id])
     if (!venue) throw venueNotFound()
     if (!allowed.has(venue.approval_status)) throw invalidStatus(venue.name, venue.approval_status)
-    await apply(client, venue)
+    const result = await apply(client, venue)
     await repo.insertAudit(client, {
       adminId,
       action,
@@ -105,21 +125,36 @@ async function decide(adminId, id, { allowed, apply, action, details }) {
       targetId: id,
       details: { from: venue.approval_status, ...details },
     })
+    return result
   })
 }
 
-async function approveLocked(client, venueId, adminId) {
-  await repo.approveVenue(client, { venueId, adminId })
-  await generateSlots(client, venueId, { days: SLOT_DAYS })
+const imagesNotReady = (name, blockers) =>
+  new AppError(
+    409,
+    'IMAGES_NOT_READY',
+    `${name} can’t be approved yet: ${blockers.join(' ')}`,
+    blockers.map((message) => ({ field: 'photos', message })),
+  )
+
+// -> the queued "onboarded" email id (null if this round's email already exists). Refuses while photos block it.
+async function approveLocked(client, venue, adminId) {
+  const blockers = approvalBlockers(await photoCounts(client, venue.venue_id))
+  if (blockers.length) throw imagesNotReady(venue.name, blockers)
+  await repo.approveVenue(client, { venueId: venue.venue_id, adminId })
+  await generateSlots(client, venue.venue_id, { days: SLOT_DAYS })
+  return queueVenueEmail(client, { venueId: venue.venue_id, kind: 'onboarded' })
 }
 
+// REQ-7 + #42: the owner is emailed right after the approval commits; a failed email never undoes it.
 export async function approve(adminId, id, { checklist } = {}) {
-  await decide(adminId, id, {
+  const emailId = await decide(adminId, id, {
     allowed: DECIDABLE,
-    apply: (client) => approveLocked(client, id, adminId),
+    apply: (client, venue) => approveLocked(client, venue, adminId),
     action: 'venue.approve',
     details: checklist ? { checklist } : {},
   })
+  await deliverQuietly(emailId)
 }
 
 export async function reject(adminId, id, { reason }) {
@@ -161,6 +196,7 @@ export async function unsuspend(adminId, id) {
 // All or nothing: every listing must exist and be decidable, otherwise nothing is approved (409 lists them).
 export async function bulkApprove(adminId, { ids }) {
   const unique = [...new Set(ids)]
+  const emailIds = []
   await withTransaction(async (client) => {
     const venues = await repo.lockVenues(client, unique)
     const blocked = [
@@ -174,8 +210,21 @@ export async function bulkApprove(adminId, { ids }) {
     if (blocked.length) {
       throw new AppError(409, 'INVALID_STATUS', 'Some listings can’t be approved now. Nothing was changed.', blocked)
     }
+    // #42: every listing's photos must pass too; the 409 says which ones don't.
+    const photoBlocked = []
     for (const venue of venues) {
-      await approveLocked(client, venue.venue_id, adminId)
+      const reasons = approvalBlockers(await photoCounts(client, venue.venue_id))
+      if (reasons.length) photoBlocked.push({ field: venue.venue_id, message: `${venue.name}: ${reasons.join(' ')}` })
+    }
+    if (photoBlocked.length)
+      throw new AppError(
+        409,
+        'IMAGES_NOT_READY',
+        'Some listings’ photos aren’t ready. Nothing was changed.',
+        photoBlocked,
+      )
+    for (const venue of venues) {
+      emailIds.push(await approveLocked(client, venue, adminId))
       await repo.insertAudit(client, {
         adminId,
         action: 'venue.approve',
@@ -185,6 +234,7 @@ export async function bulkApprove(adminId, { ids }) {
       })
     }
   })
+  for (const emailId of emailIds) await deliverQuietly(emailId)
   return { approved: unique.length }
 }
 
@@ -197,39 +247,108 @@ export async function listImages({ status }, { origin }) {
       id: r.image_id,
       venueId: r.venue_id,
       venueName: r.venue_name,
+      venueStatus: r.approval_status,
       ownerName: r.owner_name,
       imageUrl: absolute(origin, r.image_url),
       fileName: r.image_url.split('/').pop(),
       category: r.category,
       aiScore: r.ai_score === null ? null : Number(r.ai_score),
+      aiScorePercent: r.ai_score === null ? null : scorePercent(Number(r.ai_score)),
+      thresholdApplied: r.threshold_applied === null ? null : Number(r.threshold_applied),
+      decision: r.decision,
+      reason: r.decision_reason,
       status: r.verification_status,
       uploadedAt: iso(r.uploaded_at),
       checkedAt: iso(r.checked_at),
-      highConfidence: r.ai_score !== null && Number(r.ai_score) >= env.imageDetection.flagThreshold,
     })),
-    counts: Object.fromEntries(
-      ['flagged', 'approved', 'rejected', 'genuine'].map((s) => [s, counts.find((c) => c.status === s)?.n ?? 0]),
-    ),
+    counts,
   }
 }
 
-// keep (approved: published if the venue is live) or remove (rejected: never published). Flagged photos only.
-export async function decideImage(adminId, imageId, { decision }) {
-  await withTransaction(async (client) => {
-    const image = await repo.lockImage(client, imageId)
-    if (!image) throw notFoundError('We couldn’t find that photo.')
-    if (image.verification_status !== 'flagged') {
-      throw new AppError(409, 'INVALID_STATUS', `This photo is already ${image.verification_status}. Refresh the page.`)
-    }
-    await repo.decideImage(client, { imageId, adminId, decision })
-    await repo.insertAudit(client, {
-      adminId,
-      action: decision === 'approved' ? 'image.keep' : 'image.remove',
-      targetTable: 'venue_images',
-      targetId: imageId,
-      details: { venueId: image.venue_id },
+// #42 override: keep (accepted; un-quarantined, published if the venue is live) or remove (rejected_admin;
+// quarantined, never deleted). A reason is required and audited. Keeping a photo rechecks the venue: a venue rejected
+// for AI-generated images goes back to review once it has enough accepted-or-unchecked photos.
+export async function decideImage(adminId, imageId, { decision, reason }) {
+  const keep = decision === 'approved'
+  let moved = null
+  let reopened = false
+  let venueId = null
+  try {
+    await withTransaction(async (client) => {
+      const image = await repo.lockImage(client, imageId)
+      if (!image) throw notFoundError('We couldn’t find that photo.')
+      venueId = image.venue_id
+      if ((keep && image.decision === 'accepted') || (!keep && image.decision === 'rejected_admin'))
+        throw new AppError(
+          409,
+          'INVALID_STATUS',
+          `This photo is already ${keep ? 'kept' : 'removed'}. Refresh the page.`,
+        )
+      const key = keyFromUrl(image.image_url)
+      const next = key ? await moveForDecision(key, keep ? 'accepted' : 'rejected_admin') : null
+      if (key) moved = [key, next]
+      await repo.decideImage(client, {
+        imageId,
+        adminId,
+        keep,
+        reason,
+        imageUrl: next ? getStorage().urlFor(next) : image.image_url,
+      })
+      if (key) await recordMove(client, key, next)
+      await repo.insertAudit(client, {
+        adminId,
+        action: keep ? 'image.keep' : 'image.remove',
+        targetTable: 'venue_images',
+        targetId: imageId,
+        details: {
+          venueId: image.venue_id,
+          venue: image.venue_name,
+          reason,
+          from: image.decision ?? 'pending',
+          aiScore: image.ai_score === null ? null : scorePercent(Number(image.ai_score)),
+        },
+      })
+      if (keep && image.approval_status === 'rejected' && image.rejection_reason === AI_REJECTION_REASON) {
+        const c = await photoCounts(client, image.venue_id)
+        if (c.accepted + c.unchecked >= MIN_VENUE_PHOTOS) {
+          await repo.setDecision(client, { venueId: image.venue_id, status: 'pending' })
+          await repo.insertAudit(client, {
+            adminId,
+            action: 'venue.reopen',
+            targetTable: 'venues',
+            targetId: image.venue_id,
+            details: { from: 'rejected', reason: 'Enough photos accepted after an admin review' },
+          })
+          reopened = true
+        }
+      }
     })
+  } catch (err) {
+    if (moved && moved[0] !== moved[1])
+      await getStorage()
+        .move(moved[1], moved[0])
+        .catch(() => {})
+    throw err
+  }
+  if (venueId) await evaluateVenue(venueId)
+  return { reopened }
+}
+
+// Resend an owner email that wasn't delivered (#42). A sent email is never sent twice.
+export async function resendVenueEmail(adminId, venueId, emailId) {
+  const emails = await venueEmailsFor(pool, venueId)
+  const email = emails.find((e) => e.id === emailId)
+  if (!email) throw notFoundError('We couldn’t find that email.')
+  if (email.status === 'sent') throw new AppError(409, 'ALREADY_SENT', 'This email was already delivered.')
+  const status = await deliverVenueEmail(emailId)
+  await repo.insertAudit(pool, {
+    adminId,
+    action: 'venue.email_resend',
+    targetTable: 'venues',
+    targetId: venueId,
+    details: { kind: email.kind, result: status },
   })
+  return { status, emails: await venueEmailsFor(pool, venueId) }
 }
 
 // ---------------------------------------------------------------- dashboard + audit
@@ -297,8 +416,8 @@ export async function listAudit(query) {
 
 // ---------------------------------------------------------------- AI image check test (REQ-9, for demos)
 
-// Which detector is running (live Sightengine or the fake one) and its thresholds.
-export const imageDetectionStatus = () => detectorInfo()
+// Which detector is running (live Sightengine or the fake one) and the threshold in force.
+export const imageDetectionStatus = async () => ({ ...detectorInfo(), threshold: await currentThreshold() })
 
 // Runs one photo through the same detector and the same genuine / flagged rule as real uploads, and says how long it
 // took. Nothing is stored except an audit row (who tested, the score and the verdict, never the photo).
@@ -331,14 +450,15 @@ export async function testImageDetection(adminId, file) {
     )
   }
   const durationMs = Math.round(performance.now() - started)
-  const verdict = classifyScore(score)
+  const threshold = await currentThreshold()
+  const verdict = decideByThreshold(score, threshold) // the same rule as real uploads (#42)
   const result = {
     provider: info.provider,
     live: info.live,
     score: Math.round(score * 1000) / 1000,
+    scorePercent: scorePercent(score),
     verdict,
-    highConfidence: score >= info.flagThreshold,
-    thresholds: { genuine: info.genuineThreshold, flag: info.flagThreshold },
+    threshold,
     durationMs,
     checkedAt: new Date().toISOString(),
   }

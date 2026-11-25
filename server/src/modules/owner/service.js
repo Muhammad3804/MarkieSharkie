@@ -6,7 +6,8 @@ import { AppError, notFoundError } from '../../lib/AppError.js'
 import { detectFileType, UPLOAD_RULES } from '../../lib/fileType.js'
 import { logger } from '../../lib/logger.js'
 import { validationError } from '../../lib/validation.js'
-import { countPendingImages, queueVerification } from '../venues/imageVerification.js'
+import { checkUpload, checkView, countPendingImages, queueVerification } from '../venues/imageVerification.js'
+import { isQuarantineKey } from '../../lib/quarantineUrl.js'
 import { absolute } from '../venues/mappers.js'
 import { intOrNull, money, paisa } from './money.js'
 import * as repo from './repository.js'
@@ -16,6 +17,10 @@ import * as repo from './repository.js'
 
 export const UPLOADS_PER_DAY = 300
 const RESUBMITTABLE = new Set(['changes_requested', 'rejected'])
+// srs-alignment #42: a pending venue with rejected photos can't be approved, so the owner may replace them and
+// resubmit without waiting for the admin.
+const canResubmit = (venue) =>
+  RESUBMITTABLE.has(venue.approval_status) || (venue.approval_status === 'pending' && venue.has_rejected_photos)
 const notYours = () => notFoundError('We couldn’t find that listing in your account.')
 const invalidStatus = (status) =>
   new AppError(409, 'INVALID_STATUS', `This listing is ${status.replace('_', ' ')}, so it can’t be changed right now.`)
@@ -65,13 +70,32 @@ export async function upload(ownerId, { kind, file }, { origin }) {
       mimeType: type.mime,
       size: file.size,
     })
-    return { uploadId: row.upload_id, kind, url: absolute(origin, saved.url), mimeType: type.mime, size: file.size }
+    const out = {
+      uploadId: row.upload_id,
+      kind,
+      url: absolute(origin, saved.url),
+      mimeType: type.mime,
+      size: file.size,
+    }
+    if (kind !== 'photo') return out
+    // REQ-9 / #42: a photo is scored now (up to the detector's timeout) so the wizard can show the result per photo.
+    // A detector failure leaves it 'pending' with a retry; it is never rejected for that.
+    const checked = await checkUpload(row.upload_id, { buffer: file.buffer })
+    return { ...out, url: absolute(origin, getStorage().urlFor(checked.storage_key)), check: checkView(checked) }
   } catch (err) {
     await getStorage()
       .remove(saved.key)
       .catch(() => {})
     throw err
   }
+}
+
+// POST /api/owner/uploads/:id/check: try the AI check of one wizard photo again (the detector was down).
+export async function retryUploadCheck(ownerId, uploadId, { origin }) {
+  const own = await repo.findOwnPhotoUpload(pool, { ownerId, uploadId })
+  if (!own) throw notFoundError('We couldn’t find that photo in your uploads.')
+  const checked = await checkUpload(uploadId)
+  return { uploadId, url: absolute(origin, getStorage().urlFor(checked.storage_key)), check: checkView(checked) }
 }
 
 // ---------------------------------------------------------------- submit / resubmit (REQ-5 -> admin approval)
@@ -116,7 +140,9 @@ function venueColumns(body) {
 
 // Loads and checks every referenced upload: it must be this owner's, of the right kind, and either unused or
 // already attached to this venue. Returns uploadId -> row.
-async function claimUploads(client, ownerId, body, venueId) {
+// freshSince: a resubmission starts a fresh review (#42): a photo checked before the previous submission is scored
+// again with the current threshold; photos uploaded for this round keep their check.
+async function claimUploads(client, ownerId, body, venueId, { freshSince = null } = {}) {
   const wanted = [
     ...body.venueImages.map((i) => ({ id: i.uploadId, kind: 'photo', path: 'venueImages' })),
     ...body.halls.flatMap((h, index) => [
@@ -138,6 +164,12 @@ async function claimUploads(client, ownerId, body, venueId) {
     }
   }
   if (problems.length) throw validationError(problems)
+  for (const row of byId.values()) {
+    const fresh = row.decision && row.checked_at && (!freshSince || row.checked_at > freshSince)
+    row.check = fresh
+      ? { aiScore: row.ai_score, decision: row.decision, threshold: row.threshold_applied, checkedAt: row.checked_at }
+      : null
+  }
   return byId
 }
 
@@ -188,6 +220,7 @@ async function writeChildren(client, venueId, body, uploads) {
         isCover: image.isCover,
         mimeType: file.mime_type,
         size: file.size_bytes,
+        check: file.check,
       }
     }),
   )
@@ -234,10 +267,11 @@ async function writeChildren(client, venueId, body, uploads) {
 
 function afterCommit(venueId, oldUrls, keptUrls) {
   queueVerification(venueId)
-  // Files the resubmission no longer uses (best effort; a leftover file is harmless).
+  // Files the resubmission no longer uses (best effort; a leftover file is harmless). Quarantined (AI-rejected)
+  // files are never deleted (CLAUDE.md rule 5).
   for (const url of oldUrls) {
     const key = keyFromUrl(url)
-    if (key && !keptUrls.has(url))
+    if (key && !keptUrls.has(url) && !isQuarantineKey(key))
       getStorage()
         .remove(key)
         .catch((err) => logger.warn({ err: { message: err.message } }, 'could not remove an old upload'))
@@ -267,8 +301,8 @@ export async function resubmitListing(ownerId, venueId, body) {
   const result = await withTransaction(async (client) => {
     const current = await repo.findOwnedVenueForUpdate(client, { venueId, ownerId })
     if (!current) throw notYours()
-    if (!RESUBMITTABLE.has(current.approval_status)) throw invalidStatus(current.approval_status)
-    const uploads = await claimUploads(client, ownerId, body, venueId)
+    if (!canResubmit(current)) throw invalidStatus(current.approval_status)
+    const uploads = await claimUploads(client, ownerId, body, venueId, { freshSince: current.submitted_at })
     for (const row of uploads.values()) keptUrls.add(getStorage().urlFor(row.storage_key))
     oldUrls = await repo.deleteVenueChildren(client, venueId)
     const venue = await repo.updateVenue(client, { venueId, ownerId, venue: venueColumns(body) })
@@ -283,7 +317,8 @@ export async function resubmitListing(ownerId, venueId, body) {
 
 // ---------------------------------------------------------------- my venues
 
-const PHOTO_STATUSES = ['pending', 'genuine', 'flagged', 'approved', 'rejected']
+// Photo outcomes per listing (#42): accepted, rejected as AI-generated, flagged / removed by an admin, still checking.
+const PHOTO_STATUSES = ['accepted', 'rejected_ai', 'flagged_for_review', 'rejected_admin', 'pending']
 
 export async function listMyVenues(ownerId, { origin }) {
   const rows = await repo.listOwnerVenues(pool, ownerId)

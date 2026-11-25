@@ -41,8 +41,10 @@ export async function listImages(req, res) {
   res.json(await service.listImages(req.query, { origin: requestOrigin(req) }))
 }
 export async function decideImage(req, res) {
-  await service.decideImage(req.user.id, req.params.id, req.body)
-  res.status(204).end()
+  res.json(await service.decideImage(req.user.id, req.params.id, req.body))
+}
+export async function resendVenueEmail(req, res) {
+  res.json(await service.resendVenueEmail(req.user.id, req.params.id, req.params.emailId))
 }
 export async function stats(_req, res) {
   noStore(res)
@@ -55,7 +57,7 @@ export async function audit(req, res) {
 
 export async function detectionStatus(_req, res) {
   noStore(res)
-  res.json(service.imageDetectionStatus())
+  res.json(await service.imageDetectionStatus())
 }
 export async function detectionTest(req, res) {
   noStore(res)

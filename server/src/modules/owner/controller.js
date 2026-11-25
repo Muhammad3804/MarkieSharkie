@@ -18,6 +18,9 @@ export async function deleteDraft(req, res) {
   res.status(204).end()
 }
 
+export async function retryUploadCheck(req, res) {
+  res.json(await service.retryUploadCheck(req.user.id, req.params.id, { origin: requestOrigin(req) }))
+}
 export async function upload(req, res) {
   res
     .status(201)

@@ -102,7 +102,7 @@ describe('status transitions', () => {
     expect(log).toMatchObject({ admin_id: admin.user.id, details: { from: 'pending', checklist: { photos: true } } })
   })
 
-  it('a flagged photo stays unpublished after approval until the admin keeps it (REQ-10)', async () => {
+  it('an AI-rejected photo: venue auto-rejected, the admin keeps it with a reason, the venue reopens (#42)', async () => {
     const agent = api()
     const admin = await signedIn(agent, 'admin')
     const owner = await signedIn(agent, 'venue_owner')
@@ -110,44 +110,57 @@ describe('status transitions', () => {
     setImageDetector(async () => ({ score: n++ === 0 ? 0.97 : 0.02 }))
     const { id } = await submitListing(agent, owner.accessToken)
     await settleVerifications()
-    await agent
-      .post(`/api/admin/venues/${id}/approve`)
-      .set(...auth(admin))
-      .send({})
-    const flagged = await one(
-      `SELECT image_id, is_published FROM venue_images WHERE venue_id = $1 AND verification_status = 'flagged'`,
+    expect(await one('SELECT approval_status, rejection_reason FROM venues WHERE venue_id = $1', [id])).toEqual({
+      approval_status: 'rejected',
+      rejection_reason: 'AI-generated images',
+    })
+    const rejected = await one(
+      `SELECT image_id, is_published, image_url FROM venue_images WHERE venue_id = $1 AND decision = 'rejected_ai'`,
       [id],
     )
-    expect(flagged.is_published).toBe(false)
+    expect(rejected.is_published).toBe(false)
+    expect(rejected.image_url).toMatch(/^\/uploads\/quarantine\//)
 
-    const queue = await agent.get('/api/admin/images?status=flagged').set(...auth(admin))
+    const queue = await agent.get('/api/admin/images?status=review').set(...auth(admin))
     expect(queue.body.images).toEqual([
       expect.objectContaining({
-        id: flagged.image_id,
-        aiScore: 0.97,
-        highConfidence: true,
-        venueName: 'Test Garden Marquee',
+        id: rejected.image_id,
+        aiScorePercent: 97,
+        decision: 'rejected_ai',
+        thresholdApplied: 70,
       }),
     ])
+    const noReason = await agent
+      .post(`/api/admin/images/${rejected.image_id}/decision`)
+      .set(...auth(admin))
+      .send({ decision: 'approved' })
+    expect(noReason.status).toBe(400)
+    const kept = await agent
+      .post(`/api/admin/images/${rejected.image_id}/decision`)
+      .set(...auth(admin))
+      .send({ decision: 'approved', reason: 'Checked on site: a real photo of the stage.' })
+    expect(kept.status).toBe(200)
+    expect(kept.body).toEqual({ reopened: true })
+    expect(
+      await one('SELECT decision, verification_status::text AS s, image_url FROM venue_images WHERE image_id = $1', [
+        rejected.image_id,
+      ]),
+    ).toMatchObject({ decision: 'accepted', s: 'approved', image_url: expect.stringMatching(/^\/uploads\/venues\//) })
+    expect((await one('SELECT approval_status FROM venues WHERE venue_id = $1', [id])).approval_status).toBe('pending')
     expect(
       (
         await agent
-          .post(`/api/admin/images/${flagged.image_id}/decision`)
+          .post(`/api/admin/venues/${id}/approve`)
           .set(...auth(admin))
-          .send({ decision: 'approved' })
+          .send({})
       ).status,
     ).toBe(204)
-    expect(
-      await one('SELECT verification_status::text AS s, is_published FROM venue_images WHERE image_id = $1', [
-        flagged.image_id,
-      ]),
-    ).toEqual({ s: 'approved', is_published: true })
+    expect(await count('SELECT count(*) FROM venue_images WHERE venue_id = $1 AND is_published', [id])).toBe(5)
     const again = await agent
-      .post(`/api/admin/images/${flagged.image_id}/decision`)
+      .post(`/api/admin/images/${rejected.image_id}/decision`)
       .set(...auth(admin))
-      .send({ decision: 'rejected' })
+      .send({ decision: 'approved', reason: 'Checked on site: a real photo.' })
     expect(again.status).toBe(409)
-    expect(await audits('image.keep')).toBe(1)
   })
 
   it('reject needs a reason the owner sees; it never becomes public', async () => {
@@ -370,7 +383,7 @@ describe('AI image check test panel (REQ-9 demo)', () => {
     const agent = api()
     const admin = await signedIn(agent, 'admin')
     const status = await agent.get('/api/admin/image-detection').set(...auth(admin))
-    expect(status.body).toMatchObject({ provider: 'custom', live: false, flagThreshold: 0.8, genuineThreshold: 0.3 })
+    expect(status.body).toMatchObject({ provider: 'custom', live: false, threshold: 70 })
 
     setImageDetector(async () => ({ score: 0.91 }))
     const res = await agent
@@ -378,12 +391,7 @@ describe('AI image check test panel (REQ-9 demo)', () => {
       .set(...auth(admin))
       .attach('file', jpeg(), 'ai.jpg')
     expect(res.status).toBe(200)
-    expect(res.body).toMatchObject({
-      score: 0.91,
-      verdict: 'flagged',
-      highConfidence: true,
-      thresholds: { genuine: 0.3, flag: 0.8 },
-    })
+    expect(res.body).toMatchObject({ score: 0.91, scorePercent: 91, verdict: 'rejected_ai', threshold: 70 })
     expect(res.body.durationMs).toEqual(expect.any(Number))
 
     setImageDetector(async () => ({ score: 0.04 }))
@@ -391,7 +399,7 @@ describe('AI image check test panel (REQ-9 demo)', () => {
       .post('/api/admin/image-detection/test')
       .set(...auth(admin))
       .attach('file', jpeg(), 'real.jpg')
-    expect(real.body).toMatchObject({ verdict: 'genuine', highConfidence: false })
+    expect(real.body).toMatchObject({ verdict: 'accepted' })
 
     expect(await count('SELECT count(*) FROM venue_images')).toBe(0)
     expect(await count('SELECT count(*) FROM media_uploads')).toBe(0)

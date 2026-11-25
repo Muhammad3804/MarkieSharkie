@@ -17,7 +17,7 @@ const NAV = [
   { to: '/admin/approvals', label: 'Venue approvals', icon: 'file-check', badge: 'approvals' },
   { to: '/admin/edits', label: 'Live venue edits', icon: 'message-edit', badge: 'edits' },
   { to: '/admin/reviews', label: 'Reviews', icon: 'message-edit', badge: 'reviews' },
-  { to: '/admin/images', label: 'Flagged images', icon: 'image-alert', badge: 'images' },
+  { to: '/admin/images', label: 'AI-checked images', icon: 'image-alert', badge: 'images' },
   { to: '/admin/venues', label: 'All venues', icon: 'building' },
   { to: '/admin/users', label: 'Users', icon: 'users' },
   { to: '/admin/reports', label: 'Disputes & reports', icon: 'flag', badge: 'reports' },

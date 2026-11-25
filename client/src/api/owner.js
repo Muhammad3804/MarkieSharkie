@@ -119,3 +119,15 @@ export function setListingActive(venueId, active, reason) {
     body: active || !reason ? {} : { reason },
   })
 }
+
+// srs-alignment #42: each photo of a listing with its AI check (status accepted | rejected_ai | flagged_for_review |
+// rejected_admin | pending, the score in percent, an admin's reason). Rejected photos come with a short-lived link.
+export async function getListingPhotoChecks(venueId) {
+  const { listing } = await apiFetch(`/owner/venues/${encodeURIComponent(venueId)}`)
+  return listing.images.map((image) => ({ imageId: image.imageId, url: image.url, category: image.category, check: image.check }))
+}
+
+// The photo check couldn't run (detector down): check the listing's pending photos again. -> { pending }
+export function retryListingPhotoChecks(venueId) {
+  return apiFetch(`/owner/venues/${encodeURIComponent(venueId)}/images/verify`, { method: 'POST', body: {} })
+}

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { photoCheckCounts } from '../../../api/host.js'
 import { useWizard } from '../WizardContext.js'
 import { StepHeading } from '../fields.jsx'
 import { usePhotoUrls } from '../photoStore.js'
@@ -16,6 +17,7 @@ import {
   VENUE_CATEGORIES,
   WALKTHROUGH_MODES,
   WEEKDAYS,
+  MIN_PHOTOS,
 } from '../options.js'
 import { formatAmount } from '../../../lib/money.js'
 
@@ -107,6 +109,7 @@ export default function ReviewStep() {
         </Summary>
         <Summary title="Photos" step="photos">
           {venueImages.length} photos · {halls.length} {halls.length === 1 ? 'hall' : 'halls'} covered · cover chosen
+          <PhotoCheckSummary venueImages={venueImages} />
         </Summary>
         <Summary title="Layouts" step="layout">
           <ul className="grid gap-1">
@@ -212,5 +215,24 @@ function Summary({ title, step, children }) {
         Edit<span className="sr-only"> {title.toLowerCase()}</span>
       </Link>
     </div>
+  )
+}
+
+// srs-alignment #42: what the photo check said, before the owner submits.
+function PhotoCheckSummary({ venueImages }) {
+  const c = photoCheckCounts(venueImages)
+  return (
+    <>
+      <span className="block text-muted-warm">
+        {c.accepted} accepted by our photo check{c.rejected_ai ? ` · ${c.rejected_ai} look AI-generated` : ''}{c.unchecked ? ` · ${c.unchecked} still being checked` : ''}
+      </span>
+      {c.rejected_ai > 0 && (
+        <span role="status" className="mt-2 block rounded-xl bg-danger-bg px-3 py-2 text-danger">
+          {c.accepted + c.unchecked < MIN_PHOTOS
+            ? `With fewer than ${MIN_PHOTOS} accepted photos, this listing would be rejected because the images appear to be AI-generated. Go back to Photos and replace them with real photographs of your venue.`
+            : 'Photos that look AI-generated won’t be shown, and an admin can’t approve the listing while they’re in it. Go back to Photos and remove or replace them.'}
+        </span>
+      )}
+    </>
   )
 }

@@ -35,7 +35,7 @@
 | Notifications | `GET /notifications`, `POST /notifications/:id/read`, `POST /notifications/read-all` | any user |
 | Weather | `GET /bookings/:id/weather` | customer |
 | Disputes | **Built (2026-11-23, #41):** `POST /disputes/uploads`, `POST /bookings/:id/disputes`, `GET /disputes`, `GET /disputes/:id`, `POST /disputes/:id/notes`, `GET /disputes/:id/files/:fileId`, `POST /venues/:id/reports` | customer, venue_owner (the booking's two parties; others 404); files also admin; reports also decorator |
-| Admin | **Built:** `GET /admin/venues` (status, search, filters, sort, pages), `GET /admin/venues/:id`, `POST /admin/venues/:id/approve|reject|request-changes|suspend|unsuspend`, `POST /admin/venues/approve` (bulk), `GET /admin/images`, `POST /admin/images/:id/decision`, `GET /admin/stats`, `GET /admin/audit`, `GET /admin/revisions[/:id]`, `POST /admin/revisions/:id/approve|reject`, `GET /admin/reviews`, `POST /admin/reviews/:id/hide|restore|dismiss`, `DELETE /admin/reviews/:id` (reason required); users (2026-11-23, #40): `GET /admin/users`, `GET /admin/users/:id`, `POST /admin/users/:id/suspend|reactivate|role`, `DELETE /admin/users/:id` (reason required; 409 SELF_ACTION, LAST_ADMIN, HAS_VENUES, HAS_ACTIVE_BOOKINGS). disputes (#41): `GET /admin/disputes[/:id]`, `POST /admin/disputes/:id/take|resolve|reject|notes`, `GET /admin/venue-reports`, `POST /admin/venue-reports/:id/take|resolve`. Planned: `/admin/bookings` | admin (every write audited) |
+| Admin | **Built:** `GET /admin/venues` (status, search, filters, sort, pages), `GET /admin/venues/:id`, `POST /admin/venues/:id/approve|reject|request-changes|suspend|unsuspend`, `POST /admin/venues/approve` (bulk), `GET /admin/images` (review / accepted / removed), `POST /admin/images/:id/decision` (reason required), `GET/PUT /admin/settings/ai-threshold`, `POST /admin/venues/:id/emails/:emailId/resend`, `GET /admin/stats`, `GET /admin/audit`, `GET /admin/revisions[/:id]`, `POST /admin/revisions/:id/approve|reject`, `GET /admin/reviews`, `POST /admin/reviews/:id/hide|restore|dismiss`, `DELETE /admin/reviews/:id` (reason required); users (2026-11-23, #40): `GET /admin/users`, `GET /admin/users/:id`, `POST /admin/users/:id/suspend|reactivate|role`, `DELETE /admin/users/:id` (reason required; 409 SELF_ACTION, LAST_ADMIN, HAS_VENUES, HAS_ACTIVE_BOOKINGS). disputes (#41): `GET /admin/disputes[/:id]`, `POST /admin/disputes/:id/take|resolve|reject|notes`, `GET /admin/venue-reports`, `POST /admin/venue-reports/:id/take|resolve`. Planned: `/admin/bookings` | admin (every write audited) |
 
 ## Authentication (REQ-2, NFR-4)
 
@@ -73,12 +73,26 @@
   dotfiles, CORP `cross-origin` (the PWA is on another origin), non-images as downloads (`Content-Disposition:
   attachment`; `.glb` as `model/gltf-binary` so the 3D viewer can fetch it). `../` paths are refused (tested). File URLs are unguessable
   but not secret: an unapproved listing's photos can be fetched by anyone who has the URL.
-- **AI image check (REQ-9, REQ-10):** after the submission commits, each photo goes to `integrations/imageDetection.js`
-  (Sightengine `genai`; fake when no API user / secret). Score ≤ `IMAGE_DETECTION_GENUINE_THRESHOLD` → genuine,
-  above → flagged (never published automatically, never deleted; admin keeps or removes it). Detector down → stays
-  pending, the owner can retry. Every check is a row in `image_verifications`. Approving a venue publishes genuine
-  photos and the still-unchecked ones (the admin reviewed them, srs-alignment #28); flagged ones wait for a decision.
-- **AI check test (demo):** `GET /admin/image-detection` (which detector, thresholds) and
+- **AI image gate (REQ-9, REQ-10, srs-alignment #42, supersedes #28):** each photo is scored by
+  `integrations/imageDetection.js` (Sightengine `genai`; the fake detector when no API user / secret, **and always
+  under `NODE_ENV=test`**) during the wizard upload, and again after a resubmission. The score (as a percent) is
+  compared with the admin's threshold (`platform_settings`, default 70, fallback `AI_IMAGE_REJECT_THRESHOLD`): at or
+  above → `rejected_ai` (never published; file moved to `uploads/quarantine/`, which `/uploads` refuses; never
+  deleted), below → `accepted`. Each photo keeps the threshold it was checked with. Detector down → `error`, never a
+  rejection; retried by a 60 s job (growing pause, 5 tries) and on demand (`POST /owner/uploads/:id/check`,
+  `POST /owner/venues/:id/images/verify`). A pending venue with AI-rejected photos and fewer than 5
+  accepted-or-unchecked ones is rejected ("AI-generated images") and the owner is emailed. Approval (single and bulk)
+  needs ≥ 5 accepted photos and none rejected, flagged or unchecked: else 409 `IMAGES_NOT_READY` with the reasons.
+  Admins override any photo (keep / remove) with a required reason (audited); keeping one can reopen a venue rejected
+  for AI images. Owners see each photo's score and decision, never the threshold.
+- **Quarantined photos:** owner and admin responses carry a signed link `GET /api/files/quarantine?key&exp&sig`
+  (HMAC-SHA256 with a key derived from the JWT secret, 1 hour). A missing, wrong or expired signature is a 404.
+- **Owner emails (REQ-7, #42):** "Your marquee has been onboarded" on approval and "…images appear to be
+  AI-generated" on the automatic rejection, queued in the decision's transaction in `venue_emails` (once per venue,
+  kind and review round) and sent after the commit under a row lock, so a double click or retry never sends twice.
+  A failure is recorded (error code only), never undoes the decision, is retried by the job and can be resent by an
+  admin (`POST /admin/venues/:id/emails/:emailId/resend`, 409 `ALREADY_SENT`). No scores or internals in emails.
+- **AI check test (demo):** `GET /admin/image-detection` (which detector, the threshold) and
   `POST /admin/image-detection/test` (one JPEG / PNG ≤ 5 MB through the same detector and rules; nothing stored but
   an audit row; 30 an hour per IP because it may call the paid API).
 - **Editing a live venue (EUC-04, EUC-07, srs-alignment #35):** approved venues only (409 otherwise). Live at

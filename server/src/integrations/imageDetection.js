@@ -10,8 +10,9 @@ import { logger } from '../lib/logger.js'
 //
 // Providers:
 //   sightengine  POST https://api.sightengine.com/1.0/check.json, models=genai -> type.ai_generated
-//   fake         used when SIGHTENGINE_API_USER / SIGHTENGINE_API_SECRET are empty: every image scores 0.02
-//                (genuine), so the app runs end to end without keys. Tests swap in their own detector.
+//   fake         used when SIGHTENGINE_API_USER / SIGHTENGINE_API_SECRET are empty: every image scores 0.02, so the
+//                app runs end to end without keys; a file containing the bytes "MARKIE-AI-TEST" scores 0.95 (to
+//                demo an AI rejection locally). Never used when Sightengine keys are set. Tests swap in their own.
 
 const SIGHTENGINE_URL = 'https://api.sightengine.com/1.0/check.json'
 
@@ -33,7 +34,8 @@ async function sightengine({ buffer, mimeType, fileName }) {
   return { score }
 }
 
-const fake = async () => ({ score: 0.02 })
+const AI_TEST_MARKER = Buffer.from('MARKIE-AI-TEST')
+const fake = async ({ buffer }) => ({ score: Buffer.isBuffer(buffer) && buffer.includes(AI_TEST_MARKER) ? 0.95 : 0.02 })
 
 let detector = null
 let announced = false
@@ -56,16 +58,18 @@ export function setImageDetector(fn) {
   detector = fn
 }
 
-// score -> verification_status. At or below the genuine threshold: genuine. Anything above it is flagged (not
-// published; an admin decides, REQ-10): scores from IMAGE_DETECTION_FLAG_THRESHOLD up are marked high confidence
-// in the admin queue, the ones in between are borderline. Scope 2.4: the AI only suggests, a person decides.
-export function classifyScore(score) {
-  return score <= env.imageDetection.genuineThreshold ? 'genuine' : 'flagged'
+// srs-alignment #42: score (0..1) against the admin's threshold (percent, 0..100). The score is compared as a percent
+// rounded to 2 decimals, so 0.7 is exactly 70 (0.7 * 100 is 70.00000000000001 in floating point).
+// At or above the threshold -> rejected_ai; below -> accepted.
+export const scorePercent = (score) => Math.round(score * 10_000) / 100
+
+export function decideByThreshold(score, threshold) {
+  return scorePercent(score) >= Number(threshold) ? 'rejected_ai' : 'accepted'
 }
 
 // What the AI check is running on, for the admin's "Test the AI check" panel. live = a real provider is called.
 export function detectorInfo() {
-  const { provider, timeoutMs, flagThreshold, genuineThreshold } = env.imageDetection
+  const { provider, timeoutMs } = env.imageDetection
   const name = detector ? 'custom' : provider
-  return { provider: name, live: name === 'sightengine', timeoutMs, flagThreshold, genuineThreshold }
+  return { provider: name, live: name === 'sightengine', timeoutMs }
 }

@@ -300,3 +300,82 @@ export async function sendDisputeDecisionEmail({ to, ...fields }) {
   await getTransport().sendMail({ from: env.mail.from, to, ...message })
   return { delivered: true }
 }
+
+// REQ-7 "owner notified" (srs-alignment #42): the venue decision emails. Plain language, the venue name, what to do
+// next. Never a score, a threshold or anything internal.
+function venueLayout({ heading, paragraphs, buttonLabel, link }) {
+  return `<!doctype html>
+<html lang="en"><body style="margin:0;padding:24px;background:#f6f3f1;font-family:Arial,Helvetica,sans-serif;color:#2b2326">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px">
+    <tr><td>
+      <p style="margin:0 0 16px;font-size:20px;font-weight:bold;color:#7a1631">${escapeHtml(heading)}</p>
+      ${paragraphs.map((p) => `<p style="margin:0 0 16px;font-size:15px;line-height:1.5">${escapeHtml(p)}</p>`).join('\n      ')}
+      <p style="margin:8px 0 0"><a href="${escapeHtml(link)}" style="display:inline-block;background:#7a1631;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:bold">${escapeHtml(buttonLabel)}</a></p>
+    </td></tr>
+  </table>
+</body></html>`
+}
+
+export function venueOnboardedEmail({ name, venueName, link }) {
+  const greeting = name ? `Hi ${name.split(' ')[0]},` : 'Hi,'
+  const paragraphs = [
+    greeting,
+    `Your marquee has been onboarded. ${venueName} is now live on MarkieSharkie, and customers can find it, check availability and send booking requests.`,
+    'You can follow requests and update your listing from My listings.',
+  ]
+  return {
+    subject: `Your marquee has been onboarded: ${venueName}`,
+    text: [...paragraphs, '', link, '', 'MarkieSharkie'].join('\n'),
+    html: venueLayout({
+      heading: 'Your marquee has been onboarded',
+      paragraphs,
+      buttonLabel: 'Open My listings',
+      link,
+    }),
+  }
+}
+
+export function venueAiRejectedEmail({ name, venueName, link }) {
+  const greeting = name ? `Hi ${name.split(' ')[0]},` : 'Hi,'
+  const paragraphs = [
+    greeting,
+    `Your marquee hasn't been selected for listing because the images appear to be AI-generated. This is about ${venueName}.`,
+    'How to fix it: take real photographs of the venue on site (the hall, stage, seating and entrance) and upload those instead. Don’t use generated, heavily edited or stock images.',
+    'Then open your listing in My listings, replace the photos and resubmit. A resubmission starts a fresh review.',
+  ]
+  return {
+    subject: `Your listing wasn't selected: ${venueName}`,
+    text: [...paragraphs, '', link, '', 'MarkieSharkie'].join('\n'),
+    html: venueLayout({
+      heading: 'Your listing wasn’t selected',
+      paragraphs,
+      buttonLabel: 'Replace photos and resubmit',
+      link,
+    }),
+  }
+}
+
+let venueSender = null
+// Tests can swap the sender (e.g. to make it fail); null restores the default.
+export function setVenueEmailSender(fn) {
+  venueSender = fn
+}
+
+// kind: 'onboarded' | 'ai_rejected'. Throws when it could not be sent; venueEmails.js records it and retries later.
+export async function sendVenueEmail({ to, kind, ...fields }) {
+  const message = kind === 'onboarded' ? venueOnboardedEmail(fields) : venueAiRejectedEmail(fields)
+  if (venueSender) return venueSender({ to, kind, ...message })
+  if (env.isTest) {
+    testOutbox.push({ to, kind: `venue_${kind}`, ...message })
+    return { delivered: false }
+  }
+  if (!env.mail.configured) {
+    if (env.nodeEnv === 'development') {
+      logger.info(`[mail] SMTP is not configured (development only): venue ${kind} email not sent`)
+      return { delivered: false }
+    }
+    throw new Error('SMTP is not configured')
+  }
+  await getTransport().sendMail({ from: env.mail.from, to, ...message })
+  return { delivered: true }
+}

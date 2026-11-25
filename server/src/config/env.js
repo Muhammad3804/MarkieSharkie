@@ -54,13 +54,10 @@ const schema = z.object({
   SIGHTENGINE_API_USER: z.string().trim().default(''),
   SIGHTENGINE_API_SECRET: z.string().trim().default(''),
   IMAGE_DETECTION_TIMEOUT_MS: z.preprocess((v) => (v === '' ? undefined : v), int(10_000, { min: 1000, max: 60_000 })),
-  IMAGE_DETECTION_FLAG_THRESHOLD: z.preprocess(
+  // srs-alignment #42: fallback for the admin's AI threshold (percent) if the platform_settings row is missing.
+  AI_IMAGE_REJECT_THRESHOLD: z.preprocess(
     (v) => (v === '' ? undefined : v),
-    z.coerce.number().min(0).max(1).default(0.8),
-  ),
-  IMAGE_DETECTION_GENUINE_THRESHOLD: z.preprocess(
-    (v) => (v === '' ? undefined : v),
-    z.coerce.number().min(0).max(1).default(0.3),
+    z.coerce.number().min(0).max(100).default(70),
   ),
   // Where uploaded files are stored (local disk adapter) and the public origin used in file URLs. Defaults:
   // server/uploads and the address the request came in on.
@@ -123,12 +120,12 @@ export function parseEnv(raw) {
     }),
     slotHoldMinutes: e.SLOT_HOLD_MINUTES,
     imageDetection: Object.freeze({
-      provider: e.SIGHTENGINE_API_USER && e.SIGHTENGINE_API_SECRET ? e.IMAGE_DETECTION_PROVIDER : 'fake',
+      // Tests never call the real API, whatever .env says (like the mailer's test outbox); tests set their own detector.
+      provider: !isTest && e.SIGHTENGINE_API_USER && e.SIGHTENGINE_API_SECRET ? e.IMAGE_DETECTION_PROVIDER : 'fake',
       apiUser: e.SIGHTENGINE_API_USER,
       apiSecret: e.SIGHTENGINE_API_SECRET,
       timeoutMs: e.IMAGE_DETECTION_TIMEOUT_MS,
-      flagThreshold: e.IMAGE_DETECTION_FLAG_THRESHOLD,
-      genuineThreshold: Math.min(e.IMAGE_DETECTION_GENUINE_THRESHOLD, e.IMAGE_DETECTION_FLAG_THRESHOLD),
+      fallbackThreshold: e.AI_IMAGE_REJECT_THRESHOLD,
     }),
     uploadsDir: e.UPLOADS_DIR,
     publicApiOrigin: e.PUBLIC_API_ORIGIN ? e.PUBLIC_API_ORIGIN.replace(/\/$/, '') : null,

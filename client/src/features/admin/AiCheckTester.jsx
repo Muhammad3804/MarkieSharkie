@@ -80,8 +80,8 @@ export default function AiCheckTester() {
     >
       <p className="max-w-[70ch] text-[14px] leading-relaxed text-muted-warm">
         Upload any photo to see what the AI check says about it. It uses the same detector and rules as owners’ uploads:
-        a score up to {status?.genuineThreshold != null ? percent(status.genuineThreshold) : '30%'} counts as genuine, anything higher is flagged for review here.
-        {status && !status.error && !status.live && ' No Sightengine keys are set, so every photo scores as genuine.'}
+        a photo scoring {status?.threshold != null ? `${status.threshold}%` : 'the threshold'} or more is rejected as AI-generated (change it in Settings).
+        {status && !status.error && !status.live && ' No Sightengine keys are set, so the demo detector scores every photo 2%.'}
         {' '}Nothing is saved except an entry in the audit log.
       </p>
 
@@ -108,25 +108,23 @@ export default function AiCheckTester() {
           {result && (
             <div className="rounded-lg border border-line p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={result.verdict === 'genuine' ? 'approved' : 'flagged'} label={result.verdict === 'genuine' ? 'Genuine' : 'Flagged'} />
+                <StatusBadge status={result.verdict === 'accepted' ? 'approved' : 'rejected'} label={result.verdict === 'accepted' ? 'Accepted' : 'Rejected as AI-generated'} />
                 <span className="text-[14px] text-ink">
-                  {result.verdict === 'genuine'
-                    ? 'This photo would be published once the venue is approved.'
-                    : result.highConfidence
-                      ? 'Very likely AI-generated: this photo would wait for an admin decision.'
-                      : 'Possibly AI-generated: this photo would wait for an admin decision.'}
+                  {result.verdict === 'accepted'
+                    ? 'This photo would be accepted and published once the venue is approved.'
+                    : 'This photo would be rejected and kept out of the gallery (you can still override it).'}
                 </span>
               </div>
               <p className="mt-4 text-[13px] font-medium text-muted-warm">AI-generated score</p>
               <p className="font-heading text-[32px] font-semibold leading-tight text-ink-strong">{percent(result.score)}</p>
               <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface" role="img" aria-label={`Score ${percent(result.score)} out of 100%`}>
-                <div className={`h-full rounded-full ${result.verdict === 'genuine' ? 'bg-success' : 'bg-danger'}`} style={{ width: percent(Math.max(result.score, 0.01)) }} />
+                <div className={`h-full rounded-full ${result.verdict === 'accepted' ? 'bg-success' : 'bg-danger'}`} style={{ width: percent(Math.max(result.score, 0.01)) }} />
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-[13px] sm:grid-cols-4">
                 <div><dt className="text-muted-warm">Detector</dt><dd className="font-medium text-ink-strong">{result.live ? 'Sightengine (live)' : 'Fake (demo)'}</dd></div>
                 <div><dt className="text-muted-warm">Answered in</dt><dd className="font-medium text-ink-strong">{(result.durationMs / 1000).toFixed(1)} s</dd></div>
-                <div><dt className="text-muted-warm">Genuine up to</dt><dd className="font-medium text-ink-strong">{percent(result.thresholds.genuine)}</dd></div>
-                <div><dt className="text-muted-warm">High confidence from</dt><dd className="font-medium text-ink-strong">{percent(result.thresholds.flag)}</dd></div>
+                <div><dt className="text-muted-warm">Threshold</dt><dd className="font-medium text-ink-strong">{result.threshold}%</dd></div>
+                <div><dt className="text-muted-warm">Score</dt><dd className="font-medium text-ink-strong tabular-nums">{result.scorePercent}%</dd></div>
               </dl>
             </div>
           )}

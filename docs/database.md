@@ -152,6 +152,15 @@ Rules enforced in services (need data from several tables): review only after `c
   Down section tested (it drops email-only guests, which can't exist before 011).
 - **013 dispute-status-rejected** (#41): `dispute_status` gains `rejected` (alone; forward-only, an enum value
   can't be dropped).
+- **015 ai-image-gate** (#42): `platform_settings` (one row: `ai_image_reject_threshold` numeric 0-100, default 70,
+  `updated_by`, `updated_at`); on `media_uploads` and `venue_images`: `ai_score`, `detection_status`
+  (pending / scored / error), `decision` (accepted / rejected_ai; on venue_images also flagged_for_review,
+  rejected_admin), `threshold_applied`, `checked_at`, `detection_attempts`, `quarantined_at`; on venue_images also
+  `decided_by`, `decision_reason` and the check `venue_images_published_accepted` (published only when accepted).
+  Backfill from `verification_status` (kept in sync; ERD column). A BEFORE INSERT trigger
+  `venue_images_default_decision` fills `decision` for writers that only set `verification_status` (seed, test
+  helpers). `venue_emails` (onboarded / ai_rejected, `UNIQUE (venue_id, kind, submission)`, status, attempts,
+  last_error code). Down section tested.
 - **014 disputes-and-venue-reports** (#41): `disputes.category`, `raised_by_role`, `outcome`, `compensation_amount`
   (recorded only), `updated_at` (+ trigger); checks: reason 20–2000 chars, outcome exactly when resolved, rejected
   needs admin + reason + time (written as `status::text` because all pending migrations run in one transaction),

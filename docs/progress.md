@@ -565,6 +565,26 @@ Outside `PublicLayout` (own full-screen shell, no header/footer/chat):
 
 ## Changelog (newest first)
 
+- 2026-11-23: **AI-image threshold gate and automatic owner emails (EUC-05, EUC-08, EUC-34, SYS-02).** Migration
+  **015** (platform_settings threshold, AI check columns on media_uploads / venue_images with backfill and an insert
+  trigger, venue_emails); srs-alignment #42 (deviation, supersedes #28). Server: `modules/settings/`
+  (`GET/PUT /api/admin/settings/ai-threshold`, audited old → new), `venues/imageVerification.js` rewritten (score vs
+  threshold, quarantine, detection errors never reject, venue rule, approval blockers, retries),
+  `venues/venueEmails.js` (queue in the decision's transaction, deliver after commit under a row lock, retry job,
+  Resend), `venues/jobs.js` (60 s), `venues/quarantineFiles.js` + `lib/quarantineUrl.js` (signed links for
+  quarantined photos), `POST /api/owner/uploads/:id/check`, photos scored during the upload, resubmission rescores
+  old photos, approval 409 `IMAGES_NOT_READY`, image overrides need a reason and can reopen a venue,
+  `POST /api/admin/venues/:id/emails/:emailId/resend`. Mailer: onboarded and AI-rejected templates. **Bug fixed (with
+  approval): tests called the real Sightengine API when keys were in `.env`; tests now always use the fake detector.**
+  `IMAGE_DETECTION_FLAG/GENUINE_THRESHOLD` replaced by `AI_IMAGE_REJECT_THRESHOLD` (fallback only). The fake detector
+  scores files containing `MARKIE-AI-TEST` at 95 % for local demos. Tests: `tests/ai-image-gate.test.js` (11) and
+  three rewritten in admin-venues / owner-venues. Client: Settings threshold card (slider + number, confirm, toast),
+  review page "Photo check and emails" card (blockers, email status, Resend) and per-photo decision, score and
+  keep / remove with a reason, "AI-checked images" queue (review / accepted / removed), the AI test panel on the
+  threshold, wizard photos uploaded and checked as they're added (result + score per photo, Retry, warning),
+  review-step summary, My listings photo results per photo, AI-rejection note and resubmit for pending listings with
+  rejected photos, `apiFetch` unchanged.
+
 - 2026-11-23: **Disputes and listing reports on the server (EUC-35, REQ-48), Part D.** Migrations **013** (dispute
   status `rejected`, alone) and **014** (dispute category, raised_by_role, outcome, recorded compensation, updated_at,
   one open dispute per booking per party, `dispute_files`, `dispute_notes`, `venue_reports`); srs-alignment #41. Server

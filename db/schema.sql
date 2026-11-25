@@ -250,15 +250,43 @@ CREATE TABLE venue_images (
   sort_order          smallint            NOT NULL DEFAULT 0,
   mime_type           text,
   size_bytes          int CHECK (size_bytes > 0),
+  -- [Design] srs-alignment #42 (migration 015): the AI check against the admin's threshold. Only accepted photos are
+  -- published; rejected_ai files are quarantined (never deleted); an admin override sets decided_by + reason.
+  ai_score            real CHECK (ai_score BETWEEN 0 AND 1),
+  detection_status    text NOT NULL DEFAULT 'pending' CHECK (detection_status IN ('pending', 'scored', 'error')),
+  decision            text CHECK (decision IN ('accepted', 'rejected_ai', 'flagged_for_review', 'rejected_admin')),
+  threshold_applied   numeric(5, 2),
+  checked_at          timestamptz,
+  detection_attempts  smallint NOT NULL DEFAULT 0,
+  decided_by          uuid REFERENCES admins(user_id),
+  decision_reason     text CHECK (char_length(decision_reason) <= 500),
+  quarantined_at      timestamptz,
   CONSTRAINT venue_images_hall_same_venue FOREIGN KEY (venue_id, hall_id)
     REFERENCES halls (venue_id, hall_id) ON DELETE SET NULL (hall_id),
   -- REQ-9: only genuine (or admin-approved) images can be published
   CONSTRAINT venue_images_publish_rule
-    CHECK (NOT is_published OR verification_status IN ('genuine', 'approved'))
+    CHECK (NOT is_published OR verification_status IN ('genuine', 'approved')),
+  CONSTRAINT venue_images_published_accepted CHECK (NOT is_published OR decision = 'accepted')
 );
 CREATE UNIQUE INDEX venue_images_one_cover ON venue_images (venue_id) WHERE is_cover;
 CREATE INDEX venue_images_venue_idx ON venue_images(venue_id);
 CREATE INDEX venue_images_flagged_idx ON venue_images(verification_status) WHERE verification_status = 'flagged';
+CREATE INDEX venue_images_review_idx ON venue_images (decision) WHERE decision IN ('rejected_ai', 'flagged_for_review');
+CREATE INDEX venue_images_detection_idx ON venue_images (detection_status) WHERE detection_status <> 'scored';
+-- Older writers (the seed, test helpers) only set verification_status: derive the decision for them on insert.
+CREATE FUNCTION venue_images_default_decision() RETURNS trigger AS $$
+BEGIN
+  IF NEW.decision IS NULL AND NEW.verification_status <> 'pending' THEN
+    NEW.decision := CASE NEW.verification_status
+                      WHEN 'genuine' THEN 'accepted' WHEN 'approved' THEN 'accepted'
+                      WHEN 'flagged' THEN 'flagged_for_review' ELSE 'rejected_admin' END;
+    NEW.detection_status := 'scored';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER venue_images_default_decision BEFORE INSERT ON venue_images
+  FOR EACH ROW EXECUTE FUNCTION venue_images_default_decision();
 
 CREATE TABLE image_verifications (
   verification_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -376,9 +404,46 @@ CREATE TABLE media_uploads (
   mime_type   text NOT NULL,
   size_bytes  int  NOT NULL CHECK (size_bytes > 0),
   venue_id    uuid REFERENCES venues(venue_id) ON DELETE SET NULL,
-  created_at  timestamptz NOT NULL DEFAULT now()
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  -- [Design] 015 (#42): the AI check of a wizard photo, copied to venue_images at submit
+  ai_score           real CHECK (ai_score BETWEEN 0 AND 1),
+  detection_status   text NOT NULL DEFAULT 'pending' CHECK (detection_status IN ('pending', 'scored', 'error')),
+  decision           text CHECK (decision IN ('accepted', 'rejected_ai')),
+  threshold_applied  numeric(5, 2),
+  checked_at         timestamptz,
+  detection_attempts smallint NOT NULL DEFAULT 0,
+  quarantined_at     timestamptz
 );
 CREATE INDEX media_uploads_owner_idx ON media_uploads (owner_id, created_at);
+
+-- [Design] 015 (#42): platform settings set by admins (one row). The AI-likelihood threshold in percent.
+CREATE TABLE platform_settings (
+  id                        boolean PRIMARY KEY DEFAULT true CHECK (id),
+  ai_image_reject_threshold numeric(5, 2) NOT NULL DEFAULT 70
+    CHECK (ai_image_reject_threshold BETWEEN 0 AND 100),
+  updated_by                uuid REFERENCES admins(user_id),
+  updated_at                timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO platform_settings DEFAULT VALUES;
+
+-- [SRS] REQ-7 "owner notified" (015, #42): onboarded / AI-rejected emails, at most once per venue, kind and review
+-- round (submission = venues.submitted_at). Failures stay for the retry job and the admin's Resend.
+CREATE TABLE venue_emails (
+  email_id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id   uuid        NOT NULL REFERENCES venues(venue_id) ON DELETE CASCADE,
+  kind       text        NOT NULL CHECK (kind IN ('onboarded', 'ai_rejected')),
+  submission timestamptz NOT NULL,
+  recipient  text        NOT NULL,
+  status     text        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
+  attempts   smallint    NOT NULL DEFAULT 0,
+  last_error text        CHECK (char_length(last_error) <= 300),
+  sent_at    timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT venue_emails_once UNIQUE (venue_id, kind, submission)
+);
+CREATE INDEX venue_emails_retry_idx ON venue_emails (status) WHERE status <> 'sent';
+CREATE TRIGGER venue_emails_updated_at BEFORE UPDATE ON venue_emails FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- [Design] srs-alignment #35 (migration 006): REQ-5 "a changed venue goes to Admin approval before customers see
 -- it". Edits to a live venue's approval fields wait here; the live version stays public until an admin approves.

@@ -104,6 +104,7 @@ Arrows show what a file talks to. Everything under `client/src/` unless the path
 | `pages/InvitationGuests.jsx` | `/bookings/:id/guests`: the host's event page (EUC-25/27): guests, send, links, replies vs hall capacity. | `api/invitations.js` |
 | `pages/GuestInvitation.jsx` | `/i/:token`: the guest's own invitation and reply (EUC-26/27), no account. | `api/invitations.js` |
 | `pages/owner/OwnerBookings.jsx` | `/owner/bookings`: the owner's booking inbox (EUC-15): confirm, decline with a reason. | `api/bookings.js` |
+| `server/src/modules/venues/imageVerification.js`, `venueEmails.js`, `jobs.js`, `quarantineFiles.js`; `server/src/modules/settings/` | AI-image gate (#42): score vs threshold, quarantine, venue rule, approval blockers, retries; owner emails sent once; threshold setting. | `integrations/imageDetection.js`, `integrations/mailer.js` |
 | `pages/owner/MyListings.jsx` | `/owner/listings`: the owner's listings with status, edit, withdraw edits, deactivate / reactivate. | `api/owner.js` |
 | `pages/owner/ListingEditor.jsx` | `/owner/listings/:id/edit/:section`: edit a live venue with the wizard's steps; says what goes live and what needs approval. | `api/owner.js`, `features/host/steps/*` |
 | `pages/admin/Reviews.jsx` | Admin review moderation (REQ-44): reported / hidden / all, hide, keep, restore, delete with a reason. | `api/admin.js` |

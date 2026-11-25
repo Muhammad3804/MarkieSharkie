@@ -9,6 +9,7 @@ import { env } from '../config/env.js'
 //   save(buffer, { folder, ext }) -> { key, url }      key = 'venues/owner-<id>/<random>.jpg', url = '/uploads/<key>'
 //   read(key) -> Buffer
 //   remove(key)
+//   move(fromKey, toKey) -> rename (quarantining an AI-rejected photo, srs-alignment #42)
 //   urlFor(key) -> '/uploads/<key>' (relative; the API adds its origin when it answers)
 // File names are 128 random bits, never the uploader's name, so they can't be guessed or collide.
 
@@ -33,6 +34,11 @@ export function createLocalStorage(root = env.uploadsDir || DEFAULT_UPLOADS_DIR)
     read: (key) => fs.readFile(resolveKey(key)),
     async remove(key) {
       await fs.rm(resolveKey(key), { force: true })
+    },
+    async move(fromKey, toKey) {
+      const target = resolveKey(toKey)
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await fs.rename(resolveKey(fromKey), target)
     },
   }
 }

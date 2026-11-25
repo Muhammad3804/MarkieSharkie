@@ -410,6 +410,8 @@ export async function getMyListing(ownerId, venueId, { origin }) {
   if (!(await repo.isOwner(pool, { venueId, ownerId }))) throw notYours()
   const bundle = await loadVenueBundle(pool, venueId, { publishedOnly: false })
   const listing = toListing(bundle, origin)
+  // #42: the owner sees each photo's score and decision, not the threshold or admin-only details.
+  for (const image of listing.images) if (image.check) delete image.check.thresholdApplied
   const pending = await edits.findPendingRevision(pool, venueId)
   const latest = pending ?? (await edits.latestRevision(pool, venueId))
   return {

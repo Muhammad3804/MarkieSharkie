@@ -161,9 +161,7 @@ export async function loadVenueBundle(db, venueId, { publishedOnly = true } = {}
   const [halls, images, menus, items, addOns, suite, templates, tiers, walkthroughs] = await Promise.all([
     db.query('SELECT * FROM halls WHERE venue_id = $1 ORDER BY sort_order, created_at, hall_id', [venueId]),
     db.query(
-      `SELECT i.*,
-              (SELECT v.ai_score FROM image_verifications v WHERE v.image_id = i.image_id
-                ORDER BY v.checked_at DESC LIMIT 1) AS ai_score
+      `SELECT i.*
          FROM venue_images i
         WHERE i.venue_id = $1 AND (NOT $2::boolean OR i.is_published)
         ORDER BY i.sort_order, i.image_id`,

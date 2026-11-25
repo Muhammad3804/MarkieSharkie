@@ -23,6 +23,7 @@ import {
 
 const emptyBody = z.object({}).strict().default({})
 
+const uploadParamsSchema = z.object({ id: z.uuid({ error: 'Unknown upload.' }) }).strict()
 const uploadBodySchema = z
   .object({ kind: z.enum(uploadKinds, { error: 'Say what the file is: photo, floor_plan or walkthrough.' }) })
   .strict()
@@ -43,6 +44,13 @@ export function ownerRouter({ rateLimits }) {
     singleFile,
     validate({ body: uploadBodySchema }),
     asyncHandler(controller.upload),
+  )
+  // #42: try the AI check of one wizard photo again (the detector was down). Only the owner's own uploads.
+  router.post(
+    '/uploads/:id/check',
+    createRateLimiter(rateLimits.uploads),
+    validate({ params: uploadParamsSchema }),
+    asyncHandler(controller.retryUploadCheck),
   )
 
   router.get('/venues', asyncHandler(controller.listMine))
